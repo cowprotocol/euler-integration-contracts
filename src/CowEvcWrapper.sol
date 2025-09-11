@@ -29,13 +29,6 @@ contract CowEvcWrapper {
         IEVC.BatchItem[] calldata preItems,
         IEVC.BatchItem[] calldata postItems
     ) external {
-        if (preItems.length > 0) {
-            console.log("START PRE STORE");
-            console.log("the target contract", preItems[0].targetContract);
-            console.log("on beahlf of", preItems[0].onBehalfOfAccount);
-            console.log("the value", preItems[0].value);
-            console.log("STOP POST STORE");
-        }
         _copyToTransientStorage(preItems, keccak256("preSettlementItems"));
         _copyToTransientStorage(postItems, keccak256("postSettlementItems"));
     }
@@ -57,19 +50,13 @@ contract CowEvcWrapper {
         }
 
         // Create a single batch with all items
-        console.log("pre read transient");
         IEVC.BatchItem[] memory preSettlementItems = _readFromTransientStorage(keccak256("preSettlementItems"));
-        console.log("post read transient");
         IEVC.BatchItem[] memory postSettlementItems = _readFromTransientStorage(keccak256("postSettlementItems"));
-        console.log("done", preSettlementItems.length, postSettlementItems.length);
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](preSettlementItems.length + postSettlementItems.length + 1);
-        console.log("allocated items");
 
         // Copy pre-settlement items
         for (uint256 i = 0; i < preSettlementItems.length; i++) {
             items[i] = preSettlementItems[i];
-            //console.log("prelog1", postSettlementItems[i].data.length);
-            //console.log("prelog", preSettlementItems[i].data.length);
             uint256 ptr; uint256 ptr2;
             IEVC.BatchItem memory subItem = preSettlementItems[i];
             bytes memory itemsData = preSettlementItems[i].data;
@@ -77,13 +64,7 @@ contract CowEvcWrapper {
                 ptr := itemsData
                 ptr2 := subItem
             }
-            console.log("the target contract", preSettlementItems[i].targetContract);
-            console.log("on beahlf of", preSettlementItems[i].onBehalfOfAccount);
-            console.log("the value", preSettlementItems[i].value);
-            console.log("the pointers", ptr, ptr2);
-            console.log("who can build a snowman", items[i].data.length);
         }
-        console.log("copied pre");
 
         // Add settlement call to wrapper
         items[preSettlementItems.length] = IEVC.BatchItem({
@@ -97,11 +78,9 @@ contract CowEvcWrapper {
         for (uint256 i = 0; i < postSettlementItems.length; i++) {
             items[preSettlementItems.length + 1 + i] = postSettlementItems[i];
         }
-        console.log("copied over", items.length);
 
         // Execute all items in a single batch
         EVC.batch(items);
-        console.log("evc batched");
     }
 
     /// @notice Executes a batch of EVC operations
