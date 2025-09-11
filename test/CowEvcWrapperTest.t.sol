@@ -36,7 +36,7 @@ contract CowEvcWrapperTest is CowBaseTest {
         vm.skip(bytes(FORK_RPC_URL).length == 0);
 
         (
-            address[] memory tokens,
+            IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
             GPv2Interaction.Data[][3] memory interactions
@@ -52,7 +52,7 @@ contract CowEvcWrapperTest is CowBaseTest {
         vm.startPrank(nonSolver);
 
         (
-            address[] memory tokens,
+            IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
             GPv2Interaction.Data[][3] memory interactions
@@ -78,7 +78,7 @@ contract CowEvcWrapperTest is CowBaseTest {
         (
             bytes memory orderUid,
             ,
-            address[] memory tokens,
+            IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
             GPv2Interaction.Data[][3] memory interactions
@@ -126,7 +126,7 @@ contract CowEvcWrapperTest is CowBaseTest {
         (
             bytes memory orderUid,
             ,
-            address[] memory tokens,
+            IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
             GPv2Interaction.Data[][3] memory interactions
@@ -244,12 +244,12 @@ contract CowEvcWrapperTest is CowBaseTest {
         uint256 sellAmount = 1e18; // 1 WETH
         uint256 buyAmount = 1000e18; //  1000 SUSDS
 
-        // Get settlement, that sells WETH for SUSDS
+        // Get settlement, that sells WETH for buying SUSDS
         // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
         (
             bytes memory orderUid,
             ,
-            address[] memory tokens,
+            IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
             GPv2Interaction.Data[][3] memory interactions
@@ -311,14 +311,14 @@ contract CowEvcWrapperTest is CowBaseTest {
             data: abi.encodeCall(IEVC.permit, (user, address(wrapper), 0, 0, block.timestamp, 0, batchData, batchSignature))
         });
 
-        // post-settlement will check slippage and skim the free cash on the destination vault for the user
-        IEVC.BatchItem[] memory postSettlementItems = new IEVC.BatchItem[](1);
-        postSettlementItems[0] = IEVC.BatchItem({
+        // post-settlement, first lets assume we don't call the swap verifier
+        IEVC.BatchItem[] memory postSettlementItems = new IEVC.BatchItem[](0);
+        /*postSettlementItems[0] = IEVC.BatchItem({
             onBehalfOfAccount: address(wrapper),
             targetContract: swapVerifier,
             value: 0,
             data: abi.encodeCall(SwapVerifier.verifyAmountMinAndSkim, (eSUSDS, user, buyAmount, block.timestamp))
-        });
+        });*/
 
         // Execute the settlement through the wrapper
         vm.stopPrank();
@@ -331,6 +331,9 @@ contract CowEvcWrapperTest is CowBaseTest {
             targets[1] = address(wrapper);
             datas[0] = abi.encodeWithSelector(wrapper.setEvcCalls.selector, preSettlementItems, postSettlementItems);
             datas[1] = abi.encodeWithSelector(wrapper.settle.selector, tokens, clearingPrices, trades, interactions);
+            
+            // this should fail becuase the user should get a minimum skim amount out of this short
+            vm.expectRevert();
             solver.runBatch(targets, datas);
         }
 
@@ -372,7 +375,7 @@ contract CowEvcWrapperTest is CowBaseTest {
         (
             bytes memory orderUid,
             ,
-            address[] memory tokens,
+            IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
             GPv2Interaction.Data[][3] memory interactions
@@ -421,7 +424,7 @@ contract CowEvcWrapperTest is CowBaseTest {
         (
             bytes memory orderUid,
             ,
-            address[] memory tokens,
+            IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
             GPv2Interaction.Data[][3] memory interactions

@@ -2,14 +2,18 @@
 pragma solidity ^0.8.30;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
-import {IGPv2Settlement, GPv2Interaction, GPv2Trade} from "./vendor/interfaces/IGPv2Settlement.sol";
+import {IGPv2Settlement, GPv2Interaction} from "./vendor/interfaces/IGPv2Settlement.sol";
 import {IGPv2Authentication} from "./vendor/interfaces/IGPv2Authentication.sol";
+
+import {GPv2Signing, IERC20, GPv2Trade} from "cow/mixins/GPv2Signing.sol";
+
+import {SwapVerifier} from "./SwapVerifier.sol";
 
 import "forge-std/console.sol";
 
 /// @title CowEvcWrapper
 /// @notice A wrapper around the EVC that allows for settlement operations
-contract CowEvcWrapper {
+contract CowEvcWrapper is GPv2Signing, SwapVerifier {
     IEVC public immutable EVC;
     IGPv2Settlement public immutable SETTLEMENT;
 
@@ -17,21 +21,27 @@ contract CowEvcWrapper {
 
     error Unauthorized(address msgSender);
     error NoReentrancy();
+    error MultiplePossibleReceivers(
+        address resolvedVault, address resolvedSender, address secondVault, address secondSender
+    );
 
     constructor(address _evc, address payable _settlement) {
         EVC = IEVC(_evc);
         SETTLEMENT = IGPv2Settlement(_settlement);
     }
 
-    /// @notice Specifies the EVC calls that will need to be executed 
-    /// around a GPv2Settlement 
+    struct ResolvedValues {
+        address vault;
+        address sender;
+        uint256 minAmount;
+    }
+
+    /// @notice Specifies the EVC calls that will need to be executed
+    /// around a GPv2Settlement
     /// call prior to `settle` call on this contract
     /// @param preItems Items to execute before settlement
     /// @param postItems Items to execute after settlement
-    function setEvcCalls(
-        IEVC.BatchItem[] calldata preItems,
-        IEVC.BatchItem[] calldata postItems
-    ) external {
+    function setEvcCalls(IEVC.BatchItem[] calldata preItems, IEVC.BatchItem[] calldata postItems) external {
         _copyToTransientStorage(preItems, keccak256("preSettlementItems"));
         _copyToTransientStorage(postItems, keccak256("postSettlementItems"));
     }
@@ -42,7 +52,7 @@ contract CowEvcWrapper {
     /// @param trades Trade data for settlement
     /// @param interactions Interaction data for settlement
     function settle(
-        address[] calldata tokens,
+        IERC20[] calldata tokens,
         uint256[] calldata clearingPrices,
         GPv2Trade.Data[] calldata trades,
         GPv2Interaction.Data[][3] calldata interactions
@@ -56,12 +66,13 @@ contract CowEvcWrapper {
         // Create a single batch with all items
         IEVC.BatchItem[] memory preSettlementItems = _readFromTransientStorage(keccak256("preSettlementItems"));
         IEVC.BatchItem[] memory postSettlementItems = _readFromTransientStorage(keccak256("postSettlementItems"));
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](preSettlementItems.length + postSettlementItems.length + 1);
+        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](preSettlementItems.length + postSettlementItems.length + 2);
 
         // Copy pre-settlement items
         for (uint256 i = 0; i < preSettlementItems.length; i++) {
             items[i] = preSettlementItems[i];
-            uint256 ptr; uint256 ptr2;
+            uint256 ptr;
+            uint256 ptr2;
             IEVC.BatchItem memory subItem = preSettlementItems[i];
             bytes memory itemsData = preSettlementItems[i].data;
             assembly {
@@ -78,9 +89,41 @@ contract CowEvcWrapper {
             data: abi.encodeCall(this.internalSettle, (tokens, clearingPrices, trades, interactions))
         });
 
+        // immediately after processing the swap, we should be skimming the result to the user
+        // we have to identify the trade associated with the vault to skim
+        ResolvedValues memory resolved;
+        for (uint256 i = 0; i < trades.length; i++) {
+            // the trade we are looking for is one where the receiver is the token itself
+            // if there are more than one trades that have this pattern, then something wierd is happening and we need to exit
+            if (trades[i].receiver == address(tokens[trades[i].buyTokenIndex])) {
+                // we have to derive from the trade
+                RecoveredOrder memory order;
+                recoverOrderFromTrade(order, tokens, trades[i]);
+
+                if (resolved.vault != address(0)) {
+                    revert MultiplePossibleReceivers(resolved.vault, resolved.sender, trades[i].receiver, order.owner);
+                }
+                resolved.vault = trades[i].receiver;
+                resolved.sender = order.owner;
+                resolved.minAmount = trades[i].buyAmount;
+            }
+        }
+
+        items[preSettlementItems.length + 1] = IEVC.BatchItem({
+            onBehalfOfAccount: address(this),
+            targetContract: address(this),
+            value: 0,
+            data: abi.encodeCall(
+                SwapVerifier.verifyAmountMinAndSkim, (resolved.vault, resolved.sender, resolved.minAmount, block.timestamp)
+            )
+        });
+
+        // Add skim call to the
+
         // Copy post-settlement items
         for (uint256 i = 0; i < postSettlementItems.length; i++) {
-            items[preSettlementItems.length + 1 + i] = postSettlementItems[i];
+            // At least one of the post settlement items should be skimming back to the user
+            items[preSettlementItems.length + 2 + i] = postSettlementItems[i];
         }
 
         // Execute all items in a single batch
@@ -93,7 +136,7 @@ contract CowEvcWrapper {
     /// @param trades Trade data for settlement
     /// @param interactions Interaction data for settlement
     function internalSettle(
-        address[] calldata tokens,
+        IERC20[] calldata tokens,
         uint256[] calldata clearingPrices,
         GPv2Trade.Data[] calldata trades,
         GPv2Interaction.Data[][3] calldata interactions
@@ -106,7 +149,6 @@ contract CowEvcWrapper {
         if (!IGPv2Authentication(SETTLEMENT.authenticator()).isSolver(origSender)) {
             revert("CowEvcWrapper: not a solver");
         }
-
 
         SETTLEMENT.settle(tokens, clearingPrices, trades, interactions);
     }

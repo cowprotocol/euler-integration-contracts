@@ -113,14 +113,14 @@ contract CowBaseTest is EVaultTestBase {
         public
         pure
         returns (
-            address[] memory tokens,
+            IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
             GPv2Interaction.Data[][3] memory interactions
         )
     {
         return (
-            new address[](0),
+            new IERC20[](0),
             new uint256[](0),
             new GPv2Trade.Data[](0),
             [
@@ -172,10 +172,10 @@ contract CowBaseTest is EVaultTestBase {
         });
     }
 
-    function getTokensAndPrices() public pure returns (address[] memory tokens, uint256[] memory clearingPrices) {
-        tokens = new address[](2);
-        tokens[0] = WETH;
-        tokens[1] = SUSDS;
+    function getTokensAndPrices() public pure returns (IERC20[] memory tokens, uint256[] memory clearingPrices) {
+        tokens = new IERC20[](2);
+        tokens[0] = IERC20(WETH);
+        tokens[1] = IERC20(SUSDS);
 
         clearingPrices = new uint256[](2);
         clearingPrices[0] = 1000; // WETH price
@@ -188,7 +188,7 @@ contract CowBaseTest is EVaultTestBase {
         returns (
             bytes memory orderUid,
             GPv2Order.Data memory orderData,
-            address[] memory tokens,
+            IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
             GPv2Interaction.Data[][3] memory interactions

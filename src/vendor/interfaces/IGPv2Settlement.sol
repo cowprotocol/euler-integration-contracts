@@ -3,6 +3,11 @@
 pragma solidity >=0.7.0 <0.9.0;
 pragma experimental ABIEncoderV2;
 
+import {IERC20} from "cow/mixins/GPv2Signing.sol";
+
+import {GPv2Signing, GPv2Trade} from "cow/mixins/GPv2Signing.sol";
+import {GPv2Interaction} from "cow/GPv2Settlement.sol";
+
 interface IGPv2Settlement {
 
 
@@ -17,7 +22,7 @@ function getStorageAt( uint256 offset,uint256 length ) external view returns (by
 function invalidateOrder( bytes memory orderUid ) external   ;
 function preSignature( bytes memory  ) external view returns (uint256 ) ;
 function setPreSignature( bytes memory orderUid,bool signed ) external   ;
-function settle( address[] memory tokens,uint256[] memory clearingPrices,GPv2Trade.Data[] memory trades,GPv2Interaction.Data[][3] memory interactions ) external   ;
+function settle( IERC20[] memory tokens,uint256[] memory clearingPrices,GPv2Trade.Data[] memory trades,GPv2Interaction.Data[][3] memory interactions ) external   ;
 function simulateDelegatecall( address targetContract,bytes memory calldataPayload ) external  returns (bytes memory response) ;
 function simulateDelegatecallInternal( address targetContract,bytes memory calldataPayload ) external  returns (bytes memory response) ;
 function swap( IVault.BatchSwapStep[] memory swaps,address[] memory tokens,GPv2Trade.Data memory trade ) external   ;
@@ -28,30 +33,6 @@ event OrderInvalidated( address indexed owner,bytes orderUid ) ;
 event PreSignature( address indexed owner,bytes orderUid,bool signed ) ;
 event Settlement( address indexed solver ) ;
 event Trade( address indexed owner,address sellToken,address buyToken,uint256 sellAmount,uint256 buyAmount,uint256 feeAmount,bytes orderUid ) ;
-}
-
-interface GPv2Trade {
-struct Data {
-uint256 sellTokenIndex;
-uint256 buyTokenIndex;
-address receiver;
-uint256 sellAmount;
-uint256 buyAmount;
-uint32 validTo;
-bytes32 appData;
-uint256 feeAmount;
-uint256 flags;
-uint256 executedAmount;
-bytes signature;
-}
-}
-
-interface GPv2Interaction {
-struct Data {
-address target;
-uint256 value;
-bytes callData;
-}
 }
 
 interface IVault {
