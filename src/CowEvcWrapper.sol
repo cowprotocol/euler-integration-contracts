@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.30;
 
-import {IEVC} from "./vendor/interfaces/IEthereumVaultConnector.sol";
+import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IGPv2Settlement, GPv2Interaction, GPv2Trade} from "./vendor/interfaces/IGPv2Settlement.sol";
 import {IGPv2Authentication} from "./vendor/interfaces/IGPv2Authentication.sol";
 
@@ -13,7 +13,10 @@ contract CowEvcWrapper {
     IEVC public immutable EVC;
     IGPv2Settlement public immutable SETTLEMENT;
 
+    address public transient origSender;
+
     error Unauthorized(address msgSender);
+    error NoReentrancy();
 
     constructor(address _evc, address payable _settlement) {
         EVC = IEVC(_evc);
@@ -44,10 +47,11 @@ contract CowEvcWrapper {
         GPv2Trade.Data[] calldata trades,
         GPv2Interaction.Data[][3] calldata interactions
     ) external payable {
-        // Revert if not a valid solver
-        if (!IGPv2Authentication(SETTLEMENT.authenticator()).isSolver(msg.sender)) {
-            revert("CowEvcWrapper: not a solver");
+        // prevent reentrancy: there is no reason why we would want to allow it here
+        if (origSender != address(0)) {
+            revert NoReentrancy();
         }
+        origSender = msg.sender;
 
         // Create a single batch with all items
         IEVC.BatchItem[] memory preSettlementItems = _readFromTransientStorage(keccak256("preSettlementItems"));
@@ -97,6 +101,12 @@ contract CowEvcWrapper {
         if (msg.sender != address(EVC)) {
             revert Unauthorized(msg.sender);
         }
+
+        // Revert if not a valid solver
+        if (!IGPv2Authentication(SETTLEMENT.authenticator()).isSolver(origSender)) {
+            revert("CowEvcWrapper: not a solver");
+        }
+
 
         SETTLEMENT.settle(tokens, clearingPrices, trades, interactions);
     }
