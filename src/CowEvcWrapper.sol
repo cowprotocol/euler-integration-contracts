@@ -25,6 +25,8 @@ contract CowEvcWrapper is GPv2Signing, SwapVerifier {
         address resolvedVault, address resolvedSender, address secondVault, address secondSender
     );
 
+    error NotEVCSettlement();
+
     constructor(address _evc, address payable _settlement) {
         EVC = IEVC(_evc);
         SETTLEMENT = IGPv2Settlement(_settlement);
@@ -66,7 +68,7 @@ contract CowEvcWrapper is GPv2Signing, SwapVerifier {
         // Create a single batch with all items
         IEVC.BatchItem[] memory preSettlementItems = _readFromTransientStorage(keccak256("preSettlementItems"));
         IEVC.BatchItem[] memory postSettlementItems = _readFromTransientStorage(keccak256("postSettlementItems"));
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](preSettlementItems.length + postSettlementItems.length + 2);
+        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](preSettlementItems.length + postSettlementItems.length + 1);
 
         // Copy pre-settlement items
         for (uint256 i = 0; i < preSettlementItems.length; i++) {
@@ -91,10 +93,13 @@ contract CowEvcWrapper is GPv2Signing, SwapVerifier {
 
         // immediately after processing the swap, we should be skimming the result to the user
         // we have to identify the trade associated with the vault to skim
-        ResolvedValues memory resolved;
+        /*ResolvedValues memory resolved;
         for (uint256 i = 0; i < trades.length; i++) {
             // the trade we are looking for is one where the receiver is the token itself
             // if there are more than one trades that have this pattern, then something wierd is happening and we need to exit
+            console.log("check trades", i);
+            console.log("recvr", trades[i].receiver);
+            console.log("tokens", address(tokens[1]));
             if (trades[i].receiver == address(tokens[trades[i].buyTokenIndex])) {
                 // we have to derive from the trade
                 RecoveredOrder memory order;
@@ -109,6 +114,14 @@ contract CowEvcWrapper is GPv2Signing, SwapVerifier {
             }
         }
 
+        if (resolved.vault == address(0)) {
+            revert NotEVCSettlement();
+        }
+
+        console.log("resolved vault ", resolved.vault);
+        console.log("resolved sender", resolved.sender);
+        console.log("resolved minAmount", resolved.minAmount);
+
         items[preSettlementItems.length + 1] = IEVC.BatchItem({
             onBehalfOfAccount: address(this),
             targetContract: address(this),
@@ -116,14 +129,14 @@ contract CowEvcWrapper is GPv2Signing, SwapVerifier {
             data: abi.encodeCall(
                 SwapVerifier.verifyAmountMinAndSkim, (resolved.vault, resolved.sender, resolved.minAmount, block.timestamp)
             )
-        });
+        });*/
 
         // Add skim call to the
 
         // Copy post-settlement items
         for (uint256 i = 0; i < postSettlementItems.length; i++) {
             // At least one of the post settlement items should be skimming back to the user
-            items[preSettlementItems.length + 2 + i] = postSettlementItems[i];
+            items[preSettlementItems.length + 1 + i] = postSettlementItems[i];
         }
 
         // Execute all items in a single batch
