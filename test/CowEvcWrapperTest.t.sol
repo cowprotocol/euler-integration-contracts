@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity ^0.8.23;
+pragma solidity ^0.8;
 
 import {GPv2Signing} from "cow/mixins/GPv2Signing.sol";
 import {GPv2Order} from "cow/libraries/GPv2Order.sol";

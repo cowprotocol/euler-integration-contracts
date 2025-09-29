@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity ^0.8.30;
+pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IGPv2Settlement, GPv2Interaction, GPv2Trade} from "./vendor/interfaces/IGPv2Settlement.sol";
