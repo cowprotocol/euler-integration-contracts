@@ -7,6 +7,7 @@ on:
 
 env:
   FOUNDRY_PROFILE: ci
+  FORK_RPC_URL: ${{ secrets.RPC_URL_1 }}
 
 jobs:
   check:
@@ -31,7 +32,7 @@ jobs:
 
       - name: Run Forge build
         run: |
-          forge build --sizes
+          forge build --sizes --ignore-eip-3860
         id: build
 
       - name: Run Forge tests
