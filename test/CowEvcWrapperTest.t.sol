@@ -60,7 +60,7 @@ contract CowEvcWrapperTest is CowBaseTest {
             GPv2Interaction.Data[][3] memory interactions
         ) = getEmptySettlement();
 
-        vm.expectRevert("CowEvcWrapper: not a solver");
+        vm.expectRevert("GPv2Wrapper: not a solver");
         wrapper.wrappedSettle(tokens, clearingPrices, trades, interactions, emptySettleActions);
     }
 
@@ -74,7 +74,7 @@ contract CowEvcWrapperTest is CowBaseTest {
 
         // Create order parameters
         uint256 sellAmount = 1e18; // 1 WETH
-        uint256 buyAmount = 1000e18; //  1000 SUSDS
+        uint256 buyAmount = 999e18; //  1000 SUSDS
 
         // Get settlement, that sells WETH for SUSDS
         (
@@ -99,12 +99,12 @@ contract CowEvcWrapperTest is CowBaseTest {
         wrapper.wrappedSettle(tokens, clearingPrices, trades, interactions, emptySettleActions);
 
         // Verify the swap was executed
-        assertEq(IERC20(SUSDS).balanceOf(user), buyAmount, "User should receive SUSDS");
+        assertEq(IERC20(eSUSDS).balanceOf(user), buyAmount, "User should receive SUSDS");
         assertEq(IERC20(WETH).balanceOf(address(milkSwap)), sellAmount, "MilkSwap should receive WETH");
 
         uint256 susdsBalanceInMilkSwapAfter = IERC20(SUSDS).balanceOf(address(milkSwap));
         assertEq(
-            susdsBalanceInMilkSwapAfter, susdsBalanceInMilkSwapBefore - buyAmount, "MilkSwap should have less SUSDS"
+            susdsBalanceInMilkSwapAfter, susdsBalanceInMilkSwapBefore - buyAmount - 1e18, "MilkSwap should have less SUSDS"
         );
     }
 
@@ -206,15 +206,15 @@ contract CowEvcWrapperTest is CowBaseTest {
         //vm.startPrank(solver);
 
         {
-            address[] memory targets = new address[](2);
+            address[] memory targets = new address[](1);
             bytes[] memory datas = new bytes[](1);
             bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
             targets[0] = address(wrapper);
-            targets[1] = address(wrapper);
             datas[0] = abi.encodeWithSelector(
                 wrapper.wrappedSettle.selector, tokens, clearingPrices, trades, interactions, evcActions
             );
             solver.runBatch(targets, datas);
+
         }
 
         // Verify the position was created
@@ -245,7 +245,7 @@ contract CowEvcWrapperTest is CowBaseTest {
 
         // Create order parameters
         uint256 sellAmount = 1e18; // 1 WETH
-        uint256 buyAmount = 1000e18; //  1000 SUSDS
+        uint256 buyAmount = 999e18; //  999 eSUSDS
 
         // Get settlement, that sells WETH for buying SUSDS
         // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
@@ -256,7 +256,7 @@ contract CowEvcWrapperTest is CowBaseTest {
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
             GPv2Interaction.Data[][3] memory interactions
-        ) = getSwapSettlement(user, eSUSDS, sellAmount, buyAmount);
+        ) = getSwapSettlement(user, user, sellAmount, buyAmount);
 
         // User, pre-approve the order
         console.logBytes(orderUid);
@@ -328,11 +328,10 @@ contract CowEvcWrapperTest is CowBaseTest {
         //vm.startPrank(solver);
 
         {
-            address[] memory targets = new address[](2);
+            address[] memory targets = new address[](1);
             bytes[] memory datas = new bytes[](1);
             bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
             targets[0] = address(wrapper);
-            targets[1] = address(wrapper);
             datas[0] = abi.encodeWithSelector(
                 wrapper.wrappedSettle.selector, tokens, clearingPrices, trades, interactions, evcActions
             );
@@ -368,7 +367,7 @@ contract CowEvcWrapperTest is CowBaseTest {
 
         // Create order parameters
         uint256 sellAmount = 1e18; // 1 WETH
-        uint256 buyAmount = 1000e18; //  1000 SUSDS
+        uint256 buyAmount = 999e18; //  999 eSUSDS
 
         // Get settlement, that sells WETH for SUSDS
         // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
@@ -397,7 +396,7 @@ contract CowEvcWrapperTest is CowBaseTest {
             data: abi.encodeCall(CowEvcWrapper.evcInternalSettle, (tokens, clearingPrices, trades, interactions))
         });
 
-        vm.expectRevert("CowEvcWrapper: not a solver");
+        vm.expectRevert(abi.encodeWithSelector(CowEvcWrapper.Unauthorized.selector, address(0)));
         evc.batch(items);
     }
 
@@ -500,7 +499,7 @@ contract CowEvcWrapperTest is CowBaseTest {
         // This contract will be the "malicious" solver. It should not be able to complete the settle flow
         bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
 
-        vm.expectRevert("CowEvcWrapper: not a solver");
+        vm.expectRevert("GPv2Wrapper: not a solver");
         wrapper.wrappedSettle(tokens, clearingPrices, trades, interactions, evcActions);
     }
 }

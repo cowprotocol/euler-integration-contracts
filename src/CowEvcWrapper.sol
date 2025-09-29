@@ -67,14 +67,14 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing, SwapVerifier {
         // Copy pre-settlement items
         for (uint256 i = 0; i < preSettlementItems.length; i++) {
             items[i] = preSettlementItems[i];
-            uint256 ptr;
+            /*uint256 ptr;
             uint256 ptr2;
             IEVC.BatchItem memory subItem = preSettlementItems[i];
             bytes memory itemsData = preSettlementItems[i].data;
             assembly {
                 ptr := itemsData
                 ptr2 := subItem
-            }
+            }*/
         }
 
         // Add settlement call to wrapper - use _internalSettle from GPv2Wrapper
@@ -85,51 +85,8 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing, SwapVerifier {
             data: abi.encodeCall(this.evcInternalSettle, (tokens, clearingPrices, trades, interactions))
         });
 
-        // immediately after processing the swap, we should be skimming the result to the user
-        // we have to identify the trade associated with the vault to skim
-        /*ResolvedValues memory resolved;
-        for (uint256 i = 0; i < trades.length; i++) {
-            // the trade we are looking for is one where the receiver is the token itself
-            // if there are more than one trades that have this pattern, then something wierd is happening and we need to exit
-            console.log("check trades", i);
-            console.log("recvr", trades[i].receiver);
-            console.log("tokens", address(tokens[1]));
-            if (trades[i].receiver == address(tokens[trades[i].buyTokenIndex])) {
-                // we have to derive from the trade
-                RecoveredOrder memory order;
-                recoverOrderFromTrade(order, tokens, trades[i]);
-
-                if (resolved.vault != address(0)) {
-                    revert MultiplePossibleReceivers(resolved.vault, resolved.sender, trades[i].receiver, order.owner);
-                }
-                resolved.vault = trades[i].receiver;
-                resolved.sender = order.owner;
-                resolved.minAmount = trades[i].buyAmount;
-            }
-        }
-
-        if (resolved.vault == address(0)) {
-            revert NotEVCSettlement();
-        }
-
-        console.log("resolved vault ", resolved.vault);
-        console.log("resolved sender", resolved.sender);
-        console.log("resolved minAmount", resolved.minAmount);
-
-        items[preSettlementItems.length + 1] = IEVC.BatchItem({
-            onBehalfOfAccount: address(this),
-            targetContract: address(this),
-            value: 0,
-            data: abi.encodeCall(
-                SwapVerifier.verifyAmountMinAndSkim, (resolved.vault, resolved.sender, resolved.minAmount, block.timestamp)
-            )
-        });*/
-
-        // Add skim call to the
-
         // Copy post-settlement items
         for (uint256 i = 0; i < postSettlementItems.length; i++) {
-            // At least one of the post settlement items should be skimming back to the user
             items[preSettlementItems.length + 1 + i] = postSettlementItems[i];
         }
 
@@ -150,6 +107,11 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing, SwapVerifier {
     ) external payable {
         if (msg.sender != address(EVC)) {
             revert Unauthorized(msg.sender);
+        }
+
+        if (origSender == address(0)) {
+            // origSender will be address(0) here which indiates that internal settle was called when it shouldn't be (outside of wrappedSettle call)
+            revert Unauthorized(origSender);
         }
 
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
