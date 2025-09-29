@@ -5,6 +5,9 @@
   "lib/euler-vault-kit": {
     "rev": "5b98b42048ba11ae82fb62dfec06d1010c8e41e6"
   },
+  "lib/evc": {
+    "rev": "34bb788288a0eb0fbba06bc370cb8ca3dd42614e"
+  },
   "lib/forge-std": {
     "tag": {
       "name": "v1.10.0",

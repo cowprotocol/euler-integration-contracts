@@ -6,6 +6,7 @@ import {IGPv2Settlement, GPv2Interaction} from "./vendor/interfaces/IGPv2Settlem
 import {IGPv2Authentication} from "./vendor/interfaces/IGPv2Authentication.sol";
 
 import {GPv2Signing, IERC20, GPv2Trade} from "cow/mixins/GPv2Signing.sol";
+import {GPv2Wrapper} from "cow/GPv2Wrapper.sol";
 
 import {SwapVerifier} from "./SwapVerifier.sol";
 
@@ -13,9 +14,8 @@ import "forge-std/console.sol";
 
 /// @title CowEvcWrapper
 /// @notice A wrapper around the EVC that allows for settlement operations
-contract CowEvcWrapper is GPv2Signing, SwapVerifier {
+contract CowEvcWrapper is GPv2Wrapper, GPv2Signing, SwapVerifier {
     IEVC public immutable EVC;
-    IGPv2Settlement public immutable SETTLEMENT;
 
     address public transient origSender;
 
@@ -27,9 +27,10 @@ contract CowEvcWrapper is GPv2Signing, SwapVerifier {
 
     error NotEVCSettlement();
 
-    constructor(address _evc, address payable _settlement) {
+    constructor(address _evc, address payable _settlement)
+        GPv2Wrapper(_settlement)
+    {
         EVC = IEVC(_evc);
-        SETTLEMENT = IGPv2Settlement(_settlement);
     }
 
     struct ResolvedValues {
@@ -38,36 +39,29 @@ contract CowEvcWrapper is GPv2Signing, SwapVerifier {
         uint256 minAmount;
     }
 
-    /// @notice Specifies the EVC calls that will need to be executed
-    /// around a GPv2Settlement
-    /// call prior to `settle` call on this contract
-    /// @param preItems Items to execute before settlement
-    /// @param postItems Items to execute after settlement
-    function setEvcCalls(IEVC.BatchItem[] calldata preItems, IEVC.BatchItem[] calldata postItems) external {
-        _copyToTransientStorage(preItems, keccak256("preSettlementItems"));
-        _copyToTransientStorage(postItems, keccak256("postSettlementItems"));
-    }
 
-    /// @notice Executes a batch of EVC operations with a settlement in between
+    /// @notice Implementation of GPv2Wrapper._wrap - executes EVC operations around settlement
     /// @param tokens Tokens involved in settlement
     /// @param clearingPrices Clearing prices for settlement
     /// @param trades Trade data for settlement
     /// @param interactions Interaction data for settlement
-    function settle(
+    /// @param wrapperData Additional data for the wrapper (unused in this implementation)
+    function _wrap(
         IERC20[] calldata tokens,
         uint256[] calldata clearingPrices,
         GPv2Trade.Data[] calldata trades,
-        GPv2Interaction.Data[][3] calldata interactions
-    ) external payable {
+        GPv2Interaction.Data[][3] calldata interactions,
+        bytes calldata wrapperData
+    ) internal override {
         // prevent reentrancy: there is no reason why we would want to allow it here
         if (origSender != address(0)) {
             revert NoReentrancy();
         }
         origSender = msg.sender;
 
-        // Create a single batch with all items
-        IEVC.BatchItem[] memory preSettlementItems = _readFromTransientStorage(keccak256("preSettlementItems"));
-        IEVC.BatchItem[] memory postSettlementItems = _readFromTransientStorage(keccak256("postSettlementItems"));
+        // Decode wrapperData into pre and post settlement actions
+        (IEVC.BatchItem[] memory preSettlementItems, IEVC.BatchItem[] memory postSettlementItems) =
+            abi.decode(wrapperData, (IEVC.BatchItem[], IEVC.BatchItem[]));
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](preSettlementItems.length + postSettlementItems.length + 1);
 
         // Copy pre-settlement items
@@ -83,12 +77,12 @@ contract CowEvcWrapper is GPv2Signing, SwapVerifier {
             }
         }
 
-        // Add settlement call to wrapper
+        // Add settlement call to wrapper - use _internalSettle from GPv2Wrapper
         items[preSettlementItems.length] = IEVC.BatchItem({
             onBehalfOfAccount: msg.sender,
             targetContract: address(this),
             value: 0,
-            data: abi.encodeCall(this.internalSettle, (tokens, clearingPrices, trades, interactions))
+            data: abi.encodeCall(this.evcInternalSettle, (tokens, clearingPrices, trades, interactions))
         });
 
         // immediately after processing the swap, we should be skimming the result to the user
@@ -143,12 +137,12 @@ contract CowEvcWrapper is GPv2Signing, SwapVerifier {
         EVC.batch(items);
     }
 
-    /// @notice Executes a batch of EVC operations
+    /// @notice Internal settlement function called by EVC
     /// @param tokens Tokens involved in settlement
     /// @param clearingPrices Clearing prices for settlement
     /// @param trades Trade data for settlement
     /// @param interactions Interaction data for settlement
-    function internalSettle(
+    function evcInternalSettle(
         IERC20[] calldata tokens,
         uint256[] calldata clearingPrices,
         GPv2Trade.Data[] calldata trades,
@@ -158,142 +152,8 @@ contract CowEvcWrapper is GPv2Signing, SwapVerifier {
             revert Unauthorized(msg.sender);
         }
 
-        // Revert if not a valid solver
-        if (!IGPv2Authentication(SETTLEMENT.authenticator()).isSolver(origSender)) {
-            revert("CowEvcWrapper: not a solver");
-        }
-
-        SETTLEMENT.settle(tokens, clearingPrices, trades, interactions);
+        // Use GPv2Wrapper's _internalSettle to call the settlement contract
+        _internalSettle(tokens, clearingPrices, trades, interactions);
     }
 
-    function _copyToTransientStorage(IEVC.BatchItem[] memory batch, bytes32 startSlot) internal {
-        assembly {
-            // Get the memory pointer and length of the input array.
-            let batchPtr := batch
-            let batchLen := mload(batchPtr)
-
-            // A counter for the transient storage slot key.
-            let slotCounter := startSlot
-
-            // Store the overall array length at the start slot.
-            tstore(slotCounter, batchLen)
-            slotCounter := add(slotCounter, 1)
-
-            // Iterate over each struct in the array.
-            for { let i := 0 } lt(i, batchLen) { i := add(i, 1) } {
-                // Each struct in a memory array occupies a fixed size plus the
-                // dynamic data's pointer. In this case, 4 words: 3 for fixed fields,
-                // and 1 for the pointer to the `bytes` data.
-                let structPtr := mload(add(batchPtr, mul(0x20, add(1, i))))
-
-                // Load and store the fixed-size fields.
-                // Field 1: `targetContract`
-                let target := mload(structPtr)
-                tstore(slotCounter, target)
-                slotCounter := add(slotCounter, 1)
-
-                // Field 2: `onBehalfOf`
-                let onBehalf := mload(add(structPtr, 0x20))
-                tstore(slotCounter, onBehalf)
-                slotCounter := add(slotCounter, 1)
-
-                // Field 3: `value`
-                let val := mload(add(structPtr, 0x40))
-                tstore(slotCounter, val)
-                slotCounter := add(slotCounter, 1)
-
-                // Handle the dynamic-length `bytes` field.
-                // This is the most complex part of the process.
-                // The memory word for `data` is a pointer to the actual data.
-                let dataPtr := mload(add(structPtr, 0x60))
-                let dataLen := mload(dataPtr)
-
-                // Store the length of the `bytes` data.
-                tstore(slotCounter, dataLen)
-                slotCounter := add(slotCounter, 1)
-
-                // Calculate the number of 32-byte words for the `bytes` data.
-                let dataWords := div(add(dataLen, 31), 32)
-                let currentDataPtr := add(dataPtr, 0x20) // Skip the length word
-
-                // Loop to copy each word of the bytes data.
-                for { let j := 0 } lt(j, dataWords) { j := add(j, 1) } {
-                    let word := mload(add(currentDataPtr, mul(j, 0x20)))
-                    tstore(slotCounter, word)
-                    slotCounter := add(slotCounter, 1)
-                }
-            }
-        }
-    }
-
-    /**
-     * @notice Reads an array of `BatchType` structs from transient storage.
-     * @dev This function is for testing purposes to verify that the `copy` function
-     * works correctly. It reads from the same slot layout used for writing.
-     * @param startSlot The starting transient storage slot.
-     * @return retVal The array of structs read from transient storage.
-     */
-    function _readFromTransientStorage(bytes32 startSlot) internal view returns (IEVC.BatchItem[] memory retVal) {
-        assembly {
-            // Get the overall array length from the start slot.
-            let slotCounter := startSlot
-            let batchLen := tload(slotCounter)
-            slotCounter := add(slotCounter, 1)
-
-            // Allocate memory for the return array.
-            // A struct with 4 fields occupies 4 * 32 bytes = 128 bytes in memory.
-            let batchPtr := mload(0x40)
-            let endOfArray := add(batchPtr, add(0x20, mul(batchLen, 0x20)))
-            mstore(0x40, endOfArray)
-            mstore(batchPtr, batchLen)
-
-            // Iterate through the transient storage slots to reconstruct each struct.
-            for { let i := 0 } lt(i, batchLen) { i := add(i, 1) } {
-                let structPtr := mload(0x40)
-                let endOfData := add(structPtr, 0x80)
-                mstore(0x40, endOfData)
-
-                // Load and store the fixed-size fields.
-                mstore(add(structPtr, 0x00), tload(slotCounter))
-                slotCounter := add(slotCounter, 1)
-
-                mstore(add(structPtr, 0x20), tload(slotCounter))
-                slotCounter := add(slotCounter, 1)
-
-                mstore(add(structPtr, 0x40), tload(slotCounter))
-                slotCounter := add(slotCounter, 1)
-
-                // Load the length of the dynamic `bytes` field.
-                let dataLen := tload(slotCounter)
-                // Calculate the number of words to copy.
-                let dataWords := div(add(dataLen, 31), 32)
-                slotCounter := add(slotCounter, 1)
-
-                // Allocate memory for the `bytes` data.
-                let dataPtr := mload(0x40)
-                endOfData := add(dataPtr, add(0x20, mul(0x20, dataWords)))
-                mstore(0x40, endOfData)
-                mstore(dataPtr, dataLen)
-
-                let currentDataPtr := add(dataPtr, 0x20)
-
-                // Loop to load and copy each word of the bytes data.
-                for { let j := 0 } lt(j, dataWords) { j := add(j, 1) } {
-                    mstore(add(currentDataPtr, mul(j, 0x20)), tload(slotCounter))
-                    slotCounter := add(slotCounter, 1)
-                }
-
-                // Store the pointer to the `bytes` data in the main struct.
-                mstore(add(structPtr, 0x60), dataPtr)
-
-                // Store the pointer to the structure in the array
-                mstore(add(batchPtr, mul(0x20, add(1, i))), structPtr)
-            }
-
-            // Return the memory pointer to the reconstructed array.
-            mstore(0x40, msize())
-            retVal := batchPtr
-            //return(batchPtr, sub(endOfArray, batchPtr))
-        }
-    }
 }
