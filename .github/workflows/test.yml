@@ -32,7 +32,7 @@ jobs:
 
       - name: Run Forge build
         run: |
-          forge build --sizes --ignore-eip-3860
+          forge build
         id: build
 
       - name: Run Forge tests
