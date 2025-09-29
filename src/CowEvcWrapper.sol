@@ -27,7 +27,9 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing, SwapVerifier {
 
     error NotEVCSettlement();
 
-    constructor(address _evc, address payable _settlement) GPv2Wrapper(_settlement) {
+    constructor(address _evc, address payable _settlement)
+        GPv2Wrapper(_settlement)
+    {
         EVC = IEVC(_evc);
     }
 
@@ -36,6 +38,7 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing, SwapVerifier {
         address sender;
         uint256 minAmount;
     }
+
 
     /// @notice Implementation of GPv2Wrapper._wrap - executes EVC operations around settlement
     /// @param tokens Tokens involved in settlement
@@ -114,4 +117,5 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing, SwapVerifier {
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
         _internalSettle(tokens, clearingPrices, trades, interactions);
     }
+
 }

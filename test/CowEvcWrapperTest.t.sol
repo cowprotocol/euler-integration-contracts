@@ -104,9 +104,7 @@ contract CowEvcWrapperTest is CowBaseTest {
 
         uint256 susdsBalanceInMilkSwapAfter = IERC20(SUSDS).balanceOf(address(milkSwap));
         assertEq(
-            susdsBalanceInMilkSwapAfter,
-            susdsBalanceInMilkSwapBefore - buyAmount - 1e18,
-            "MilkSwap should have less SUSDS"
+            susdsBalanceInMilkSwapAfter, susdsBalanceInMilkSwapBefore - buyAmount - 1e18, "MilkSwap should have less SUSDS"
         );
     }
 
@@ -216,6 +214,7 @@ contract CowEvcWrapperTest is CowBaseTest {
                 wrapper.wrappedSettle.selector, tokens, clearingPrices, trades, interactions, evcActions
             );
             solver.runBatch(targets, datas);
+
         }
 
         // Verify the position was created

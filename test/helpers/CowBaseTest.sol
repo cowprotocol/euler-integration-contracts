@@ -22,7 +22,7 @@ import {console} from "forge-std/Test.sol";
 // intermediate contrct that acts as solver and creates a "batched" transaction
 contract Solver {
     function runBatch(address[] memory targets, bytes[] memory datas) external {
-        for (uint256 i = 0; i < targets.length; i++) {
+        for (uint i = 0;i < targets.length;i++) {
             targets[i].call(datas[i]);
         }
     }
@@ -124,7 +124,11 @@ contract CowBaseTest is EVaultTestBase {
             new IERC20[](0),
             new uint256[](0),
             new GPv2Trade.Data[](0),
-            [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0)]
+            [
+                new GPv2Interaction.Data[](0),
+                new GPv2Interaction.Data[](0),
+                new GPv2Interaction.Data[](0)
+            ]
         );
     }
 
@@ -192,7 +196,7 @@ contract CowBaseTest is EVaultTestBase {
 
         clearingPrices = new uint256[](2);
         clearingPrices[0] = 999; // WETH price (if it was against SUSD then 1000)
-        clearingPrices[1] = 1; // eSUSDS price
+        clearingPrices[1] = 1; // eSUSDS price 
     }
 
     function getSwapSettlement(address owner, address receiver, uint256 sellAmount, uint256 buyAmount)
@@ -236,7 +240,11 @@ contract CowBaseTest is EVaultTestBase {
         (tokens, clearingPrices) = getTokensAndPrices();
 
         // Setup interactions
-        interactions = [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](3), new GPv2Interaction.Data[](0)];
+        interactions = [
+            new GPv2Interaction.Data[](0),
+            new GPv2Interaction.Data[](3),
+            new GPv2Interaction.Data[](0)
+        ];
         interactions[1][0] = getSwapInteraction(sellAmount);
         interactions[1][1] = getDepositInteraction(buyAmount + 1 ether);
         interactions[1][2] = getSkimInteraction();
