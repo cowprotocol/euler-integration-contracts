@@ -17,7 +17,8 @@ import "forge-std/console.sol";
 contract CowEvcWrapper is GPv2Wrapper, GPv2Signing, SwapVerifier {
     IEVC public immutable EVC;
 
-    address public transient origSender;
+    /// @notice 0 = not executing, 1 = wrappedSettle() called and not yet internal settle, 2 = evcInternalSettle() called
+    uint256 public transient settleState;
 
     error Unauthorized(address msgSender);
     error NoReentrancy();
@@ -54,10 +55,10 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing, SwapVerifier {
         bytes calldata wrapperData
     ) internal override {
         // prevent reentrancy: there is no reason why we would want to allow it here
-        if (origSender != address(0)) {
+        if (settleState != 0) {
             revert NoReentrancy();
         }
-        origSender = msg.sender;
+        settleState = 1;
 
         // Decode wrapperData into pre and post settlement actions
         (IEVC.BatchItem[] memory preSettlementItems, IEVC.BatchItem[] memory postSettlementItems) =
@@ -92,6 +93,7 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing, SwapVerifier {
 
         // Execute all items in a single batch
         EVC.batch(items);
+        settleState = 0;
     }
 
     /// @notice Internal settlement function called by EVC
@@ -109,10 +111,12 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing, SwapVerifier {
             revert Unauthorized(msg.sender);
         }
 
-        if (origSender == address(0)) {
+        if (settleState != 1) {
             // origSender will be address(0) here which indiates that internal settle was called when it shouldn't be (outside of wrappedSettle call)
-            revert Unauthorized(origSender);
+            revert Unauthorized(address(0));
         }
+
+        settleState = 2;
 
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
         _internalSettle(tokens, clearingPrices, trades, interactions);
