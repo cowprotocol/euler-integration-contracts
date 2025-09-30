@@ -314,58 +314,8 @@ contract CowEvcWrapperTest is CowBaseTest {
     }
 
     function test_leverage_MaliciousNonSolverTriesToDoIt() external {
-        vm.skip(bytes(FORK_RPC_URL).length == 0);
-
-        _setupLeverageLTV();
-
-        uint256 SUSDS_MARGIN = 2000e18;
-        uint256 sellAmount = 1e18; // 1 WETH
-        uint256 buyAmount = 1000e18; //  1000 SUSDS
-
-        // Setup user with SUSDS and get settlement data
-        deal(SUSDS, user, SUSDS_MARGIN);
-
-        vm.startPrank(user);
-
-        // Get settlement, with receiver as eSUSDS vault
-        (bytes memory orderUid,, IERC20[] memory tokens, uint256[] memory clearingPrices, GPv2Trade.Data[] memory trades, GPv2Interaction.Data[][3] memory interactions) =
-            getSwapSettlement(user, eSUSDS, sellAmount, buyAmount);
-
-        cowSettlement.setPreSignature(orderUid, true);
-
-        signerECDSA.setPrivateKey(privateKey);
-
-        IERC20(SUSDS).approve(eSUSDS, type(uint256).max);
-
-        IEVC.BatchItem[] memory items = _createLeverageBatchItems(user, SUSDS_MARGIN, sellAmount);
-
-        bytes memory batchData = abi.encodeCall(IEVC.batch, items);
-        bytes memory batchSignature =
-            signerECDSA.signPermit(user, address(wrapper), 0, 0, block.timestamp, 0, batchData);
-
-        vm.stopPrank();
-
-        IEVC.BatchItem[] memory preSettlementItems = new IEVC.BatchItem[](1);
-        preSettlementItems[0] = IEVC.BatchItem({
-            onBehalfOfAccount: address(0),
-            targetContract: address(evc),
-            value: 0,
-            data: abi.encodeCall(
-                IEVC.permit, (user, address(wrapper), 0, 0, block.timestamp, 0, batchData, batchSignature)
-            )
-        });
-
-        IEVC.BatchItem[] memory postSettlementItems = new IEVC.BatchItem[](1);
-        postSettlementItems[0] = IEVC.BatchItem({
-            onBehalfOfAccount: address(wrapper),
-            targetContract: swapVerifier,
-            value: 0,
-            data: abi.encodeCall(SwapVerifier.verifyAmountMinAndSkim, (eSUSDS, user, buyAmount, block.timestamp))
-        });
-
-        bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
-
+        GPv2Interaction.Data[][3] memory emptyInteractions;
         vm.expectRevert("GPv2Wrapper: not a solver");
-        wrapper.wrappedSettle(tokens, clearingPrices, trades, interactions, evcActions);
+        wrapper.wrappedSettle(new IERC20[](0), new uint256[](0), new GPv2Trade.Data[](0), emptyInteractions, new bytes(0));
     }
 }
