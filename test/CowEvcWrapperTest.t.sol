@@ -33,6 +33,97 @@ contract CowEvcWrapperTest is CowBaseTest {
         emptySettleActions = abi.encode(new IEVC.BatchItem[](0), new IEVC.BatchItem[](0));
     }
 
+    /// @dev Helper function to setup LTV for leverage tests
+    function _setupLeverageLTV() internal {
+        vm.startPrank(IEVault(eWETH).governorAdmin());
+        IEVault(eWETH).setLTV(eSUSDS, 0.9e4, 0.9e4, 0);
+        vm.stopPrank();
+    }
+
+    /// @dev Helper function to create EVC batch items for leverage setup
+    function _createLeverageBatchItems(address _user, uint256 susdsMargin, uint256 wethBorrow)
+        internal
+        view
+        returns (IEVC.BatchItem[] memory items)
+    {
+        items = new IEVC.BatchItem[](4);
+        items[0] = IEVC.BatchItem({
+            onBehalfOfAccount: address(0),
+            targetContract: address(evc),
+            value: 0,
+            data: abi.encodeCall(IEVC.enableCollateral, (_user, eSUSDS))
+        });
+        items[1] = IEVC.BatchItem({
+            onBehalfOfAccount: address(0),
+            targetContract: address(evc),
+            value: 0,
+            data: abi.encodeCall(IEVC.enableController, (_user, eWETH))
+        });
+        items[2] = IEVC.BatchItem({
+            onBehalfOfAccount: _user,
+            targetContract: eSUSDS,
+            value: 0,
+            data: abi.encodeCall(IERC4626.deposit, (susdsMargin, _user))
+        });
+        items[3] = IEVC.BatchItem({
+            onBehalfOfAccount: _user,
+            targetContract: eWETH,
+            value: 0,
+            data: abi.encodeCall(IBorrowing.borrow, (wethBorrow, _user))
+        });
+    }
+
+    /// @dev Helper function to setup user and create signed permit batch for leverage
+    function _setupUserLeveragePrelude(uint256 susdsMargin, uint256 sellAmount, uint256 buyAmount)
+        internal
+        returns (
+            bytes memory orderUid,
+            IERC20[] memory tokens,
+            uint256[] memory clearingPrices,
+            GPv2Trade.Data[] memory trades,
+            GPv2Interaction.Data[][3] memory interactions,
+            IEVC.BatchItem[] memory preSettlementItems
+        )
+    {
+        // Setup user with SUSDS
+        deal(SUSDS, user, susdsMargin);
+
+        vm.startPrank(user);
+
+        // Get settlement
+        (orderUid,, tokens, clearingPrices, trades, interactions) =
+            getSwapSettlement(user, user, sellAmount, buyAmount);
+
+        // User pre-approves the order
+        cowSettlement.setPreSignature(orderUid, true);
+
+        signerECDSA.setPrivateKey(privateKey);
+
+        // User approves SUSDS vault for deposit
+        IERC20(SUSDS).approve(eSUSDS, type(uint256).max);
+
+        // Create batch items for leverage
+        IEVC.BatchItem[] memory items = _createLeverageBatchItems(user, susdsMargin, sellAmount);
+
+        // User signs the batch
+        bytes memory batchData = abi.encodeCall(IEVC.batch, items);
+        bytes memory batchSignature =
+            signerECDSA.signPermit(user, address(wrapper), 0, 0, block.timestamp, 0, batchData);
+
+        vm.stopPrank();
+
+        // pre-settlement includes nested batch signed and executed through `EVC.permit`
+        preSettlementItems = new IEVC.BatchItem[](1);
+        preSettlementItems[0] = IEVC.BatchItem({
+            onBehalfOfAccount: address(0),
+            targetContract: address(evc),
+            value: 0,
+            data: abi.encodeCall(
+                IEVC.permit, (user, address(wrapper), 0, 0, block.timestamp, 0, batchData, batchSignature)
+            )
+        });
+    }
+
     function test_batchWithSettle_Empty() external {
         vm.skip(bytes(FORK_RPC_URL).length == 0);
 
@@ -108,104 +199,33 @@ contract CowEvcWrapperTest is CowBaseTest {
     function test_leverage_WithCoWOrder() external {
         vm.skip(bytes(FORK_RPC_URL).length == 0);
 
-        // sUSDS is not currently a collateral for WETH borrow, fix it
-        vm.startPrank(IEVault(eWETH).governorAdmin());
-        IEVault(eWETH).setLTV(eSUSDS, 0.9e4, 0.9e4, 0);
+        _setupLeverageLTV();
 
         uint256 SUSDS_MARGIN = 2000e18;
-        // Setup user with SUSDS
-        deal(SUSDS, user, SUSDS_MARGIN);
-
-        vm.startPrank(user);
-
-        // Create order parameters
         uint256 sellAmount = 1e18; // 1 WETH
         uint256 buyAmount = 999e18; //  999 eSUSDS (1000 SUSDS actually deposited)
 
-        // Get settlement, that sells WETH for SUSDS
-        // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
         (
-            bytes memory orderUid,
             ,
             IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
-            GPv2Interaction.Data[][3] memory interactions
-        ) = getSwapSettlement(user, user, sellAmount, buyAmount);
-
-        // User, pre-approve the order
-        console.logBytes(orderUid);
-        cowSettlement.setPreSignature(orderUid, true);
-
-        signerECDSA.setPrivateKey(privateKey);
-
-        // User approves SUSDS vault for deposit
-        IERC20(SUSDS).approve(eSUSDS, type(uint256).max);
-
-        // Construct a batch with deposit of margin collateral and a borrow
-        // TODO user approved CoW vault relayer on WETH, therefore the borrow to user's wallet
-        // provides WETH to swap. It should be possible to do it without approval by setting borrow recipient
-        // to some trusted contract. EVC wrapper? The next batch item could be approving the relayer.
-        // How would an order be signed then?
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](4);
-        items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: address(0),
-            targetContract: address(evc),
-            value: 0,
-            data: abi.encodeCall(IEVC.enableCollateral, (user, eSUSDS))
-        });
-        items[1] = IEVC.BatchItem({
-            onBehalfOfAccount: address(0),
-            targetContract: address(evc),
-            value: 0,
-            data: abi.encodeCall(IEVC.enableController, (user, eWETH))
-        });
-        items[2] = IEVC.BatchItem({
-            onBehalfOfAccount: user,
-            targetContract: eSUSDS,
-            value: 0,
-            data: abi.encodeCall(IERC4626.deposit, (SUSDS_MARGIN, user))
-        });
-        items[3] = IEVC.BatchItem({
-            onBehalfOfAccount: user,
-            targetContract: eWETH,
-            value: 0,
-            data: abi.encodeCall(IBorrowing.borrow, (sellAmount, user))
-        });
-
-        // User signs the batch
-        bytes memory batchData = abi.encodeCall(IEVC.batch, items);
-        bytes memory batchSignature =
-            signerECDSA.signPermit(user, address(wrapper), 0, 0, block.timestamp, 0, batchData);
-
-        vm.stopPrank();
-
-        // pre-settlement will include nested batch signed and executed through `EVC.permit`
-        IEVC.BatchItem[] memory preSettlementItems = new IEVC.BatchItem[](1);
-        preSettlementItems[0] = IEVC.BatchItem({
-            onBehalfOfAccount: address(0),
-            targetContract: address(evc),
-            value: 0,
-            data: abi.encodeCall(IEVC.permit, (user, address(wrapper), 0, 0, block.timestamp, 0, batchData, batchSignature))
-        });
+            GPv2Interaction.Data[][3] memory interactions,
+            IEVC.BatchItem[] memory preSettlementItems
+        ) = _setupUserLeveragePrelude(SUSDS_MARGIN, sellAmount, buyAmount);
 
         // post-settlement will check slippage and skim the free cash on the destination vault for the user
         IEVC.BatchItem[] memory postSettlementItems = new IEVC.BatchItem[](0);
 
         // Execute the settlement through the wrapper
-        vm.stopPrank();
-
-        {
-            address[] memory targets = new address[](1);
-            bytes[] memory datas = new bytes[](1);
-            bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
-            targets[0] = address(wrapper);
-            datas[0] = abi.encodeWithSelector(
-                wrapper.wrappedSettle.selector, tokens, clearingPrices, trades, interactions, evcActions
-            );
-            solver.runBatch(targets, datas);
-
-        }
+        address[] memory targets = new address[](1);
+        bytes[] memory datas = new bytes[](1);
+        bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
+        targets[0] = address(wrapper);
+        datas[0] = abi.encodeWithSelector(
+            wrapper.wrappedSettle.selector, tokens, clearingPrices, trades, interactions, evcActions
+        );
+        solver.runBatch(targets, datas);
 
         // Verify the position was created
         assertApproxEqAbs(
@@ -215,112 +235,39 @@ contract CowEvcWrapperTest is CowBaseTest {
             "User should receive eSUSDS"
         );
         assertEq(IEVault(eWETH).debtOf(user), sellAmount, "User should receive eWETH debt");
-
-        // uint256 susdsBalanceInMilkSwapAfter = IERC20(SUSDS).balanceOf(address(milkSwap));
-        // assertEq(susdsBalanceInMilkSwapAfter, susdsBalanceInMilkSwapBefore - buyAmount, "MilkSwap should have less SUSDS");
     }
 
     function test_leverage_MaliciousSolverDoesntRedepositFull() external {
         vm.skip(bytes(FORK_RPC_URL).length == 0);
 
-        // sUSDS is not currently a collateral for WETH borrow, fix it
-        vm.startPrank(IEVault(eWETH).governorAdmin());
-        IEVault(eWETH).setLTV(eSUSDS, 0.9e4, 0.9e4, 0);
+        _setupLeverageLTV();
 
         uint256 SUSDS_MARGIN = 2000e18;
-        // Setup user with SUSDS
-        deal(SUSDS, user, SUSDS_MARGIN);
-
-        vm.startPrank(user);
-
-        // Create order parameters
         uint256 sellAmount = 1e18; // 1 WETH
         uint256 buyAmount = 999e18; //  999 eSUSDS
 
-        // Get settlement, that sells WETH for buying SUSDS
-        // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
         (
-            bytes memory orderUid,
             ,
             IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
-            GPv2Interaction.Data[][3] memory interactions
-        ) = getSwapSettlement(user, user, sellAmount, buyAmount);
-
-        // User, pre-approve the order
-        console.logBytes(orderUid);
-        cowSettlement.setPreSignature(orderUid, true);
-
-        signerECDSA.setPrivateKey(privateKey);
-
-        // User approves SUSDS vault for deposit
-        IERC20(SUSDS).approve(eSUSDS, type(uint256).max);
-
-        // Construct a batch with deposit of margin collateral and a borrow
-        // TODO user approved CoW vault relayer on WETH, therefore the borrow to user's wallet
-        // provides WETH to swap. It should be possible to do it without approval by setting borrow recipient
-        // to some trusted contract. EVC wrapper? The next batch item could be approving the relayer.
-        // How would an order be signed then?
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](4);
-        items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: address(0),
-            targetContract: address(evc),
-            value: 0,
-            data: abi.encodeCall(IEVC.enableCollateral, (user, eSUSDS))
-        });
-        items[1] = IEVC.BatchItem({
-            onBehalfOfAccount: address(0),
-            targetContract: address(evc),
-            value: 0,
-            data: abi.encodeCall(IEVC.enableController, (user, eWETH))
-        });
-        items[2] = IEVC.BatchItem({
-            onBehalfOfAccount: user,
-            targetContract: eSUSDS,
-            value: 0,
-            data: abi.encodeCall(IERC4626.deposit, (SUSDS_MARGIN, user))
-        });
-        items[3] = IEVC.BatchItem({
-            onBehalfOfAccount: user,
-            targetContract: eWETH,
-            value: 0,
-            data: abi.encodeCall(IBorrowing.borrow, (sellAmount, user))
-        });
-
-        // User signs the batch
-        bytes memory batchData = abi.encodeCall(IEVC.batch, items);
-        bytes memory batchSignature =
-            signerECDSA.signPermit(user, address(wrapper), 0, 0, block.timestamp, 0, batchData);
-
-        vm.stopPrank();
-
-        // pre-settlement will include nested batch signed and executed through `EVC.permit`
-        IEVC.BatchItem[] memory preSettlementItems = new IEVC.BatchItem[](1);
-        preSettlementItems[0] = IEVC.BatchItem({
-            onBehalfOfAccount: address(0),
-            targetContract: address(evc),
-            value: 0,
-            data: abi.encodeCall(IEVC.permit, (user, address(wrapper), 0, 0, block.timestamp, 0, batchData, batchSignature))
-        });
+            GPv2Interaction.Data[][3] memory interactions,
+            IEVC.BatchItem[] memory preSettlementItems
+        ) = _setupUserLeveragePrelude(SUSDS_MARGIN, sellAmount, buyAmount);
 
         // post-settlement, first lets assume we don't call the swap verifier
         IEVC.BatchItem[] memory postSettlementItems = new IEVC.BatchItem[](0);
 
         // Execute the settlement through the wrapper
-        vm.stopPrank();
+        address[] memory targets = new address[](1);
+        bytes[] memory datas = new bytes[](1);
+        bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
+        targets[0] = address(wrapper);
+        datas[0] = abi.encodeWithSelector(
+            wrapper.wrappedSettle.selector, tokens, clearingPrices, trades, interactions, evcActions
+        );
 
-        {
-            address[] memory targets = new address[](1);
-            bytes[] memory datas = new bytes[](1);
-            bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
-            targets[0] = address(wrapper);
-            datas[0] = abi.encodeWithSelector(
-                wrapper.wrappedSettle.selector, tokens, clearingPrices, trades, interactions, evcActions
-            );
-
-            solver.runBatch(targets, datas);
-        }
+        solver.runBatch(targets, datas);
 
         // Verify the position was created
         assertApproxEqAbs(
@@ -330,48 +277,31 @@ contract CowEvcWrapperTest is CowBaseTest {
             "User should receive eSUSDS"
         );
         assertEq(IEVault(eWETH).debtOf(user), sellAmount, "User should receive eWETH debt");
-
-        // uint256 susdsBalanceInMilkSwapAfter = IERC20(SUSDS).balanceOf(address(milkSwap));
-        // assertEq(susdsBalanceInMilkSwapAfter, susdsBalanceInMilkSwapBefore - buyAmount, "MilkSwap should have less SUSDS");
     }
 
     function test_leverage_MaliciousNonSolverCallsInternalSettleDirectly() external {
         vm.skip(bytes(FORK_RPC_URL).length == 0);
 
-        // sUSDS is not currently a collateral for WETH borrow, fix it
-        vm.startPrank(IEVault(eWETH).governorAdmin());
-        IEVault(eWETH).setLTV(eSUSDS, 0.9e4, 0.9e4, 0);
+        _setupLeverageLTV();
 
         uint256 SUSDS_MARGIN = 2000e18;
-        // Setup user with SUSDS
+        uint256 sellAmount = 1e18; // 1 WETH
+        uint256 buyAmount = 999e18; //  999 eSUSDS
+
         deal(SUSDS, user, SUSDS_MARGIN);
 
         vm.startPrank(user);
 
-        // Create order parameters
-        uint256 sellAmount = 1e18; // 1 WETH
-        uint256 buyAmount = 999e18; //  999 eSUSDS
-
-        // Get settlement, that sells WETH for SUSDS
-        // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
-        (
-            bytes memory orderUid,
-            ,
-            IERC20[] memory tokens,
-            uint256[] memory clearingPrices,
-            GPv2Trade.Data[] memory trades,
-            GPv2Interaction.Data[][3] memory interactions
-        ) = getSwapSettlement(user, eSUSDS, sellAmount, buyAmount);
+        (bytes memory orderUid,, IERC20[] memory tokens, uint256[] memory clearingPrices, GPv2Trade.Data[] memory trades, GPv2Interaction.Data[][3] memory interactions) =
+            getSwapSettlement(user, eSUSDS, sellAmount, buyAmount);
         cowSettlement.setPreSignature(orderUid, true);
 
         vm.stopPrank();
 
-        // User approves SUSDS vault for deposit
         IERC20(SUSDS).approve(eSUSDS, type(uint256).max);
 
         // This contract will be the "malicious" solver. It should not be able to complete the settle flow
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
-
         items[0] = IEVC.BatchItem({
             onBehalfOfAccount: address(this),
             targetContract: address(wrapper),
@@ -386,88 +316,45 @@ contract CowEvcWrapperTest is CowBaseTest {
     function test_leverage_MaliciousNonSolverTriesToDoIt() external {
         vm.skip(bytes(FORK_RPC_URL).length == 0);
 
-        // sUSDS is not currently a collateral for WETH borrow, fix it
-        vm.startPrank(IEVault(eWETH).governorAdmin());
-        IEVault(eWETH).setLTV(eSUSDS, 0.9e4, 0.9e4, 0);
+        _setupLeverageLTV();
 
         uint256 SUSDS_MARGIN = 2000e18;
-        // Setup user with SUSDS
+        uint256 sellAmount = 1e18; // 1 WETH
+        uint256 buyAmount = 1000e18; //  1000 SUSDS
+
+        // Setup user with SUSDS and get settlement data
         deal(SUSDS, user, SUSDS_MARGIN);
 
         vm.startPrank(user);
 
-        // Create order parameters
-        uint256 sellAmount = 1e18; // 1 WETH
-        uint256 buyAmount = 1000e18; //  1000 SUSDS
+        // Get settlement, with receiver as eSUSDS vault
+        (bytes memory orderUid,, IERC20[] memory tokens, uint256[] memory clearingPrices, GPv2Trade.Data[] memory trades, GPv2Interaction.Data[][3] memory interactions) =
+            getSwapSettlement(user, eSUSDS, sellAmount, buyAmount);
 
-        // Get settlement, that sells WETH for SUSDS
-        // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
-        (
-            bytes memory orderUid,
-            ,
-            IERC20[] memory tokens,
-            uint256[] memory clearingPrices,
-            GPv2Trade.Data[] memory trades,
-            GPv2Interaction.Data[][3] memory interactions
-        ) = getSwapSettlement(user, eSUSDS, sellAmount, buyAmount);
-
-        // User, pre-approve the order
-        console.logBytes(orderUid);
         cowSettlement.setPreSignature(orderUid, true);
 
         signerECDSA.setPrivateKey(privateKey);
 
-        // User approves SUSDS vault for deposit
         IERC20(SUSDS).approve(eSUSDS, type(uint256).max);
 
-        // Construct a batch with deposit of margin collateral and a borrow
-        // TODO user approved CoW vault relayer on WETH, therefore the borrow to user's wallet
-        // provides WETH to swap. It should be possible to do it without approval by setting borrow recipient
-        // to some trusted contract. EVC wrapper? The next batch item could be approving the relayer.
-        // How would an order be signed then?
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](4);
-        items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: address(0),
-            targetContract: address(evc),
-            value: 0,
-            data: abi.encodeCall(IEVC.enableCollateral, (user, eSUSDS))
-        });
-        items[1] = IEVC.BatchItem({
-            onBehalfOfAccount: address(0),
-            targetContract: address(evc),
-            value: 0,
-            data: abi.encodeCall(IEVC.enableController, (user, eWETH))
-        });
-        items[2] = IEVC.BatchItem({
-            onBehalfOfAccount: user,
-            targetContract: eSUSDS,
-            value: 0,
-            data: abi.encodeCall(IERC4626.deposit, (SUSDS_MARGIN, user))
-        });
-        items[3] = IEVC.BatchItem({
-            onBehalfOfAccount: user,
-            targetContract: eWETH,
-            value: 0,
-            data: abi.encodeCall(IBorrowing.borrow, (sellAmount, user))
-        });
+        IEVC.BatchItem[] memory items = _createLeverageBatchItems(user, SUSDS_MARGIN, sellAmount);
 
-        // User signs the batch
         bytes memory batchData = abi.encodeCall(IEVC.batch, items);
         bytes memory batchSignature =
             signerECDSA.signPermit(user, address(wrapper), 0, 0, block.timestamp, 0, batchData);
 
         vm.stopPrank();
 
-        // pre-settlement will include nested batch signed and executed through `EVC.permit`
         IEVC.BatchItem[] memory preSettlementItems = new IEVC.BatchItem[](1);
         preSettlementItems[0] = IEVC.BatchItem({
             onBehalfOfAccount: address(0),
             targetContract: address(evc),
             value: 0,
-            data: abi.encodeCall(IEVC.permit, (user, address(wrapper), 0, 0, block.timestamp, 0, batchData, batchSignature))
+            data: abi.encodeCall(
+                IEVC.permit, (user, address(wrapper), 0, 0, block.timestamp, 0, batchData, batchSignature)
+            )
         });
 
-        // post-settlement will check slippage and skim the free cash on the destination vault for the user
         IEVC.BatchItem[] memory postSettlementItems = new IEVC.BatchItem[](1);
         postSettlementItems[0] = IEVC.BatchItem({
             onBehalfOfAccount: address(wrapper),
@@ -476,10 +363,6 @@ contract CowEvcWrapperTest is CowBaseTest {
             data: abi.encodeCall(SwapVerifier.verifyAmountMinAndSkim, (eSUSDS, user, buyAmount, block.timestamp))
         });
 
-        // Execute the settlement through the wrapper
-        vm.stopPrank();
-
-        // This contract will be the "malicious" solver. It should not be able to complete the settle flow
         bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
 
         vm.expectRevert("GPv2Wrapper: not a solver");
