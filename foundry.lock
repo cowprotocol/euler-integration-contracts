@@ -1,14 +1,17 @@
 {
   "lib/cow": {
-    "rev": "39d7f4d68e37d14adeaf3c0caca30ea5c1a2fad9"
+    "branch": {
+      "name": "feat/wrapper",
+      "rev": "1e8127f476f8fef7758cf25033a0010d325dba8d"
+    }
   },
   "lib/euler-vault-kit": {
     "rev": "5b98b42048ba11ae82fb62dfec06d1010c8e41e6"
   },
+  "lib/evc": {
+    "rev": "34bb788288a0eb0fbba06bc370cb8ca3dd42614e"
+  },
   "lib/forge-std": {
-    "tag": {
-      "name": "v1.10.0",
-      "rev": "8bbcf6e3f8f62f419e5429a0bd89331c85c37824"
-    }
+    "rev": "0768d9c08c085c79bb31d88683a78770764fec49"
   }
 }

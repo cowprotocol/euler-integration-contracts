@@ -8,10 +8,12 @@ import {IERC20} from "cow/libraries/GPv2Trade.sol";
 import {IEVC} from "evc/interfaces/IEthereumVaultConnector.sol";
 import {EthereumVaultConnector} from "evc/EthereumVaultConnector.sol";
 import {EVaultTestBase} from "lib/euler-vault-kit/test/unit/evault/EVaultTestBase.t.sol";
+import {IVault} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcWrapper} from "../../src/CowEvcWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
-import {IGPv2Settlement, GPv2Interaction, GPv2Trade} from "../../src/vendor/interfaces/IGPv2Settlement.sol";
+import {CowEvcWrapper, GPv2Trade, GPv2Interaction} from "../../src/CowEvcWrapper.sol";
+import {IGPv2Settlement} from "../../src/vendor/interfaces/IGPv2Settlement.sol";
 
 import {MilkSwap} from "./MilkSwap.sol";
 import {GPv2OrderHelper} from "./GPv2OrderHelper.sol";
@@ -21,7 +23,7 @@ import {console} from "forge-std/Test.sol";
 // intermediate contrct that acts as solver and creates a "batched" transaction
 contract Solver {
     function runBatch(address[] memory targets, bytes[] memory datas) external {
-        for (uint i = 0;i < targets.length;i++) {
+        for (uint256 i = 0; i < targets.length; i++) {
             targets[i].call(datas[i]);
         }
     }
@@ -113,21 +115,17 @@ contract CowBaseTest is EVaultTestBase {
         public
         pure
         returns (
-            address[] memory tokens,
+            IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
             GPv2Interaction.Data[][3] memory interactions
         )
     {
         return (
-            new address[](0),
+            new IERC20[](0),
             new uint256[](0),
             new GPv2Trade.Data[](0),
-            [
-                new GPv2Interaction.Data[](0),
-                new GPv2Interaction.Data[](0),
-                new GPv2Interaction.Data[](0)
-            ]
+            [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0)]
         );
     }
 
@@ -144,6 +142,22 @@ contract CowBaseTest is EVaultTestBase {
             target: address(milkSwap),
             value: 0,
             callData: abi.encodeCall(MilkSwap.swap, (WETH, SUSDS, sellAmount))
+        });
+    }
+
+    function getDepositInteraction(uint256 buyAmount) public view returns (GPv2Interaction.Data memory) {
+        return GPv2Interaction.Data({
+            target: address(SUSDS),
+            value: 0,
+            callData: abi.encodeCall(IERC20.transfer, (eSUSDS, buyAmount))
+        });
+    }
+
+    function getSkimInteraction() public view returns (GPv2Interaction.Data memory) {
+        return GPv2Interaction.Data({
+            target: address(eSUSDS),
+            value: 0,
+            callData: abi.encodeCall(IVault.skim, (type(uint256).max, address(cowSettlement)))
         });
     }
 
@@ -172,14 +186,14 @@ contract CowBaseTest is EVaultTestBase {
         });
     }
 
-    function getTokensAndPrices() public pure returns (address[] memory tokens, uint256[] memory clearingPrices) {
-        tokens = new address[](2);
-        tokens[0] = WETH;
-        tokens[1] = SUSDS;
+    function getTokensAndPrices() public view returns (IERC20[] memory tokens, uint256[] memory clearingPrices) {
+        tokens = new IERC20[](2);
+        tokens[0] = IERC20(WETH);
+        tokens[1] = IERC20(eSUSDS);
 
         clearingPrices = new uint256[](2);
-        clearingPrices[0] = 1000; // WETH price
-        clearingPrices[1] = 1; // SUSDS price
+        clearingPrices[0] = 999; // WETH price (if it was against SUSD then 1000)
+        clearingPrices[1] = 1; // eSUSDS price
     }
 
     function getSwapSettlement(address owner, address receiver, uint256 sellAmount, uint256 buyAmount)
@@ -188,7 +202,7 @@ contract CowBaseTest is EVaultTestBase {
         returns (
             bytes memory orderUid,
             GPv2Order.Data memory orderData,
-            address[] memory tokens,
+            IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
             GPv2Interaction.Data[][3] memory interactions
@@ -199,7 +213,7 @@ contract CowBaseTest is EVaultTestBase {
         // Create order data
         orderData = GPv2Order.Data({
             sellToken: IERC20(WETH),
-            buyToken: IERC20(SUSDS),
+            buyToken: IERC20(eSUSDS),
             receiver: receiver,
             sellAmount: sellAmount,
             buyAmount: buyAmount,
@@ -223,13 +237,10 @@ contract CowBaseTest is EVaultTestBase {
         (tokens, clearingPrices) = getTokensAndPrices();
 
         // Setup interactions
-        interactions = [
-            new GPv2Interaction.Data[](0),
-            new GPv2Interaction.Data[](1),
-            new GPv2Interaction.Data[](0)
-        ];
+        interactions = [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](3), new GPv2Interaction.Data[](0)];
         interactions[1][0] = getSwapInteraction(sellAmount);
-
+        interactions[1][1] = getDepositInteraction(buyAmount + 1 ether);
+        interactions[1][2] = getSkimInteraction();
         return (orderUid, orderData, tokens, clearingPrices, trades, interactions);
     }
 }
