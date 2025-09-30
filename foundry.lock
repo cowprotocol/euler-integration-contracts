@@ -1,4 +1,10 @@
 {
+  "lib/cow": {
+    "rev": "39d7f4d68e37d14adeaf3c0caca30ea5c1a2fad9"
+  },
+  "lib/euler-vault-kit": {
+    "rev": "5b98b42048ba11ae82fb62dfec06d1010c8e41e6"
+  },
   "lib/forge-std": {
     "tag": {
       "name": "v1.10.0",
