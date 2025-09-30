@@ -93,8 +93,6 @@ contract CowEvcWrapperTest is CowBaseTest {
         vm.stopPrank();
         vm.startPrank(address(solver));
 
-        //assertEq(IERC20(SUSDS).balanceOf(user), buyAmount, "User should receive SUSDS");
-        //console.log("The pre balance", IERC20(SUSDS).balanceOf(settlement));
         wrapper.wrappedSettle(tokens, clearingPrices, trades, interactions, emptySettleActions);
 
         // Verify the swap was executed
@@ -311,7 +309,6 @@ contract CowEvcWrapperTest is CowBaseTest {
 
         // Execute the settlement through the wrapper
         vm.stopPrank();
-        //vm.startPrank(solver);
 
         {
             address[] memory targets = new address[](1);
