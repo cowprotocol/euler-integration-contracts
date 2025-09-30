@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity ^0.8.23;
+pragma solidity ^0.8;
 
 import {GPv2Signing} from "cow/mixins/GPv2Signing.sol";
 import {GPv2Order} from "cow/libraries/GPv2Order.sol";
@@ -12,7 +12,6 @@ import {EVaultTestBase} from "euler-vault-kit/test/unit/evault/EVaultTestBase.t.
 import {CowEvcWrapper, GPv2Trade, GPv2Interaction} from "../src/CowEvcWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 //import {GPv2Settlement} from "cow/GPv2Settlement.sol";
-//import {GPv2Interaction, GPv2Trade} from "../../src/vendor/interfaces/IGPv2Settlement.sol";
 
 import {IERC20} from "cow/libraries/GPv2Trade.sol";
 import {console} from "forge-std/Test.sol";
@@ -194,16 +193,9 @@ contract CowEvcWrapperTest is CowBaseTest {
 
         // post-settlement will check slippage and skim the free cash on the destination vault for the user
         IEVC.BatchItem[] memory postSettlementItems = new IEVC.BatchItem[](0);
-        /*postSettlementItems[0] = IEVC.BatchItem({
-            onBehalfOfAccount: address(wrapper),
-            targetContract: swapVerifier,
-            value: 0,
-            data: abi.encodeCall(SwapVerifier.verifyAmountMinAndSkim, (eSUSDS, user, buyAmount, block.timestamp))
-        });*/
 
         // Execute the settlement through the wrapper
         vm.stopPrank();
-        //vm.startPrank(solver);
 
         {
             address[] memory targets = new address[](1);
@@ -316,12 +308,6 @@ contract CowEvcWrapperTest is CowBaseTest {
 
         // post-settlement, first lets assume we don't call the swap verifier
         IEVC.BatchItem[] memory postSettlementItems = new IEVC.BatchItem[](0);
-        /*postSettlementItems[0] = IEVC.BatchItem({
-            onBehalfOfAccount: address(wrapper),
-            targetContract: swapVerifier,
-            value: 0,
-            data: abi.encodeCall(SwapVerifier.verifyAmountMinAndSkim, (eSUSDS, user, buyAmount, block.timestamp))
-        });*/
 
         // Execute the settlement through the wrapper
         vm.stopPrank();

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity ^0.8.23;
+pragma solidity ^0.8;
 
 import {GPv2Signing} from "cow/mixins/GPv2Signing.sol";
 import {GPv2Order} from "cow/libraries/GPv2Order.sol";
@@ -12,7 +12,8 @@ import {IVault} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcWrapper} from "../../src/CowEvcWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
-import {IGPv2Settlement, GPv2Interaction, GPv2Trade} from "../../src/vendor/interfaces/IGPv2Settlement.sol";
+import {CowEvcWrapper, GPv2Trade, GPv2Interaction} from "../../src/CowEvcWrapper.sol";
+import {IGPv2Settlement} from "../../src/vendor/interfaces/IGPv2Settlement.sol";
 
 import {MilkSwap} from "./MilkSwap.sol";
 import {GPv2OrderHelper} from "./GPv2OrderHelper.sol";
@@ -22,7 +23,7 @@ import {console} from "forge-std/Test.sol";
 // intermediate contrct that acts as solver and creates a "batched" transaction
 contract Solver {
     function runBatch(address[] memory targets, bytes[] memory datas) external {
-        for (uint i = 0;i < targets.length;i++) {
+        for (uint256 i = 0; i < targets.length; i++) {
             targets[i].call(datas[i]);
         }
     }
@@ -124,11 +125,7 @@ contract CowBaseTest is EVaultTestBase {
             new IERC20[](0),
             new uint256[](0),
             new GPv2Trade.Data[](0),
-            [
-                new GPv2Interaction.Data[](0),
-                new GPv2Interaction.Data[](0),
-                new GPv2Interaction.Data[](0)
-            ]
+            [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0)]
         );
     }
 
@@ -196,7 +193,7 @@ contract CowBaseTest is EVaultTestBase {
 
         clearingPrices = new uint256[](2);
         clearingPrices[0] = 999; // WETH price (if it was against SUSD then 1000)
-        clearingPrices[1] = 1; // eSUSDS price 
+        clearingPrices[1] = 1; // eSUSDS price
     }
 
     function getSwapSettlement(address owner, address receiver, uint256 sellAmount, uint256 buyAmount)
@@ -240,15 +237,10 @@ contract CowBaseTest is EVaultTestBase {
         (tokens, clearingPrices) = getTokensAndPrices();
 
         // Setup interactions
-        interactions = [
-            new GPv2Interaction.Data[](0),
-            new GPv2Interaction.Data[](3),
-            new GPv2Interaction.Data[](0)
-        ];
+        interactions = [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](3), new GPv2Interaction.Data[](0)];
         interactions[1][0] = getSwapInteraction(sellAmount);
         interactions[1][1] = getDepositInteraction(buyAmount + 1 ether);
         interactions[1][2] = getSkimInteraction();
-
         return (orderUid, orderData, tokens, clearingPrices, trades, interactions);
     }
 }

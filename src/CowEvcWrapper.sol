@@ -1,16 +1,14 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity ^0.8.30;
+// SPDX-License-Identifier: GPL-3.0-or-later
+pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
-import {IGPv2Settlement, GPv2Interaction} from "./vendor/interfaces/IGPv2Settlement.sol";
+//import {IGPv2Settlement, GPv2Interaction} from "./vendor/interfaces/IGPv2Settlement.sol";
 import {IGPv2Authentication} from "./vendor/interfaces/IGPv2Authentication.sol";
 
 import {GPv2Signing, IERC20, GPv2Trade} from "cow/mixins/GPv2Signing.sol";
-import {GPv2Wrapper} from "cow/GPv2Wrapper.sol";
+import {GPv2Wrapper,GPv2Interaction} from "cow/GPv2Wrapper.sol";
 
 import {SwapVerifier} from "./SwapVerifier.sol";
-
-import "forge-std/console.sol";
 
 /// @title CowEvcWrapper
 /// @notice A wrapper around the EVC that allows for settlement operations
@@ -28,9 +26,7 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing, SwapVerifier {
 
     error NotEVCSettlement();
 
-    constructor(address _evc, address payable _settlement)
-        GPv2Wrapper(_settlement)
-    {
+    constructor(address _evc, address payable _settlement) GPv2Wrapper(_settlement) {
         EVC = IEVC(_evc);
     }
 
@@ -39,7 +35,6 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing, SwapVerifier {
         address sender;
         uint256 minAmount;
     }
-
 
     /// @notice Implementation of GPv2Wrapper._wrap - executes EVC operations around settlement
     /// @param tokens Tokens involved in settlement
@@ -68,14 +63,6 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing, SwapVerifier {
         // Copy pre-settlement items
         for (uint256 i = 0; i < preSettlementItems.length; i++) {
             items[i] = preSettlementItems[i];
-            /*uint256 ptr;
-            uint256 ptr2;
-            IEVC.BatchItem memory subItem = preSettlementItems[i];
-            bytes memory itemsData = preSettlementItems[i].data;
-            assembly {
-                ptr := itemsData
-                ptr2 := subItem
-            }*/
         }
 
         // Add settlement call to wrapper - use _internalSettle from GPv2Wrapper
@@ -121,5 +108,4 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing, SwapVerifier {
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
         _internalSettle(tokens, clearingPrices, trades, interactions);
     }
-
 }
