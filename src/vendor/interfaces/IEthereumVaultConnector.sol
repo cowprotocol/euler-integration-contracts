@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Vendored from Euler's Ethereum Vault Connector repo with minor modifications:
-// - Modified Solidity version
-// - Formatted code
-// <https://github.com/euler-xyz/ethereum-vault-connector/blob/master/src/interfaces/IEthereumVaultConnector.sol>
-
-pragma solidity ^0.8;
+pragma solidity >=0.8.0;
 
 /// @title IEVC
 /// @custom:security-contact security@euler.xyz

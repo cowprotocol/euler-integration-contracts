@@ -1,0 +1,34 @@
+name = "cow-euler-integration"
+version = "0.1.0"
+
+[pull.CoW]
+source = "gp-settlement:2.0.0"
+
+[pull.EVC]
+source = "ethereum-vault-connector:1.0.0"
+
+[var.main]
+solver = "0x7E2eF26AdccB02e57258784957922AEEFEe807e5" # quasilabs
+allowListManager = "0xA03be496e67Ec29bC62F01a428683D7F9c204930"
+SUSDS = "0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD"
+WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+
+# Vaults
+eSUSDS = "0x1e548CfcE5FCF17247E024eF06d32A01841fF404"
+eWETH = "0xD8b27CF359b7D15710a5BE299AF6e7Bf904984C2"
+
+realEVC = "0x0C9a3dd6b8F28529d72d7f9cE918D493519EE383"
+swapVerifier = "0xae26485ACDDeFd486Fe9ad7C2b34169d360737c7"
+
+settlementContract = "<%= CoW.Settlement.address %>"
+
+[deploy.CowEvcWrapper]
+artifact = "CowEvcWrapper"
+args = [
+    "<%= EVC.EVC.address %>", 
+    "<%= CoW.Settlement.address %>"
+]
+
+[deploy.MilkSwap]
+artifact = "MilkSwap"
+args = ["<%= settings.SUSDS %>"]

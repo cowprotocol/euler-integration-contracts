@@ -1,16 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity ^0.8;
+pragma solidity ^0.8.23;
 
 import "forge-std/Test.sol";
 import "ethereum-vault-connector/EthereumVaultConnector.sol";
 
 import "openzeppelin/utils/cryptography/ECDSA.sol";
-
-// Vendored and minimized from Euler's Ethereum Vault Connector repo with minor modifications:
-// - Only used SignerECDSA (don't need any other other permit logic)
-// - Modified Solidity version
-// - Formatted code
-// <https://github.com/euler-xyz/ethereum-vault-connector/blob/34bb788288a0eb0fbba06bc370cb8ca3dd42614e/test/unit/EthereumVaultConnector/Permit.t.sol#L68>
 
 abstract contract EIP712 {
 
