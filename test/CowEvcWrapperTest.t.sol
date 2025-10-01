@@ -19,7 +19,6 @@ import {console} from "forge-std/Test.sol";
 import {CowBaseTest} from "./helpers/CowBaseTest.sol";
 
 import {SignerECDSA} from "./helpers/SignerECDSA.sol";
-import {SwapVerifier} from "../src/SwapVerifier.sol";
 
 contract CowEvcWrapperTest is CowBaseTest {
     // Euler vaults
@@ -470,14 +469,8 @@ contract CowEvcWrapperTest is CowBaseTest {
             data: abi.encodeCall(IEVC.permit, (user, address(wrapper), 0, 0, block.timestamp, 0, batchData, batchSignature))
         });
 
-        // post-settlement will check slippage and skim the free cash on the destination vault for the user
-        IEVC.BatchItem[] memory postSettlementItems = new IEVC.BatchItem[](1);
-        postSettlementItems[0] = IEVC.BatchItem({
-            onBehalfOfAccount: address(wrapper),
-            targetContract: swapVerifier,
-            value: 0,
-            data: abi.encodeCall(SwapVerifier.verifyAmountMinAndSkim, (eSUSDS, user, buyAmount, block.timestamp))
-        });
+        // post-settlement does not need to do anything because the settlement contract will automatically verify the amount of remaining funds
+        IEVC.BatchItem[] memory postSettlementItems = new IEVC.BatchItem[](0);
 
         // Execute the settlement through the wrapper
         vm.stopPrank();
