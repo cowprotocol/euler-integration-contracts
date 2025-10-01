@@ -19,7 +19,6 @@ import {console} from "forge-std/Test.sol";
 import {CowBaseTest} from "./helpers/CowBaseTest.sol";
 
 import {SignerECDSA} from "./helpers/SignerECDSA.sol";
-import {SwapVerifier} from "../src/SwapVerifier.sol";
 
 contract CowEvcWrapperTest is CowBaseTest {
     // Euler vaults

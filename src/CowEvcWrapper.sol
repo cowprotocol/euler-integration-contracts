@@ -8,11 +8,9 @@ import {IGPv2Authentication} from "./vendor/interfaces/IGPv2Authentication.sol";
 import {GPv2Signing, IERC20, GPv2Trade} from "cow/mixins/GPv2Signing.sol";
 import {GPv2Wrapper,GPv2Interaction} from "cow/GPv2Wrapper.sol";
 
-import {SwapVerifier} from "./SwapVerifier.sol";
-
 /// @title CowEvcWrapper
 /// @notice A wrapper around the EVC that allows for settlement operations
-contract CowEvcWrapper is GPv2Wrapper, GPv2Signing, SwapVerifier {
+contract CowEvcWrapper is GPv2Wrapper, GPv2Signing {
     IEVC public immutable EVC;
 
     /// @notice 0 = not executing, 1 = wrappedSettle() called and not yet internal settle, 2 = evcInternalSettle() called
