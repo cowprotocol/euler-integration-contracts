@@ -4,30 +4,97 @@ pragma solidity ^0.8;
 import "./CowEvcWrapperTest.openPosition.t.sol";
 
 contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
+    function getLeveragedCloseSettlement(
+        address owner,
+        address receiver,
+        address sellVaultToken,
+        address buyToRepayToken,
+        uint256 sellAmount,
+        uint256 buyAmount
+    )
+        public
+        view
+        returns (
+            bytes memory orderUid,
+            bytes32 orderDigest,
+            GPv2Order.Data memory orderData,
+            IERC20[] memory tokens,
+            uint256[] memory clearingPrices,
+            GPv2Trade.Data[] memory trades,
+            GPv2Interaction.Data[][3] memory interactions
+        )
+    {
+        uint32 validTo = uint32(block.timestamp + 1 hours);
+
+        // Create order data
+        orderData = GPv2Order.Data({
+            sellToken: IERC20(sellVaultToken),
+            buyToken: IERC20(buyToRepayToken),
+            receiver: receiver,
+            sellAmount: sellAmount,
+            buyAmount: buyAmount,
+            validTo: validTo,
+            appData: bytes32(0),
+            feeAmount: 0,
+            kind: GPv2Order.KIND_SELL,
+            partiallyFillable: false,
+            sellTokenBalance: GPv2Order.BALANCE_ERC20,
+            buyTokenBalance: GPv2Order.BALANCE_ERC20
+        });
+
+        // Get order UID for the order
+        orderUid = getOrderUid(owner, orderData);
+        orderDigest = GPv2Order.hash(orderData, cowSettlement.domainSeparator());
+
+        // Get trade data
+        trades = new GPv2Trade.Data[](1);
+        trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, orderData.receiver);
+
+        // Set tokens and prices
+        tokens = new IERC20[](2);
+        tokens[0] = IERC20(sellVaultToken);
+        tokens[1] = IERC20(buyToRepayToken);
+
+        clearingPrices = new uint256[](2);
+        clearingPrices[0] = milkSwap.prices(IERC4626(sellVaultToken).asset());
+        clearingPrices[1] = milkSwap.prices(buyToRepayToken);
+
+        // Setup interactions
+        interactions = [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](2), new GPv2Interaction.Data[](0)];
+        interactions[1][0] = getWithdrawInteraction(sellVaultToken, sellAmount);
+        interactions[1][1] = getSwapInteraction(IERC4626(sellVaultToken).asset(), buyToRepayToken, sellAmount);
+        return (orderUid, orderDigest, orderData, tokens, clearingPrices, trades, interactions);
+    }
+
+    event StartPhase(bytes32 phase);
+
     function test_LeverageClose() external {
         vm.skip(bytes(FORK_RPC_URL).length == 0);
 
         // use the open test to get an open order that we can close
-        test_LeverageOpen();
+        _doLeverageOpen(1e18, 999e18);
+
+        emit StartPhase("Actually Close");
 
         uint256 SUSDS_MARGIN = 2000e18;
 
         vm.startPrank(user);
 
         // Create order parameters
-        uint256 sellAmount = 1e18; // 999 eSUSDS 
-        uint256 buyAmount = 0.98e18; //  0.98 ETH (permitting a bit of slippage)
+        uint256 sellAmount = 1002e18; // 1002 eSUSDS (give a bit of a buffer above the actual sell price)
+        uint256 buyAmount = 1e18; //  1 ETH (this is the amount of debt we have)
 
         // Get settlement, that sells WETH for SUSDS
         // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
         (
             bytes memory orderUid,
-            ,
+            bytes32 orderDigest,
+            GPv2Order.Data memory orderData,
             IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
             GPv2Interaction.Data[][3] memory interactions
-        ) = getLeveragedCloseSettlement(user, user, WETH, eSUSDS, sellAmount, buyAmount);
+        ) = getLeveragedCloseSettlement(user, address(wrapper), eSUSDS, WETH, sellAmount, buyAmount);
 
         // User, pre-approve the order
         console.logBytes(orderUid);
@@ -43,8 +110,9 @@ contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
         // provides WETH to swap. It should be possible to do it without approval by setting borrow recipient
         // to some trusted contract. EVC wrapper? The next batch item could be approving the relayer.
         // How would an order be signed then?
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](4);
-        items[0] = IEVC.BatchItem({
+        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
+        IEVC.BatchItem[] memory requiredPostItems = new IEVC.BatchItem[](1);
+        /*items[0] = IEVC.BatchItem({
             onBehalfOfAccount: address(0),
             targetContract: address(evc),
             value: 0,
@@ -55,24 +123,29 @@ contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
             targetContract: address(evc),
             value: 0,
             data: abi.encodeCall(IEVC.enableController, (user, eWETH))
-        });
-        items[2] = IEVC.BatchItem({
+        });*/
+        requiredPostItems[0] = IEVC.BatchItem({
             onBehalfOfAccount: user,
-            targetContract: eSUSDS,
+            targetContract: address(wrapper),
             value: 0,
-            data: abi.encodeCall(IERC4626.deposit, (SUSDS_MARGIN, user))
+            // we want to close the position so max is set to `type(uint256).max`
+            data: abi.encodeCall(wrapper.helperRepayAndReturn, (eWETH, user, type(uint256).max))
         });
-        items[3] = IEVC.BatchItem({
+        items[0] = IEVC.BatchItem({
             onBehalfOfAccount: user,
-            targetContract: eWETH,
+            targetContract: address(wrapper),
             value: 0,
-            data: abi.encodeCall(IBorrowing.borrow, (sellAmount, user))
+            data: abi.encodeCall(CowEvcWrapper.setRequiredPostActions, (orderDigest, requiredPostItems))
         });
 
         // User signs the batch
         bytes memory batchData = abi.encodeCall(IEVC.batch, items);
         bytes memory batchSignature =
-            signerECDSA.signPermit(user, address(wrapper), 0, 0, block.timestamp, 0, batchData);
+            // nonce is set to "1" here because it was already consumed once by opening the order
+            signerECDSA.signPermit(user, address(wrapper), 0, 1, block.timestamp, 0, batchData);
+
+        // before unpranking lets approve the settlement contract
+        IEVault(eSUSDS).approve(cowSettlement.vaultRelayer(), type(uint256).max);
 
         vm.stopPrank();
 
@@ -82,14 +155,14 @@ contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
             onBehalfOfAccount: address(0),
             targetContract: address(evc),
             value: 0,
-            data: abi.encodeCall(IEVC.permit, (user, address(wrapper), 0, 0, block.timestamp, 0, batchData, batchSignature))
+            data: abi.encodeCall(IEVC.permit, (user, address(wrapper), 0, 1, block.timestamp, 0, batchData, batchSignature))
         });
 
         // post-settlement will check slippage and skim the free cash on the destination vault for the user
         IEVC.BatchItem[] memory postSettlementItems = new IEVC.BatchItem[](0);
 
         // Execute the settlement through the wrapper
-        vm.stopPrank();
+        console.log("user balance pre", IEVault(eSUSDS).balanceOf(user));
 
         {
             address[] memory targets = new address[](1);
@@ -100,20 +173,19 @@ contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
                 wrapper.wrappedSettle.selector, tokens, clearingPrices, trades, interactions, evcActions
             );
             solver.runBatch(targets, datas);
-
         }
 
-        // Verify the position was created
+        // Verify the user received any remainder that might exist
+        assertEq(IEVault(eWETH).debtOf(user), 0, "User should have their debt repaid");
         assertApproxEqAbs(
             IEVault(eSUSDS).convertToAssets(IERC20(eSUSDS).balanceOf(user)),
-            buyAmount + SUSDS_MARGIN,
-            1 ether, // rounding in favor of the vault during deposits
+            SUSDS_MARGIN, // basically only the margin should be left
+            5 ether, // rounding in favor of the vault during deposits
             "User should receive eSUSDS"
         );
-        assertEq(IEVault(eWETH).debtOf(user), sellAmount, "User should receive eWETH debt");
+
 
         // uint256 susdsBalanceInMilkSwapAfter = IERC20(SUSDS).balanceOf(address(milkSwap));
         // assertEq(susdsBalanceInMilkSwapAfter, susdsBalanceInMilkSwapBefore - buyAmount, "MilkSwap should have less SUSDS");
     }
-
 }

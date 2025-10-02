@@ -8,7 +8,7 @@ import {IERC20} from "cow/libraries/GPv2Trade.sol";
 import {IEVC} from "evc/interfaces/IEthereumVaultConnector.sol";
 import {EthereumVaultConnector} from "evc/EthereumVaultConnector.sol";
 import {EVaultTestBase} from "lib/euler-vault-kit/test/unit/evault/EVaultTestBase.t.sol";
-import {IVault} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {IEVault, IVault, IERC4626} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcWrapper} from "../../src/CowEvcWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
@@ -85,13 +85,21 @@ contract CowBaseTest is EVaultTestBase {
         vm.stopPrank();
 
         // Setup some liquidity for MilkSwap
-        milkSwap = new MilkSwap(SUSDS);
+        milkSwap = new MilkSwap();
         deal(SUSDS, address(milkSwap), 10000e18); // Add SUSDS to MilkSwap
-        milkSwap.setPrice(WETH, 1000); // 1 ETH = 1,000 SUSDS
+        deal(WETH, address(milkSwap), 10000e18); // Add WETH to MilkSwap
+        milkSwap.setPrice(WETH, 1000e18); // 1 ETH = 1,000 USD 
+        milkSwap.setPrice(SUSDS, 1e18); // 1 USDS = 1 USD
 
-        // Set the approval for MilSwap in the settlement
-        vm.prank(address(cowSettlement));
+        // Set the approval for MilkSwap in the settlement as a convenience
+        vm.startPrank(address(cowSettlement));
         IERC20(WETH).approve(address(milkSwap), type(uint256).max);
+        IERC20(SUSDS).approve(address(milkSwap), type(uint256).max);
+
+        IERC20(eSUSDS).approve(address(eSUSDS), type(uint256).max);
+        IERC20(eWETH).approve(address(eWETH), type(uint256).max);
+
+        vm.stopPrank();
 
         // User has approved WETH for COW Protocol
         address vaultRelayer = cowSettlement.vaultRelayer();
@@ -158,7 +166,7 @@ contract CowBaseTest is EVaultTestBase {
         return GPv2Interaction.Data({
             target: vault,
             value: 0,
-            callData: abi.encodeCall(IEVault.redeem, (sellAmount, address(cowSettlement), user))
+            callData: abi.encodeCall(IERC4626.redeem, (sellAmount, address(cowSettlement), address(cowSettlement)))
         });
     }
 

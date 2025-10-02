@@ -26,6 +26,8 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
     SignerECDSA internal signerECDSA;
     bytes internal emptySettleActions;
 
+    uint256 constant SUSDS_MARGIN = 2000e18;
+
     function setUp() public override {
         super.setUp();
         signerECDSA = new SignerECDSA(evc);
@@ -39,22 +41,33 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
         deal(SUSDS, user, 10000e18);
     }
 
-    function getLeveragedOpenSettlement(address owner, address receiver, address sellToken, address buyVaultToken, uint256 sellAmount, uint256 buyAmount)
+    struct LeveragedSettlementData {
+        bytes orderUid;
+        GPv2Order.Data orderData;
+        IERC20[] tokens;
+        uint256[] clearingPrices;
+        GPv2Trade.Data[] trades;
+        GPv2Interaction.Data[][3] interactions;
+    }
+
+    function getLeveragedOpenSettlement(
+        address owner,
+        address receiver,
+        address sellToken,
+        address buyVaultToken,
+        uint256 sellAmount,
+        uint256 buyAmount
+    )
         public
         view
         returns (
-            bytes memory orderUid,
-            GPv2Order.Data memory orderData,
-            IERC20[] memory tokens,
-            uint256[] memory clearingPrices,
-            GPv2Trade.Data[] memory trades,
-            GPv2Interaction.Data[][3] memory interactions
+            LeveragedSettlementData memory r
         )
     {
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
         // Create order data
-        orderData = GPv2Order.Data({
+        r.orderData = GPv2Order.Data({
             sellToken: IERC20(sellToken),
             buyToken: IERC20(buyVaultToken),
             receiver: receiver,
@@ -70,48 +83,33 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
         });
 
         // Get order UID for the order
-        orderUid = getOrderUid(owner, orderData);
+        r.orderUid = getOrderUid(owner, r.orderData);
 
         // Get trade data
-        trades = new GPv2Trade.Data[](1);
-        trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, orderData.receiver);
+        r.trades = new GPv2Trade.Data[](1);
+        r.trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, r.orderData.receiver);
 
         // Get tokens and prices
-        (tokens, clearingPrices) = getTokensAndPrices();
+        (r.tokens, r.clearingPrices) = getTokensAndPrices();
 
         // Setup interactions
-        interactions = [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](3), new GPv2Interaction.Data[](0)];
-        interactions[1][0] = getSwapInteraction(sellToken, buyVaultToken, sellAmount);
-        interactions[1][1] = getDepositInteraction(buyVaultToken, buyAmount + 1 ether);
-        interactions[1][2] = getSkimInteraction();
-        return (orderUid, orderData, tokens, clearingPrices, trades, interactions);
+        r.interactions = [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](3), new GPv2Interaction.Data[](0)];
+        r.interactions[1][0] = getSwapInteraction(sellToken, IERC4626(buyVaultToken).asset(), sellAmount);
+        r.interactions[1][1] = getDepositInteraction(buyVaultToken, buyAmount + 1 ether);
+        r.interactions[1][2] = getSkimInteraction();
     }
 
-    function test_LeverageOpen() external {
-        vm.skip(bytes(FORK_RPC_URL).length == 0);
-
-        uint256 SUSDS_MARGIN = 2000e18;
+    function _doLeverageOpen(uint256 sellAmount, uint256 buyAmount) internal {
 
         vm.startPrank(user);
 
-        // Create order parameters
-        uint256 sellAmount = 1e18; // 1 WETH
-        uint256 buyAmount = 999e18; //  999 eSUSDS (1000 SUSDS actually deposited)
-
         // Get settlement, that sells WETH for SUSDS
         // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
-        (
-            bytes memory orderUid,
-            ,
-            IERC20[] memory tokens,
-            uint256[] memory clearingPrices,
-            GPv2Trade.Data[] memory trades,
-            GPv2Interaction.Data[][3] memory interactions
-        ) = getLeveragedOpenSettlement(user, user, WETH, eSUSDS, sellAmount, buyAmount);
+        LeveragedSettlementData memory settlement = getLeveragedOpenSettlement(user, user, WETH, eSUSDS, sellAmount, buyAmount);
 
         // User, pre-approve the order
-        console.logBytes(orderUid);
-        cowSettlement.setPreSignature(orderUid, true);
+        console.logBytes(settlement.orderUid);
+        cowSettlement.setPreSignature(settlement.orderUid, true);
 
         signerECDSA.setPrivateKey(privateKey);
 
@@ -177,11 +175,20 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
             bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
             targets[0] = address(wrapper);
             datas[0] = abi.encodeWithSelector(
-                wrapper.wrappedSettle.selector, tokens, clearingPrices, trades, interactions, evcActions
+                wrapper.wrappedSettle.selector, settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions, evcActions
             );
             solver.runBatch(targets, datas);
-
         }
+    }
+
+    function test_LeverageOpen() external {
+        vm.skip(bytes(FORK_RPC_URL).length == 0);
+
+        // Create order parameters
+        uint256 sellAmount = 1e18; // 1 WETH
+        uint256 buyAmount = 999e18; //  999 eSUSDS (1000 SUSDS actually deposited)
+
+        _doLeverageOpen(sellAmount, buyAmount);
 
         // Verify the position was created
         assertApproxEqAbs(
@@ -209,18 +216,11 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
 
         // Get settlement, that sells WETH for buying SUSDS
         // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
-        (
-            bytes memory orderUid,
-            ,
-            IERC20[] memory tokens,
-            uint256[] memory clearingPrices,
-            GPv2Trade.Data[] memory trades,
-            GPv2Interaction.Data[][3] memory interactions
-        ) = getLeveragedOpenSettlement(user, user, WETH, eSUSDS, sellAmount, buyAmount);
+        LeveragedSettlementData memory settlement = getLeveragedOpenSettlement(user, user, WETH, eSUSDS, sellAmount, buyAmount);
 
         // User, pre-approve the order
-        console.logBytes(orderUid);
-        cowSettlement.setPreSignature(orderUid, true);
+        console.logBytes(settlement.orderUid);
+        cowSettlement.setPreSignature(settlement.orderUid, true);
 
         signerECDSA.setPrivateKey(privateKey);
 
@@ -287,7 +287,7 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
             bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
             targets[0] = address(wrapper);
             datas[0] = abi.encodeWithSelector(
-                wrapper.wrappedSettle.selector, tokens, clearingPrices, trades, interactions, evcActions
+                wrapper.wrappedSettle.selector, settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions, evcActions
             );
 
             solver.runBatch(targets, datas);
@@ -319,15 +319,8 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
 
         // Get settlement, that sells WETH for SUSDS
         // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
-        (
-            bytes memory orderUid,
-            ,
-            IERC20[] memory tokens,
-            uint256[] memory clearingPrices,
-            GPv2Trade.Data[] memory trades,
-            GPv2Interaction.Data[][3] memory interactions
-        ) = getLeveragedOpenSettlement(user, eSUSDS, WETH, eSUSDS, sellAmount, buyAmount);
-        cowSettlement.setPreSignature(orderUid, true);
+        LeveragedSettlementData memory settlement = getLeveragedOpenSettlement(user, eSUSDS, WETH, eSUSDS, sellAmount, buyAmount);
+        cowSettlement.setPreSignature(settlement.orderUid, true);
 
         vm.stopPrank();
 
@@ -341,7 +334,7 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
             onBehalfOfAccount: address(this),
             targetContract: address(wrapper),
             value: 0,
-            data: abi.encodeCall(CowEvcWrapper.evcInternalSettle, (tokens, clearingPrices, trades, interactions))
+            data: abi.encodeCall(CowEvcWrapper.evcInternalSettle, (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions))
         });
 
         vm.expectRevert(abi.encodeWithSelector(CowEvcWrapper.Unauthorized.selector, address(0)));
@@ -361,18 +354,11 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
 
         // Get settlement, that sells WETH for SUSDS
         // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
-        (
-            bytes memory orderUid,
-            ,
-            IERC20[] memory tokens,
-            uint256[] memory clearingPrices,
-            GPv2Trade.Data[] memory trades,
-            GPv2Interaction.Data[][3] memory interactions
-        ) = getLeveragedOpenSettlement(user, eSUSDS, WETH, eSUSDS, sellAmount, buyAmount);
+        LeveragedSettlementData memory settlement = getLeveragedOpenSettlement(user, eSUSDS, WETH, eSUSDS, sellAmount, buyAmount);
 
         // User, pre-approve the order
-        console.logBytes(orderUid);
-        cowSettlement.setPreSignature(orderUid, true);
+        console.logBytes(settlement.orderUid);
+        cowSettlement.setPreSignature(settlement.orderUid, true);
 
         signerECDSA.setPrivateKey(privateKey);
 
@@ -436,6 +422,6 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
         bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
 
         vm.expectRevert("GPv2Wrapper: not a solver");
-        wrapper.wrappedSettle(tokens, clearingPrices, trades, interactions, evcActions);
+        wrapper.wrappedSettle(settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions, evcActions);
     }
 }
