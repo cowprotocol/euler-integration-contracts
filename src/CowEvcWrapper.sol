@@ -5,8 +5,9 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 //import {IGPv2Settlement, GPv2Interaction} from "./vendor/interfaces/IGPv2Settlement.sol";
 import {IGPv2Authentication} from "./vendor/interfaces/IGPv2Authentication.sol";
 
-import {GPv2Signing, IERC20, GPv2Trade} from "cow/mixins/GPv2Signing.sol";
+import {GPv2Signing, IERC20, GPv2Trade, GPv2Order} from "cow/mixins/GPv2Signing.sol";
 import {GPv2Wrapper,GPv2Interaction} from "cow/GPv2Wrapper.sol";
+import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 /// @title CowEvcWrapper
 /// @notice A wrapper around the EVC that allows for settlement operations
@@ -15,6 +16,8 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing {
 
     /// @notice 0 = not executing, 1 = wrappedSettle() called and not yet internal settle, 2 = evcInternalSettle() called
     uint256 public transient settleState;
+
+    mapping(bytes32 => IEVC.BatchItem[]) private postActions;
 
     error Unauthorized(address msgSender);
     error NoReentrancy();
@@ -32,6 +35,37 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing {
         address vault;
         address sender;
         uint256 minAmount;
+    }
+
+    function setRequiredPostActions(
+        bytes32 orderDigest,
+        IEVC.BatchItem[] calldata actions
+    ) external {
+        postActions[orderDigest] = actions;
+    }
+
+    function executePostActions(
+        bytes32 orderDigest
+    ) external {
+        if (postActions[orderDigest].length > 0) {
+            EVC.batch(postActions[orderDigest]);
+            postActions[orderDigest] = new IEVC.BatchItem[](0);
+        }
+
+    }
+
+    // helper function to execute repay
+    function helperRepayAndReturn(
+        address vault,
+        address beneficiary,
+        uint256 maxRepay
+    ) external {
+        IERC20 asset = IERC20(IERC4626(vault).asset());
+        asset.approve(vault, type(uint256).max);
+        IBorrowing(vault).repay(maxRepay, beneficiary);
+
+        // transfer any remaining dust back to the user
+        asset.transfer(beneficiary, asset.balanceOf(address(this)));
     }
 
     /// @notice Implementation of GPv2Wrapper._wrap - executes EVC operations around settlement
@@ -56,7 +90,7 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing {
         // Decode wrapperData into pre and post settlement actions
         (IEVC.BatchItem[] memory preSettlementItems, IEVC.BatchItem[] memory postSettlementItems) =
             abi.decode(wrapperData, (IEVC.BatchItem[], IEVC.BatchItem[]));
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](preSettlementItems.length + postSettlementItems.length + 1);
+        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](preSettlementItems.length + postSettlementItems.length + 1 + trades.length);
 
         // Copy pre-settlement items
         for (uint256 i = 0; i < preSettlementItems.length; i++) {
@@ -74,6 +108,22 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing {
         // Copy post-settlement items
         for (uint256 i = 0; i < postSettlementItems.length; i++) {
             items[preSettlementItems.length + 1 + i] = postSettlementItems[i];
+        }
+
+        // Users can force post settlement actions to also occur in `preSettlementItems`. So we call ourself to enforce this
+        GPv2Order.Data memory o;
+        for (uint256 i = 0;i < trades.length;i++) {
+            GPv2Trade.extractOrder(trades[i], tokens, o);
+            bytes32 orderDigest = GPv2Order.hash(
+                o,
+                UPSTREAM_SETTLEMENT.domainSeparator() // TODO can be more efficient
+            );
+            items[preSettlementItems.length + postSettlementItems.length + 1 + i] = IEVC.BatchItem({
+                onBehalfOfAccount: address(this),
+                targetContract: address(this),
+                value: 0,
+                data: abi.encodeCall(this.executePostActions, (orderDigest))
+            });
         }
 
         // Execute all items in a single batch

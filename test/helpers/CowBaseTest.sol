@@ -8,7 +8,7 @@ import {IERC20} from "cow/libraries/GPv2Trade.sol";
 import {IEVC} from "evc/interfaces/IEthereumVaultConnector.sol";
 import {EthereumVaultConnector} from "evc/EthereumVaultConnector.sol";
 import {EVaultTestBase} from "lib/euler-vault-kit/test/unit/evault/EVaultTestBase.t.sol";
-import {IVault} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {IEVault, IVault, IERC4626} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcWrapper} from "../../src/CowEvcWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
@@ -85,13 +85,21 @@ contract CowBaseTest is EVaultTestBase {
         vm.stopPrank();
 
         // Setup some liquidity for MilkSwap
-        milkSwap = new MilkSwap(SUSDS);
+        milkSwap = new MilkSwap();
         deal(SUSDS, address(milkSwap), 10000e18); // Add SUSDS to MilkSwap
-        milkSwap.setPrice(WETH, 1000); // 1 ETH = 1,000 SUSDS
+        deal(WETH, address(milkSwap), 10000e18); // Add WETH to MilkSwap
+        milkSwap.setPrice(WETH, 1000e18); // 1 ETH = 1,000 USD 
+        milkSwap.setPrice(SUSDS, 1e18); // 1 USDS = 1 USD
 
-        // Set the approval for MilSwap in the settlement
-        vm.prank(address(cowSettlement));
+        // Set the approval for MilkSwap in the settlement as a convenience
+        vm.startPrank(address(cowSettlement));
         IERC20(WETH).approve(address(milkSwap), type(uint256).max);
+        IERC20(SUSDS).approve(address(milkSwap), type(uint256).max);
+
+        IERC20(eSUSDS).approve(address(eSUSDS), type(uint256).max);
+        IERC20(eWETH).approve(address(eWETH), type(uint256).max);
+
+        vm.stopPrank();
 
         // User has approved WETH for COW Protocol
         address vaultRelayer = cowSettlement.vaultRelayer();
@@ -137,19 +145,28 @@ contract CowBaseTest is EVaultTestBase {
         return abi.encodePacked(orderDigest, address(owner), uint32(orderData.validTo));
     }
 
-    function getSwapInteraction(uint256 sellAmount) public view returns (GPv2Interaction.Data memory) {
+    function getSwapInteraction(address sellToken, address buyToken, uint256 sellAmount) public view returns (GPv2Interaction.Data memory) {
         return GPv2Interaction.Data({
             target: address(milkSwap),
             value: 0,
-            callData: abi.encodeCall(MilkSwap.swap, (WETH, SUSDS, sellAmount))
+            callData: abi.encodeCall(MilkSwap.swap, (sellToken, buyToken, sellAmount))
         });
     }
 
-    function getDepositInteraction(uint256 buyAmount) public view returns (GPv2Interaction.Data memory) {
+    // NOTE: get skimInteraction has to be called after this
+    function getDepositInteraction(address vault, uint256 sellAmount) public view returns (GPv2Interaction.Data memory) {
         return GPv2Interaction.Data({
-            target: address(SUSDS),
+            target: address(IEVault(vault).asset()),
             value: 0,
-            callData: abi.encodeCall(IERC20.transfer, (eSUSDS, buyAmount))
+            callData: abi.encodeCall(IERC20.transfer, (vault, sellAmount))
+        });
+    }
+
+    function getWithdrawInteraction(address vault, uint256 sellAmount) public view returns (GPv2Interaction.Data memory) {
+        return GPv2Interaction.Data({
+            target: vault,
+            value: 0,
+            callData: abi.encodeCall(IERC4626.withdraw, (sellAmount, address(cowSettlement), address(cowSettlement)))
         });
     }
 
@@ -161,7 +178,7 @@ contract CowBaseTest is EVaultTestBase {
         });
     }
 
-    function getTradeData(uint256 sellAmount, uint256 buyAmount, uint32 validTo, address owner, address receiver)
+    function getTradeData(uint256 sellAmount, uint256 buyAmount, uint32 validTo, address owner, address receiver, bool isBuy)
         public
         pure
         returns (GPv2Trade.Data memory)
@@ -169,7 +186,7 @@ contract CowBaseTest is EVaultTestBase {
         // Set flags for (pre-sign, FoK sell order)
         // See
         // https://github.com/cowprotocol/contracts/blob/08f8627d8427c8842ae5d29ed8b44519f7674879/src/contracts/libraries/GPv2Trade.sol#L89-L94
-        uint256 flags = 3 << 5; // 1100000
+        uint256 flags = (3 << 5) | (isBuy ? 1 : 0); // 1100000
 
         return GPv2Trade.Data({
             sellTokenIndex: 0,
@@ -194,53 +211,5 @@ contract CowBaseTest is EVaultTestBase {
         clearingPrices = new uint256[](2);
         clearingPrices[0] = 999; // WETH price (if it was against SUSD then 1000)
         clearingPrices[1] = 1; // eSUSDS price
-    }
-
-    function getSwapSettlement(address owner, address receiver, uint256 sellAmount, uint256 buyAmount)
-        public
-        view
-        returns (
-            bytes memory orderUid,
-            GPv2Order.Data memory orderData,
-            IERC20[] memory tokens,
-            uint256[] memory clearingPrices,
-            GPv2Trade.Data[] memory trades,
-            GPv2Interaction.Data[][3] memory interactions
-        )
-    {
-        uint32 validTo = uint32(block.timestamp + 1 hours);
-
-        // Create order data
-        orderData = GPv2Order.Data({
-            sellToken: IERC20(WETH),
-            buyToken: IERC20(eSUSDS),
-            receiver: receiver,
-            sellAmount: sellAmount,
-            buyAmount: buyAmount,
-            validTo: validTo,
-            appData: bytes32(0),
-            feeAmount: 0,
-            kind: GPv2Order.KIND_SELL,
-            partiallyFillable: false,
-            sellTokenBalance: GPv2Order.BALANCE_ERC20,
-            buyTokenBalance: GPv2Order.BALANCE_ERC20
-        });
-
-        // Get order UID for the order
-        orderUid = getOrderUid(owner, orderData);
-
-        // Get trade data
-        trades = new GPv2Trade.Data[](1);
-        trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, orderData.receiver);
-
-        // Get tokens and prices
-        (tokens, clearingPrices) = getTokensAndPrices();
-
-        // Setup interactions
-        interactions = [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](3), new GPv2Interaction.Data[](0)];
-        interactions[1][0] = getSwapInteraction(sellAmount);
-        interactions[1][1] = getDepositInteraction(buyAmount + 1 ether);
-        interactions[1][2] = getSkimInteraction();
-        return (orderUid, orderData, tokens, clearingPrices, trades, interactions);
     }
 }
