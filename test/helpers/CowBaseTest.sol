@@ -137,19 +137,28 @@ contract CowBaseTest is EVaultTestBase {
         return abi.encodePacked(orderDigest, address(owner), uint32(orderData.validTo));
     }
 
-    function getSwapInteraction(uint256 sellAmount) public view returns (GPv2Interaction.Data memory) {
+    function getSwapInteraction(address sellToken, address buyToken, uint256 sellAmount) public view returns (GPv2Interaction.Data memory) {
         return GPv2Interaction.Data({
             target: address(milkSwap),
             value: 0,
-            callData: abi.encodeCall(MilkSwap.swap, (WETH, SUSDS, sellAmount))
+            callData: abi.encodeCall(MilkSwap.swap, (sellToken, buyToken, sellAmount))
         });
     }
 
-    function getDepositInteraction(uint256 buyAmount) public view returns (GPv2Interaction.Data memory) {
+    // NOTE: get skimInteraction has to be called after this
+    function getDepositInteraction(address vault, uint256 sellAmount) public view returns (GPv2Interaction.Data memory) {
         return GPv2Interaction.Data({
-            target: address(SUSDS),
+            target: address(IEVault(vault).asset()),
             value: 0,
-            callData: abi.encodeCall(IERC20.transfer, (eSUSDS, buyAmount))
+            callData: abi.encodeCall(IERC20.transfer, (vault, sellAmount))
+        });
+    }
+
+    function getWithdrawInteraction(address vault, uint256 sellAmount) public view returns (GPv2Interaction.Data memory) {
+        return GPv2Interaction.Data({
+            target: vault,
+            value: 0,
+            callData: abi.encodeCall(IEVault.redeem, (sellAmount, address(cowSettlement), user))
         });
     }
 
@@ -194,53 +203,5 @@ contract CowBaseTest is EVaultTestBase {
         clearingPrices = new uint256[](2);
         clearingPrices[0] = 999; // WETH price (if it was against SUSD then 1000)
         clearingPrices[1] = 1; // eSUSDS price
-    }
-
-    function getSwapSettlement(address owner, address receiver, uint256 sellAmount, uint256 buyAmount)
-        public
-        view
-        returns (
-            bytes memory orderUid,
-            GPv2Order.Data memory orderData,
-            IERC20[] memory tokens,
-            uint256[] memory clearingPrices,
-            GPv2Trade.Data[] memory trades,
-            GPv2Interaction.Data[][3] memory interactions
-        )
-    {
-        uint32 validTo = uint32(block.timestamp + 1 hours);
-
-        // Create order data
-        orderData = GPv2Order.Data({
-            sellToken: IERC20(WETH),
-            buyToken: IERC20(eSUSDS),
-            receiver: receiver,
-            sellAmount: sellAmount,
-            buyAmount: buyAmount,
-            validTo: validTo,
-            appData: bytes32(0),
-            feeAmount: 0,
-            kind: GPv2Order.KIND_SELL,
-            partiallyFillable: false,
-            sellTokenBalance: GPv2Order.BALANCE_ERC20,
-            buyTokenBalance: GPv2Order.BALANCE_ERC20
-        });
-
-        // Get order UID for the order
-        orderUid = getOrderUid(owner, orderData);
-
-        // Get trade data
-        trades = new GPv2Trade.Data[](1);
-        trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, orderData.receiver);
-
-        // Get tokens and prices
-        (tokens, clearingPrices) = getTokensAndPrices();
-
-        // Setup interactions
-        interactions = [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](3), new GPv2Interaction.Data[](0)];
-        interactions[1][0] = getSwapInteraction(sellAmount);
-        interactions[1][1] = getDepositInteraction(buyAmount + 1 ether);
-        interactions[1][2] = getSkimInteraction();
-        return (orderUid, orderData, tokens, clearingPrices, trades, interactions);
     }
 }
