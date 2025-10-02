@@ -36,7 +36,7 @@ contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
             validTo: validTo,
             appData: bytes32(0),
             feeAmount: 0,
-            kind: GPv2Order.KIND_SELL,
+            kind: GPv2Order.KIND_BUY,
             partiallyFillable: false,
             sellTokenBalance: GPv2Order.BALANCE_ERC20,
             buyTokenBalance: GPv2Order.BALANCE_ERC20
@@ -48,7 +48,7 @@ contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
 
         // Get trade data
         trades = new GPv2Trade.Data[](1);
-        trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, orderData.receiver);
+        trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, orderData.receiver, true);
 
         // Set tokens and prices
         tokens = new IERC20[](2);
@@ -61,8 +61,8 @@ contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
 
         // Setup interactions
         interactions = [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](2), new GPv2Interaction.Data[](0)];
-        interactions[1][0] = getWithdrawInteraction(sellVaultToken, sellAmount);
-        interactions[1][1] = getSwapInteraction(IERC4626(sellVaultToken).asset(), buyToRepayToken, sellAmount);
+        interactions[1][0] = getWithdrawInteraction(sellVaultToken, buyAmount * clearingPrices[1] / 1e18);
+        interactions[1][1] = getSwapInteraction(IERC4626(sellVaultToken).asset(), buyToRepayToken, buyAmount * clearingPrices[1] / 1e18);
         return (orderUid, orderDigest, orderData, tokens, clearingPrices, trades, interactions);
     }
 

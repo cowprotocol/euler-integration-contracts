@@ -87,7 +87,7 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
 
         // Get trade data
         r.trades = new GPv2Trade.Data[](1);
-        r.trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, r.orderData.receiver);
+        r.trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, r.orderData.receiver, false);
 
         // Get tokens and prices
         (r.tokens, r.clearingPrices) = getTokensAndPrices();

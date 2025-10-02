@@ -166,7 +166,7 @@ contract CowBaseTest is EVaultTestBase {
         return GPv2Interaction.Data({
             target: vault,
             value: 0,
-            callData: abi.encodeCall(IERC4626.redeem, (sellAmount, address(cowSettlement), address(cowSettlement)))
+            callData: abi.encodeCall(IERC4626.withdraw, (sellAmount, address(cowSettlement), address(cowSettlement)))
         });
     }
 
@@ -178,7 +178,7 @@ contract CowBaseTest is EVaultTestBase {
         });
     }
 
-    function getTradeData(uint256 sellAmount, uint256 buyAmount, uint32 validTo, address owner, address receiver)
+    function getTradeData(uint256 sellAmount, uint256 buyAmount, uint32 validTo, address owner, address receiver, bool isBuy)
         public
         pure
         returns (GPv2Trade.Data memory)
@@ -186,7 +186,7 @@ contract CowBaseTest is EVaultTestBase {
         // Set flags for (pre-sign, FoK sell order)
         // See
         // https://github.com/cowprotocol/contracts/blob/08f8627d8427c8842ae5d29ed8b44519f7674879/src/contracts/libraries/GPv2Trade.sol#L89-L94
-        uint256 flags = 3 << 5; // 1100000
+        uint256 flags = (3 << 5) | (isBuy ? 1 : 0); // 1100000
 
         return GPv2Trade.Data({
             sellTokenIndex: 0,
