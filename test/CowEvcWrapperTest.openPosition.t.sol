@@ -172,10 +172,12 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
         {
             address[] memory targets = new address[](1);
             bytes[] memory datas = new bytes[](1);
+            bytes memory preItemsData = abi.encode(preSettlementItems);
+            bytes memory postItemsData = abi.encode(postSettlementItems);
             bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
             targets[0] = address(wrapper);
             datas[0] = abi.encodeWithSelector(
-                wrapper.wrappedSettle.selector, settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions, evcActions
+                wrapper.settle.selector, settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions, evcActions
             );
             solver.runBatch(targets, datas);
         }
@@ -284,10 +286,12 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
         {
             address[] memory targets = new address[](1);
             bytes[] memory datas = new bytes[](1);
+            bytes memory preItemsData = abi.encode(preSettlementItems);
+            bytes memory postItemsData = abi.encode(postSettlementItems);
             bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
             targets[0] = address(wrapper);
             datas[0] = abi.encodeWithSelector(
-                wrapper.wrappedSettle.selector, settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions, evcActions
+                wrapper.settle.selector, settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions, evcActions
             );
 
             solver.runBatch(targets, datas);
@@ -419,9 +423,9 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
         vm.stopPrank();
 
         // This contract will be the "malicious" solver. It should not be able to complete the settle flow
-        bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
+        //bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
 
         vm.expectRevert("GPv2Wrapper: not a solver");
-        wrapper.wrappedSettle(settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions, evcActions);
+        wrapper.settle(settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions);
     }
 }

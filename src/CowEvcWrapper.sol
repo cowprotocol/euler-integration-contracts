@@ -6,12 +6,13 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IGPv2Authentication} from "./vendor/interfaces/IGPv2Authentication.sol";
 
 import {GPv2Signing, IERC20, GPv2Trade, GPv2Order} from "cow/mixins/GPv2Signing.sol";
-import {GPv2Wrapper,GPv2Interaction} from "cow/GPv2Wrapper.sol";
+import {GPv2Settlement} from "cow/GPv2Settlement.sol";
+import {CowWrapper,GPv2Interaction,GPv2Authentication} from "./vendor/CowWrapper.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 /// @title CowEvcWrapper
 /// @notice A wrapper around the EVC that allows for settlement operations
-contract CowEvcWrapper is GPv2Wrapper, GPv2Signing {
+contract CowEvcWrapper is CowWrapper, GPv2Signing {
     IEVC public immutable EVC;
 
     /// @notice 0 = not executing, 1 = wrappedSettle() called and not yet internal settle, 2 = evcInternalSettle() called
@@ -27,7 +28,7 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing {
 
     error NotEVCSettlement();
 
-    constructor(address _evc, address payable _settlement) GPv2Wrapper(_settlement) {
+    constructor(address _evc, address _authentication) CowWrapper(_authentication) {
         EVC = IEVC(_evc);
     }
 
@@ -73,7 +74,7 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing {
     /// @param clearingPrices Clearing prices for settlement
     /// @param trades Trade data for settlement
     /// @param interactions Interaction data for settlement
-    /// @param wrapperData Additional data for the wrapper (unused in this implementation)
+    /// @param wrapperData Additional data for any wrappers
     function _wrap(
         IERC20[] calldata tokens,
         uint256[] calldata clearingPrices,
@@ -88,8 +89,18 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing {
         settleState = 1;
 
         // Decode wrapperData into pre and post settlement actions
-        (IEVC.BatchItem[] memory preSettlementItems, IEVC.BatchItem[] memory postSettlementItems) =
-            abi.decode(wrapperData, (IEVC.BatchItem[], IEVC.BatchItem[]));
+        // We load the length in advance so we know how much to read and advance
+        uint256 preSettlementItemsDataSize = uint256(bytes32(wrapperData[0:32]));
+        (IEVC.BatchItem[] memory preSettlementItems) =
+            abi.decode(wrapperData[32:preSettlementItemsDataSize], (IEVC.BatchItem[]));
+        wrapperData = wrapperData[preSettlementItemsDataSize+32:];
+
+        uint256 postSettlementItemsDataSize = uint256(bytes32(wrapperData[0:32]));
+        (IEVC.BatchItem[] memory postSettlementItems) =
+            abi.decode(wrapperData[32:postSettlementItemsDataSize], (IEVC.BatchItem[]));
+        wrapperData = wrapperData[postSettlementItemsDataSize+32:];
+
+
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](preSettlementItems.length + postSettlementItems.length + 1 + trades.length);
 
         // Copy pre-settlement items
@@ -102,7 +113,7 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing {
             onBehalfOfAccount: msg.sender,
             targetContract: address(this),
             value: 0,
-            data: abi.encodeCall(this.evcInternalSettle, (tokens, clearingPrices, trades, interactions))
+            data: abi.encodeCall(this.evcInternalSettle, (tokens, clearingPrices, trades, interactions, wrapperData))
         });
 
         // Copy post-settlement items
@@ -111,12 +122,13 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing {
         }
 
         // Users can force post settlement actions to also occur in `preSettlementItems`. So we call ourself to enforce this
+        address finalSettlement = abi.decode(wrapperData[wrapperData.length - 32], (address));
         GPv2Order.Data memory o;
         for (uint256 i = 0;i < trades.length;i++) {
             GPv2Trade.extractOrder(trades[i], tokens, o);
             bytes32 orderDigest = GPv2Order.hash(
                 o,
-                UPSTREAM_SETTLEMENT.domainSeparator() // TODO can be more efficient
+                GPv2Settlement(finalSettlement).domainSeparator() // TODO can be more efficient
             );
             items[preSettlementItems.length + postSettlementItems.length + 1 + i] = IEVC.BatchItem({
                 onBehalfOfAccount: address(this),
@@ -140,7 +152,8 @@ contract CowEvcWrapper is GPv2Wrapper, GPv2Signing {
         IERC20[] calldata tokens,
         uint256[] calldata clearingPrices,
         GPv2Trade.Data[] calldata trades,
-        GPv2Interaction.Data[][3] calldata interactions
+        GPv2Interaction.Data[][3] calldata interactions,
+        bytes calldata wrapperData
     ) external payable {
         if (msg.sender != address(EVC)) {
             revert Unauthorized(msg.sender);
