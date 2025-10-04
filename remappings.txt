@@ -1,4 +1,5 @@
 cow/=lib/cow/src/contracts
+flash-loan-router/=lib/flash-loan-router/src/
 evc/=lib/euler-vault-kit/lib/ethereum-vault-connector/src/
 ethereum-vault-connector/=lib/euler-vault-kit/lib/ethereum-vault-connector/src/
 openzeppelin/=lib/euler-vault-kit/lib/ethereum-vault-connector/lib/openzeppelin-contracts/contracts/

@@ -11,3 +11,6 @@
 [submodule "lib/evc"]
 	path = lib/evc
 	url = https://github.com/euler-xyz/ethereum-vault-connector
+[submodule "lib/flash-loan-router"]
+	path = lib/flash-loan-router
+	url = https://github.com/cowprotocol/flash-loan-router
