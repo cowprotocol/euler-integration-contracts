@@ -1,17 +1,4 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-
-// You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
 pragma solidity >=0.7.6 <0.9.0;
 pragma abicoder v2;
 
@@ -57,60 +44,48 @@ abstract contract CowWrapper is CowSettlement {
         GPv2Trade.Data[] calldata trades,
         GPv2Interaction.Data[][3] calldata interactions
     ) external {
-        //emit GasLeft(gasleft());
         // Revert if not a valid solver
         if (!AUTHENTICATOR.isSolver(msg.sender)) {
             revert NotASolver(msg.sender);
         }
-        //emit GasLeft(gasleft());
 
         // Extract additional data appended after settle calldata
-        (, uint256 settleLength) = _settleCalldataLength(tokens, interactions);
-        //emit GasLeft(gasleft());
+        uint256 settleEnd = _settleCalldataLength(interactions);
 
         // Require additional data for next settlement address
-        if (msg.data.length < settleLength + 32) {
-            revert WrapperHasNoSettleTarget(settleLength, msg.data.length);
+        if (msg.data.length < settleEnd + 32) {
+            revert WrapperHasNoSettleTarget(settleEnd, msg.data.length);
         }
 
         // Additional data exists after the settle parameters
-        bytes calldata additionalData = msg.data[settleLength:];
+        bytes calldata additionalData = msg.data[settleEnd:];
 
-        _wrap(tokens, clearingPrices, trades, interactions, additionalData);
+        // the settle data will always be after the first 4 bytes (selector), up to the computed data end point
+        _wrap(msg.data[4:settleEnd], additionalData);
     }
 
     /**
-     * @dev The logic for the wrapper. During this function, `_internalSettle` should be called
+     * @dev The logic for the wrapper. During this function, `_internalSettle` should be called. `wrapperData` may be consumed as required for the wrapper's particular requirements
      */
     function _wrap(
-        IERC20[] calldata tokens,
-        uint256[] calldata clearingPrices,
-        GPv2Trade.Data[] calldata trades,
-        GPv2Interaction.Data[][3] calldata interactions,
+        bytes calldata settleData,
         bytes calldata wrapperData
     ) internal virtual;
 
     function _internalSettle(
-        IERC20[] calldata tokens,
-        uint256[] calldata clearingPrices,
-        GPv2Trade.Data[] calldata trades,
-        GPv2Interaction.Data[][3] calldata interactions,
+        bytes calldata settleData,
         bytes calldata wrapperData
     ) internal {
-        //emit GasLeft(gasleft());
         // the next settlement address to call will be the next word of the wrapper data
         address nextSettlement;
-        //= abi.decode(wrapperData, (address));
         assembly {
             nextSettlement := calldataload(wrapperData.offset)
         }
         wrapperData = wrapperData[32:];
         // Encode the settle call
         bytes memory fullCalldata;
-        (uint256 settleStart, uint256 settleEnd) = _settleCalldataLength(tokens, interactions);
-        //console.logBytes(msg.data[settleStart:settleEnd]);
 
-        (bool success, bytes memory returnData) = nextSettlement.call(abi.encodePacked(CowSettlement.settle.selector, msg.data[settleStart:settleEnd], wrapperData));
+        (bool success, bytes memory returnData) = nextSettlement.call(abi.encodePacked(CowSettlement.settle.selector, settleData, wrapperData));
 
         //(bool success, bytes memory returnData) = nextSettlement.call(fullCalldata);
         if (!success) {
@@ -124,16 +99,15 @@ abstract contract CowWrapper is CowSettlement {
     /**
      * @dev Computes the length of the settle() calldata in bytes.
      * This can be used to determine if there is additional data appended to msg.data.
-     * @return start The calldata position in bytes of the start of settle() function calldata
      * @return end The calldata position in bytes of the end of settle() function calldata
      */
     function _settleCalldataLength(
-        IERC20[] calldata tokens,
         GPv2Interaction.Data[][3] calldata interactions
-    ) internal pure returns (uint256 start, uint256 end) {
+    ) internal pure returns (uint256 end) {
+        // NOTE: technically this function could fail to return the correct length, if the data encoded in the ABI is provided indexed in an unusual order
+        // however, doing a deeper check of the total data is very expensive and we are generally working with callers who provide data in a verifiably standardized format
         GPv2Interaction.Data[] calldata lastInteractions = interactions[2];
         assembly {
-            start := sub(tokens.offset, 160)
             end := add(lastInteractions.offset, lastInteractions.length)
         }
     }

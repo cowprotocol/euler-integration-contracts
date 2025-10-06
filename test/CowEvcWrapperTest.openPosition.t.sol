@@ -353,13 +353,7 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
             targetContract: address(wrapper),
             value: 0,
             data: abi.encodeCall(
-                CowEvcWrapper.evcInternalSettle,
-                (
-                    levSettlement.settlement.tokens,
-                    levSettlement.settlement.clearingPrices,
-                    levSettlement.settlement.trades,
-                    levSettlement.settlement.interactions
-                )
+                CowEvcWrapper.evcInternalSettle, (new bytes(0), new bytes(0))
             )
         });
 

@@ -89,9 +89,7 @@ contract CowWrapperTest is Test, CowWrapper {
 
     // Track _wrap calls
     struct WrapCall {
-        IERC20[] tokens;
-        uint256[] clearingPrices;
-        GPv2Trade.Data[] trades;
+        bytes settleData;
         bytes wrapperData;
     }
 
@@ -127,23 +125,16 @@ contract CowWrapperTest is Test, CowWrapper {
     }
 
     function _wrap(
-        IERC20[] calldata tokens,
-        uint256[] calldata clearingPrices,
-        GPv2Trade.Data[] calldata trades,
-        GPv2Interaction.Data[][3] calldata interactions,
+        bytes calldata settleData,
         bytes calldata wrapperData
     ) internal override {
         // Record the wrap call
         WrapCall storage call_ = wrapCalls.push();
-        call_.tokens = tokens;
-        call_.clearingPrices = clearingPrices;
-        for (uint256 i = 0; i < trades.length; i++) {
-            call_.trades.push(trades[i]);
-        }
+        call_.settleData = settleData;
         call_.wrapperData = wrapperData[0:skipWrappedData];
 
         // Call internal settle
-        _internalSettle(tokens, clearingPrices, trades, interactions, wrapperData[skipWrappedData:]);
+        _internalSettle(settleData, wrapperData[skipWrappedData:]);
     }
 
     // These function needs to be exposed because the internal function expects calldata, so this is convienience to accomplish that
@@ -152,18 +143,15 @@ contract CowWrapperTest is Test, CowWrapper {
         uint256[] calldata clearingPrices,
         GPv2Trade.Data[] calldata trades,
         GPv2Interaction.Data[][3] calldata interactions
-    ) external pure returns (uint256, uint256) {
-        return _settleCalldataLength(tokens, interactions);
+    ) external pure returns (uint256) {
+        return _settleCalldataLength(interactions);
     }
 
     function exposed_internalSettle(
-        IERC20[] calldata tokens,
-        uint256[] calldata clearingPrices,
-        GPv2Trade.Data[] calldata trades,
-        GPv2Interaction.Data[][3] calldata interactions,
+        bytes calldata settleData,
         bytes calldata wrapperData
     ) external {
-        _internalSettle(tokens, clearingPrices, trades, interactions, wrapperData);
+        _internalSettle(settleData, wrapperData);
     }
 
     function test_debug_tradeEncoding() public view {
@@ -196,7 +184,7 @@ contract CowWrapperTest is Test, CowWrapper {
         bytes memory encoded = abi.encodeWithSelector(this.settle.selector, tokens, clearingPrices, trades, interactions);
 
         // Log the length difference
-        (, uint256 calculated) = this.exposed_settleCalldataLength(tokens, clearingPrices, trades, interactions);
+        uint256 calculated = this.exposed_settleCalldataLength(tokens, clearingPrices, trades, interactions);
         uint256 actual = encoded.length;
 
         // The difference tells us what we're missing
@@ -211,7 +199,7 @@ contract CowWrapperTest is Test, CowWrapper {
         GPv2Interaction.Data[][3] memory interactions =
             [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0)];
 
-        (, uint256 length) = this.exposed_settleCalldataLength(tokens, clearingPrices, trades, interactions);
+        uint256 length = this.exposed_settleCalldataLength(tokens, clearingPrices, trades, interactions);
 
         assertEq(
             length, abi.encodeWithSelector(this.settle.selector, tokens, clearingPrices, trades, interactions).length
@@ -231,7 +219,7 @@ contract CowWrapperTest is Test, CowWrapper {
         GPv2Interaction.Data[][3] memory interactions =
             [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0)];
 
-        (, uint256 length) = this.exposed_settleCalldataLength(tokens, clearingPrices, trades, interactions);
+        uint256 length = this.exposed_settleCalldataLength(tokens, clearingPrices, trades, interactions);
 
         assertEq(
             length, abi.encodeWithSelector(this.settle.selector, tokens, clearingPrices, trades, interactions).length
@@ -265,7 +253,7 @@ contract CowWrapperTest is Test, CowWrapper {
         GPv2Interaction.Data[][3] memory interactions =
             [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0)];
 
-        (, uint256 length) = this.exposed_settleCalldataLength(tokens, clearingPrices, trades, interactions);
+        uint256 length = this.exposed_settleCalldataLength(tokens, clearingPrices, trades, interactions);
 
         assertEq(
             length, abi.encodeWithSelector(this.settle.selector, tokens, clearingPrices, trades, interactions).length
@@ -283,7 +271,7 @@ contract CowWrapperTest is Test, CowWrapper {
         interactions[1] = new GPv2Interaction.Data[](0);
         interactions[2] = new GPv2Interaction.Data[](0);
 
-        (, uint256 length) = this.exposed_settleCalldataLength(tokens, clearingPrices, trades, interactions);
+        uint256 length = this.exposed_settleCalldataLength(tokens, clearingPrices, trades, interactions);
 
         assertEq(
             length, abi.encodeWithSelector(this.settle.selector, tokens, clearingPrices, trades, interactions).length
@@ -336,7 +324,7 @@ contract CowWrapperTest is Test, CowWrapper {
         interactions[2] = new GPv2Interaction.Data[](1);
         interactions[2][0] = GPv2Interaction.Data({target: address(0xabc), value: 0, callData: hex"deadbeefcafe"});
 
-        (, uint256 length) = this.exposed_settleCalldataLength(tokens, clearingPrices, trades, interactions);
+        uint256 length = this.exposed_settleCalldataLength(tokens, clearingPrices, trades, interactions);
 
         // Base: 452, Tokens: 96, Prices: 96, Trade1: 325, Trade2: 332, Int[0][0]: 132, Int[2][0]: 134
         assertEq(
@@ -371,8 +359,7 @@ contract CowWrapperTest is Test, CowWrapper {
         assertTrue(success);
 
         assertEq(wrapCalls.length, 1);
-        assertEq(wrapCalls[0].tokens.length, 1);
-        assertEq(wrapCalls[0].clearingPrices.length, 1);
+        assertGt(wrapCalls[0].settleData.length, 0);
         assertEq(wrapCalls[0].wrapperData, wrapperData);
     }
 

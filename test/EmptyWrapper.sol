@@ -8,12 +8,9 @@ contract EmptyWrapper is CowWrapper {
     constructor(GPv2Authentication authenticator_) CowWrapper(authenticator_) {}
 
     function _wrap(
-        IERC20[] calldata tokens,
-        uint256[] calldata clearingPrices,
-        GPv2Trade.Data[] calldata trades,
-        GPv2Interaction.Data[][3] calldata interactions,
+        bytes calldata settleData,
         bytes calldata wrappedData
     ) internal override {
-        _internalSettle(tokens, clearingPrices, trades, interactions, wrappedData);
+        _internalSettle(settleData, wrappedData);
     }
 }

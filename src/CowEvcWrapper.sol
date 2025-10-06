@@ -8,6 +8,8 @@ import {GPv2Settlement} from "cow/GPv2Settlement.sol";
 import {CowWrapper, GPv2Interaction, GPv2Authentication} from "./vendor/CowWrapper.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 
+import {EVCTransientUtils} from "./EVCTransientUtils.sol";
+
 import "forge-std/console.sol";
 
 /// @title CowEvcWrapper
@@ -18,14 +20,12 @@ contract CowEvcWrapper is CowWrapper, GPv2Signing {
     /// @notice 0 = not executing, 1 = wrappedSettle() called and not yet internal settle, 2 = evcInternalSettle() called
     uint256 public transient settleState;
 
-    mapping(bytes32 => IEVC.BatchItem[]) private postActions;
-
     error Unauthorized(address msgSender);
     error NoReentrancy();
     error MultiplePossibleReceivers(
         address resolvedVault, address resolvedSender, address secondVault, address secondSender
     );
-    error PostActionsAlreadySet(bytes32 orderDigest, uint256 existingActionsCount);
+    error PostActionsAlreadySet(uint256 callDepth, uint256 existingActionsCount);
 
     error NotEVCSettlement();
 
@@ -39,20 +39,20 @@ contract CowEvcWrapper is CowWrapper, GPv2Signing {
         uint256 minAmount;
     }
 
-    function setRequiredPostActions(bytes32 orderDigest, IEVC.BatchItem[] calldata actions) external {
-        // TODO: anyone who knows the order ID can set this function (need to restrict to solvers)
-        if (postActions[orderDigest].length > 0) {
-            revert PostActionsAlreadySet(orderDigest, postActions[orderDigest].length);
+    function setRequiredPostActions(uint256 callDepth, IEVC.BatchItem[] calldata actions) external {
+        // this call can only be called only once per wrapper invocation. This ensures if the user specified
+        // orders to be executed, they actually happen and cant be overridden by another set of parameters possibly introduced by the solver.
+        uint256 postActionsLength = EVCTransientUtils.readFromTransientStorage(keccak256(abi.encodePacked("postActions", callDepth))).length;
+        if (postActionsLength > 0) {
+            revert PostActionsAlreadySet(callDepth, postActionsLength);
         }
-        for (uint256 i = 0;i < actions.length;i++) {
-            postActions[orderDigest].push(actions[i]);
-        }
+        EVCTransientUtils.copyToTransientStorage(actions, keccak256(abi.encodePacked("postActions", callDepth)));
     }
 
-    function executePostActions(bytes32 orderDigest) external {
-        if (postActions[orderDigest].length > 0) {
-            EVC.batch(postActions[orderDigest]);
-            //postActions[orderDigest] = new IEVC.BatchItem[](0);
+    function executePostActions(uint256 callDepth) external {
+        IEVC.BatchItem[] memory postActions = EVCTransientUtils.readFromTransientStorage(keccak256(abi.encodePacked("postActions", callDepth)));
+        if (postActions.length > 0) {
+            EVC.batch(postActions);
         }
     }
 
@@ -67,18 +67,9 @@ contract CowEvcWrapper is CowWrapper, GPv2Signing {
     }
 
     /// @notice Implementation of GPv2Wrapper._wrap - executes EVC operations around settlement
-    /// @param tokens Tokens involved in settlement
-    /// @param clearingPrices Clearing prices for settlement
-    /// @param trades Trade data for settlement
-    /// @param interactions Interaction data for settlement
+    /// @param settleData Data which will be used for the parameters in a call to `CowSettlement.settle`
     /// @param wrapperData Additional data for any wrappers
-    function _wrap(
-        IERC20[] calldata tokens,
-        uint256[] calldata clearingPrices,
-        GPv2Trade.Data[] calldata trades,
-        GPv2Interaction.Data[][3] calldata interactions,
-        bytes calldata wrapperData
-    ) internal override {
+    function _wrap(bytes calldata settleData, bytes calldata wrapperData) internal override {
         // prevent reentrancy: there is no reason why we would want to allow it here
         if (settleState != 0) {
             revert NoReentrancy();
@@ -102,7 +93,7 @@ contract CowEvcWrapper is CowWrapper, GPv2Signing {
         }
 
         IEVC.BatchItem[] memory items =
-            new IEVC.BatchItem[](preSettlementItems.length + postSettlementItems.length + 1 + trades.length);
+            new IEVC.BatchItem[](preSettlementItems.length + postSettlementItems.length + 2);
 
         // Copy pre-settlement items
         for (uint256 i = 0; i < preSettlementItems.length; i++) {
@@ -114,17 +105,20 @@ contract CowEvcWrapper is CowWrapper, GPv2Signing {
             onBehalfOfAccount: msg.sender,
             targetContract: address(this),
             value: 0,
-            data: abi.encodePacked(abi.encodeCall(this.evcInternalSettle, (tokens, clearingPrices, trades, interactions)), wrapperData)
+            data: abi.encodeCall(this.evcInternalSettle, (settleData, wrapperData))
+        });
+
+        // User forced post settlement items
+        items[preSettlementItems.length + 1] = IEVC.BatchItem({
+            onBehalfOfAccount: address(this),
+            targetContract: address(this),
+            value: 0,
+            data: abi.encodeCall(this.executePostActions, (0))
         });
 
         // Copy post-settlement items
         for (uint256 i = 0; i < postSettlementItems.length; i++) {
-            items[preSettlementItems.length + 1 + i] = postSettlementItems[i];
-        }
-
-        postSettlementItems = processPostActions(tokens, trades, wrapperData);
-        for (uint256 i = 0;i < postSettlementItems.length;i++) {
-            items[items.length - 1 - i] = postSettlementItems[postSettlementItems.length - 1 - i];
+            items[preSettlementItems.length + 2 + i] = postSettlementItems[i];
         }
 
         // Execute all items in a single batch
@@ -132,43 +126,114 @@ contract CowEvcWrapper is CowWrapper, GPv2Signing {
         settleState = 0;
     }
 
-    function processPostActions(IERC20[] calldata tokens, GPv2Trade.Data[] calldata trades, bytes calldata wrapperData) internal view returns (IEVC.BatchItem[] memory newPostActions) {
-        // Users can force post settlement actions to also occur in `preSettlementItems`. So we call ourself to enforce this
-        address payable finalSettlement = abi.decode(wrapperData[wrapperData.length - 32:wrapperData.length], (address));
-        GPv2Order.Data memory o;
-        newPostActions = new IEVC.BatchItem[](trades.length);
-        for (uint256 i = 0; i < trades.length; i++) {
-            GPv2Trade.extractOrder(trades[i], tokens, o);
-            bytes32 orderDigest = GPv2Order.hash(
-                o,
-                GPv2Settlement(finalSettlement).domainSeparator() // TODO can be more efficient
-            );
-            newPostActions[i] = IEVC.BatchItem({
-                onBehalfOfAccount: address(this),
-                targetContract: address(this),
-                value: 0,
-                data: abi.encodeCall(this.executePostActions, (orderDigest))
-            });
+    /// @dev Extracts the order data and signing scheme for the specified trade.
+    ///
+    /// @param trade The trade.
+    /// @param tokens The list of tokens included in the settlement. The token
+    /// indices in the trade parameters map to tokens in this array.
+    /// @param order The memory location to extract the order data to.
+    function extractOrder(
+        GPv2Trade.Data memory trade,
+        IERC20[] memory tokens,
+        GPv2Order.Data memory order
+    ) internal pure returns (GPv2Signing.Scheme signingScheme) {
+        order.sellToken = tokens[trade.sellTokenIndex];
+        order.buyToken = tokens[trade.buyTokenIndex];
+        order.receiver = trade.receiver;
+        order.sellAmount = trade.sellAmount;
+        order.buyAmount = trade.buyAmount;
+        order.validTo = trade.validTo;
+        order.appData = trade.appData;
+        order.feeAmount = trade.feeAmount;
+        (
+            order.kind,
+            order.partiallyFillable,
+            order.sellTokenBalance,
+            order.buyTokenBalance,
+            signingScheme
+        ) = extractFlags(trade.flags);
+    }
+
+    /// @dev Decodes trade flags.
+    ///
+    /// Trade flags are used to tightly encode information on how to decode
+    /// an order. Examples that directly affect the structure of an order are
+    /// the kind of order (either a sell or a buy order) as well as whether the
+    /// order is partially fillable or if it is a "fill-or-kill" order. It also
+    /// encodes the signature scheme used to validate the order. As the most
+    /// likely values are fill-or-kill sell orders by an externally owned
+    /// account, the flags are chosen such that `0x00` represents this kind of
+    /// order. The flags byte uses the following format:
+    ///
+    /// ```
+    /// bit | 31 ...   | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+    /// ----+----------+-------+---+-------+---+---+
+    ///     | reserved | *   * | * | *   * | * | * |
+    ///                  |   |   |   |   |   |   |
+    ///                  |   |   |   |   |   |   +---- order kind bit, 0 for a sell order
+    ///                  |   |   |   |   |   |         and 1 for a buy order
+    ///                  |   |   |   |   |   |
+    ///                  |   |   |   |   |   +-------- order fill bit, 0 for fill-or-kill
+    ///                  |   |   |   |   |             and 1 for a partially fillable order
+    ///                  |   |   |   |   |
+    ///                  |   |   |   +---+------------ use internal sell token balance bit:
+    ///                  |   |   |                     0x: ERC20 token balance
+    ///                  |   |   |                     10: external Balancer Vault balance
+    ///                  |   |   |                     11: internal Balancer Vault balance
+    ///                  |   |   |
+    ///                  |   |   +-------------------- use buy token balance bit
+    ///                  |   |                         0: ERC20 token balance
+    ///                  |   |                         1: internal Balancer Vault balance
+    ///                  |   |
+    ///                  +---+------------------------ signature scheme bits:
+    ///                                                00: EIP-712
+    ///                                                01: eth_sign
+    ///                                                10: EIP-1271
+    ///                                                11: pre_sign
+    /// ```
+    function extractFlags(
+        uint256 flags
+    )
+        internal
+        pure
+        returns (
+            bytes32 kind,
+            bool partiallyFillable,
+            bytes32 sellTokenBalance,
+            bytes32 buyTokenBalance,
+            GPv2Signing.Scheme signingScheme
+        )
+    {
+        if (flags & 0x01 == 0) {
+            kind = GPv2Order.KIND_SELL;
+        } else {
+            kind = GPv2Order.KIND_BUY;
         }
+        partiallyFillable = flags & 0x02 != 0;
+        if (flags & 0x08 == 0) {
+            sellTokenBalance = GPv2Order.BALANCE_ERC20;
+        } else if (flags & 0x04 == 0) {
+            sellTokenBalance = GPv2Order.BALANCE_EXTERNAL;
+        } else {
+            sellTokenBalance = GPv2Order.BALANCE_INTERNAL;
+        }
+        if (flags & 0x10 == 0) {
+            buyTokenBalance = GPv2Order.BALANCE_ERC20;
+        } else {
+            buyTokenBalance = GPv2Order.BALANCE_INTERNAL;
+        }
+
+        // NOTE: Take advantage of the fact that Solidity will revert if the
+        // following expression does not produce a valid enum value. This means
+        // we check here that the leading reserved bits must be 0.
+        signingScheme = GPv2Signing.Scheme(flags >> 5);
     }
 
     /// @notice Internal settlement function called by EVC
-    /// @param tokens Tokens involved in settlement
-    /// @param clearingPrices Clearing prices for settlement
-    /// @param trades Trade data for settlement
-    /// @param interactions Interaction data for settlement
-    function evcInternalSettle(
-        IERC20[] calldata tokens,
-        uint256[] calldata clearingPrices,
-        GPv2Trade.Data[] calldata trades,
-        GPv2Interaction.Data[][3] calldata interactions
-    ) external payable {
+    function evcInternalSettle(bytes calldata settleData, bytes calldata wrapperData) external payable {
         if (msg.sender != address(EVC)) {
             revert Unauthorized(msg.sender);
         }
-
-        (, uint256 endSettleData) = _settleCalldataLength(tokens, interactions);
-        bytes calldata wrapperData = msg.data[endSettleData:];
 
         if (settleState != 1) {
             // origSender will be address(0) here which indiates that internal settle was called when it shouldn't be (outside of wrappedSettle call)
@@ -178,6 +243,6 @@ contract CowEvcWrapper is CowWrapper, GPv2Signing {
         settleState = 2;
 
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
-        _internalSettle(tokens, clearingPrices, trades, interactions, wrapperData);
+        _internalSettle(settleData, wrapperData);
     }
 }
