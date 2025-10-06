@@ -17,6 +17,8 @@ pragma abicoder v2;
 
 import {IERC20, GPv2Trade, GPv2Interaction, GPv2Authentication} from "cow/GPv2Settlement.sol";
 
+import "forge-std/console.sol";
+
 interface CowSettlement {
     function settle(
         IERC20[] calldata tokens,
@@ -63,7 +65,7 @@ abstract contract CowWrapper is CowSettlement {
         //emit GasLeft(gasleft());
 
         // Extract additional data appended after settle calldata
-        uint256 settleLength = _settleCalldataLength(tokens, clearingPrices, trades, interactions);
+        (, uint256 settleLength) = _settleCalldataLength(tokens, interactions);
         //emit GasLeft(gasleft());
 
         // Require additional data for next settlement address
@@ -97,31 +99,20 @@ abstract contract CowWrapper is CowSettlement {
     ) internal {
         //emit GasLeft(gasleft());
         // the next settlement address to call will be the next word of the wrapper data
-        address nextSettlement = abi.decode(wrapperData, (address));
+        address nextSettlement;
+        //= abi.decode(wrapperData, (address));
+        assembly {
+            nextSettlement := calldataload(wrapperData.offset)
+        }
         wrapperData = wrapperData[32:];
         // Encode the settle call
         bytes memory fullCalldata;
-        if (wrapperData.length >= 32) {
-            fullCalldata =
-                abi.encodeWithSelector(CowSettlement.settle.selector, tokens, clearingPrices, trades, interactions);
+        (uint256 settleStart, uint256 settleEnd) = _settleCalldataLength(tokens, interactions);
+        //console.logBytes(msg.data[settleStart:settleEnd]);
 
-            assembly {
-                // add 0x20 because of the length of the fullCalldata itself at beginning we want to always skip
-                let origLength := add(mload(fullCalldata), 0x20)
-                let newLength := add(origLength, wrapperData.length)
-                mstore(fullCalldata, sub(newLength, 0x20))
-                mstore(0x40, add(fullCalldata, newLength))
-                calldatacopy(add(fullCalldata, origLength), wrapperData.offset, wrapperData.length)
-            }
-        } else {
-            fullCalldata =
-                abi.encodeWithSelector(CowSettlement.settle.selector, tokens, clearingPrices, trades, interactions);
-            // no wrapperData to append
-        }
-        //emit GasLeft(gasleft());
+        (bool success, bytes memory returnData) = nextSettlement.call(abi.encodePacked(CowSettlement.settle.selector, msg.data[settleStart:settleEnd], wrapperData));
 
-        // Call UPSTREAM_SETTLEMENT with the full calldata
-        (bool success, bytes memory returnData) = nextSettlement.call(fullCalldata);
+        //(bool success, bytes memory returnData) = nextSettlement.call(fullCalldata);
         if (!success) {
             // Bubble up the revert reason
             assembly {
@@ -133,57 +124,17 @@ abstract contract CowWrapper is CowSettlement {
     /**
      * @dev Computes the length of the settle() calldata in bytes.
      * This can be used to determine if there is additional data appended to msg.data.
-     * @return The length in bytes of the settle() function calldata
+     * @return start The calldata position in bytes of the start of settle() function calldata
+     * @return end The calldata position in bytes of the end of settle() function calldata
      */
     function _settleCalldataLength(
         IERC20[] calldata tokens,
-        uint256[] calldata clearingPrices,
-        GPv2Trade.Data[] calldata trades,
         GPv2Interaction.Data[][3] calldata interactions
-    ) internal pure returns (uint256) {
-        // 4 bytes for function selector
-        // + 4 * 32 bytes for the 4 dynamic array offset pointers
-        // + length of each dynamic array data
-        uint256 length = 4 + 4 * 32;
-
-        // tokens array: 32 bytes for length + 32 bytes per token address
-        length += 32 + tokens.length * 32;
-
-        // clearingPrices array: 32 bytes for length + 32 bytes per price
-        length += 32 + clearingPrices.length * 32;
-
-        // trades array: 32 bytes for length + offset pointers + trade data
-        length += 32;
-        // Each trade needs an offset pointer in the array
-        uint256 tradesLength = trades.length;
-        length += tradesLength * 32;
-        for (uint256 i = 0; i < tradesLength; i++) {
-            // Each trade struct has fixed and dynamic parts
-            // Fixed fields: sellTokenIndex, buyTokenIndex, receiver, sellAmount, buyAmount, validTo, appData, feeAmount, flags, executedAmount: 10 * 32 bytes
-            // Dynamic field pointer for signature: 32 bytes
-            // Signature length: 32 bytes
-            // Signature data: trades[i].signature.length bytes (padded to 32-byte boundary)
-            length += 11 * 32 + 32 + ((trades[i].signature.length + 31) / 32) * 32;
+    ) internal pure returns (uint256 start, uint256 end) {
+        GPv2Interaction.Data[] calldata lastInteractions = interactions[2];
+        assembly {
+            start := sub(tokens.offset, 160)
+            end := add(lastInteractions.offset, lastInteractions.length)
         }
-
-        // interactions array (fixed array of 3 dynamic arrays)
-        for (uint256 i = 0; i < 3; i++) {
-            // 32 bytes for offset to this interaction array
-            length += 32;
-        }
-        for (uint256 i = 0; i < 3; i++) {
-            // 32 bytes for length of this interaction array
-            length += 32;
-            // 32 bytes for offset pointer to each interaction struct
-            uint256 interactionsLength = interactions[i].length;
-            length += interactions[i].length * 32;
-            for (uint256 j = 0; j < interactionsLength; j++) {
-                // Each interaction struct: target (32 bytes), value (32 bytes), callData offset (32 bytes)
-                // callData length (32 bytes) + callData (padded to 32-byte boundary)
-                length += 3 * 32 + 32 + ((interactions[i][j].callData.length + 31) / 32) * 32;
-            }
-        }
-
-        return length;
     }
 }

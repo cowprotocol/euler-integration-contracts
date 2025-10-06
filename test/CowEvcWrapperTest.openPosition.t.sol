@@ -358,8 +358,7 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
                     levSettlement.settlement.tokens,
                     levSettlement.settlement.clearingPrices,
                     levSettlement.settlement.trades,
-                    levSettlement.settlement.interactions,
-                    new bytes(0)
+                    levSettlement.settlement.interactions
                 )
             )
         });

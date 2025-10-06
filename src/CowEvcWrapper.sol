@@ -114,7 +114,7 @@ contract CowEvcWrapper is CowWrapper, GPv2Signing {
             onBehalfOfAccount: msg.sender,
             targetContract: address(this),
             value: 0,
-            data: abi.encodeCall(this.evcInternalSettle, (tokens, clearingPrices, trades, interactions, wrapperData))
+            data: abi.encodePacked(abi.encodeCall(this.evcInternalSettle, (tokens, clearingPrices, trades, interactions)), wrapperData)
         });
 
         // Copy post-settlement items
@@ -161,12 +161,14 @@ contract CowEvcWrapper is CowWrapper, GPv2Signing {
         IERC20[] calldata tokens,
         uint256[] calldata clearingPrices,
         GPv2Trade.Data[] calldata trades,
-        GPv2Interaction.Data[][3] calldata interactions,
-        bytes calldata wrapperData
+        GPv2Interaction.Data[][3] calldata interactions
     ) external payable {
         if (msg.sender != address(EVC)) {
             revert Unauthorized(msg.sender);
         }
+
+        (, uint256 endSettleData) = _settleCalldataLength(tokens, interactions);
+        bytes calldata wrapperData = msg.data[endSettleData:];
 
         if (settleState != 1) {
             // origSender will be address(0) here which indiates that internal settle was called when it shouldn't be (outside of wrappedSettle call)
