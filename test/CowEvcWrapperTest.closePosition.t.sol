@@ -130,7 +130,7 @@ contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
             onBehalfOfAccount: user,
             targetContract: address(wrapper),
             value: 0,
-            data: abi.encodeCall(CowEvcWrapper.setRequiredPostActions, (0, requiredPostItems))
+            data: abi.encodeCall(CowEvcWrapper.setRequiredPostActions, (requiredPostItems))
         });
 
         // User signs the batch

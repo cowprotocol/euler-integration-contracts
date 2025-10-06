@@ -17,8 +17,10 @@ import "forge-std/console.sol";
 contract CowEvcWrapper is CowWrapper, GPv2Signing {
     IEVC public immutable EVC;
 
-    /// @notice 0 = not executing, 1 = wrappedSettle() called and not yet internal settle, 2 = evcInternalSettle() called
-    uint256 public transient settleState;
+    /// @notice Tracks the number of times this wrapper has been called. Used to keep track of effective session data
+    uint256 public transient depth;
+    /// @notice Tracks the number of times `evcInternalSettle` has been called. It should only be called once in a transaction
+    uint256 public transient settleCalls;
 
     error Unauthorized(address msgSender);
     error NoReentrancy();
@@ -39,18 +41,19 @@ contract CowEvcWrapper is CowWrapper, GPv2Signing {
         uint256 minAmount;
     }
 
-    function setRequiredPostActions(uint256 callDepth, IEVC.BatchItem[] calldata actions) external {
+    function setRequiredPostActions(IEVC.BatchItem[] calldata actions) external {
         // this call can only be called only once per wrapper invocation. This ensures if the user specified
         // orders to be executed, they actually happen and cant be overridden by another set of parameters possibly introduced by the solver.
-        uint256 postActionsLength = EVCTransientUtils.readFromTransientStorage(keccak256(abi.encodePacked("postActions", callDepth))).length;
+        // we use the `depth` to determine where we are in the call stack
+        uint256 postActionsLength = EVCTransientUtils.readFromTransientStorage(keccak256(abi.encodePacked("postActions", depth))).length;
         if (postActionsLength > 0) {
-            revert PostActionsAlreadySet(callDepth, postActionsLength);
+            revert PostActionsAlreadySet(depth, postActionsLength);
         }
-        EVCTransientUtils.copyToTransientStorage(actions, keccak256(abi.encodePacked("postActions", callDepth)));
+        EVCTransientUtils.copyToTransientStorage(actions, keccak256(abi.encodePacked("postActions", depth)));
     }
 
     function executePostActions(uint256 callDepth) external {
-        IEVC.BatchItem[] memory postActions = EVCTransientUtils.readFromTransientStorage(keccak256(abi.encodePacked("postActions", callDepth)));
+        IEVC.BatchItem[] memory postActions = EVCTransientUtils.readFromTransientStorage(keccak256(abi.encodePacked("postActions", depth)));
         if (postActions.length > 0) {
             EVC.batch(postActions);
         }
@@ -70,11 +73,7 @@ contract CowEvcWrapper is CowWrapper, GPv2Signing {
     /// @param settleData Data which will be used for the parameters in a call to `CowSettlement.settle`
     /// @param wrapperData Additional data for any wrappers
     function _wrap(bytes calldata settleData, bytes calldata wrapperData) internal override {
-        // prevent reentrancy: there is no reason why we would want to allow it here
-        if (settleState != 0) {
-            revert NoReentrancy();
-        }
-        settleState = 1;
+        depth = depth + 1;
 
         // Decode wrapperData into pre and post settlement actions
         // We load the length in advance so we know how much to read and advance
@@ -113,7 +112,7 @@ contract CowEvcWrapper is CowWrapper, GPv2Signing {
             onBehalfOfAccount: address(this),
             targetContract: address(this),
             value: 0,
-            data: abi.encodeCall(this.executePostActions, (0))
+            data: abi.encodeCall(this.executePostActions, (depth))
         });
 
         // Copy post-settlement items
@@ -123,7 +122,6 @@ contract CowEvcWrapper is CowWrapper, GPv2Signing {
 
         // Execute all items in a single batch
         EVC.batch(items);
-        settleState = 0;
     }
 
     /// @dev Extracts the order data and signing scheme for the specified trade.
@@ -235,12 +233,13 @@ contract CowEvcWrapper is CowWrapper, GPv2Signing {
             revert Unauthorized(msg.sender);
         }
 
-        if (settleState != 1) {
+        // depth should be > 0 (actively wrapping a settle call) and no settle call should have been performed yet
+        if (depth == 0 || settleCalls != 0) {
             // origSender will be address(0) here which indiates that internal settle was called when it shouldn't be (outside of wrappedSettle call)
             revert Unauthorized(address(0));
         }
 
-        settleState = 2;
+        settleCalls = settleCalls + 1;
 
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
         _internalSettle(settleData, wrapperData);
