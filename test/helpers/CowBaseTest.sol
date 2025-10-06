@@ -71,12 +71,12 @@ contract CowBaseTest is EVaultTestBase {
         vm.rollFork(BLOCK_NUMBER);
 
         evc = EthereumVaultConnector(realEVC);
+        GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(cowSettlement.authenticator());
 
         user = vm.addr(privateKey);
-        wrapper = new CowEvcWrapper(address(evc), payable(cowSettlement));
+        wrapper = new CowEvcWrapper(address(evc), allowList);
 
         // Add wrapper and our fake solver as solver
-        GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(cowSettlement.authenticator());
         address manager = allowList.manager();
         // vm.deal(address(manager), 1e18);
         vm.startPrank(manager);

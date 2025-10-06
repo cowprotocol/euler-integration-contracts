@@ -35,6 +35,7 @@ interface CowSettlement {
  * Additionally, it needs to be approved by the GPv2Authentication contract
  */
 abstract contract CowWrapper is CowSettlement {
+    event GasLeft(uint256);
     error NotASolver(address unauthorized);
     error WrapperHasNoSettleTarget(uint256 settleDataLength, uint256 fullCalldataLength);
 
@@ -54,13 +55,16 @@ abstract contract CowWrapper is CowSettlement {
         GPv2Trade.Data[] calldata trades,
         GPv2Interaction.Data[][3] calldata interactions
     ) external {
+        emit GasLeft(gasleft());
         // Revert if not a valid solver
         if (!AUTHENTICATOR.isSolver(msg.sender)) {
             revert NotASolver(msg.sender);
         }
+        emit GasLeft(gasleft());
 
         // Extract additional data appended after settle calldata
         uint256 settleLength = _settleCalldataLength(tokens, clearingPrices, trades, interactions);
+        emit GasLeft(gasleft());
 
         // Require additional data for next settlement address
         if (msg.data.length < settleLength + 32) {
@@ -91,19 +95,15 @@ abstract contract CowWrapper is CowSettlement {
         GPv2Interaction.Data[][3] calldata interactions,
         bytes calldata wrapperData
     ) internal {
+        emit GasLeft(gasleft());
         // the next settlement address to call will be the next word of the wrapper data
         address nextSettlement = abi.decode(wrapperData, (address));
         wrapperData = wrapperData[32:];
         // Encode the settle call
         bytes memory fullCalldata;
         if (wrapperData.length >= 32) {
-            fullCalldata = abi.encodeWithSelector(
-                CowSettlement.settle.selector,
-                tokens,
-                clearingPrices,
-                trades,
-                interactions
-            );
+            fullCalldata =
+                abi.encodeWithSelector(CowSettlement.settle.selector, tokens, clearingPrices, trades, interactions);
 
             assembly {
                 // add 0x20 because of the length of the fullCalldata itself at beginning we want to always skip
@@ -113,12 +113,12 @@ abstract contract CowWrapper is CowSettlement {
                 mstore(0x40, add(fullCalldata, newLength))
                 calldatacopy(add(fullCalldata, origLength), wrapperData.offset, wrapperData.length)
             }
-
         } else {
             fullCalldata =
                 abi.encodeWithSelector(CowSettlement.settle.selector, tokens, clearingPrices, trades, interactions);
             // no wrapperData to append
         }
+        emit GasLeft(gasleft());
 
         // Call UPSTREAM_SETTLEMENT with the full calldata
         (bool success, bytes memory returnData) = nextSettlement.call(fullCalldata);
@@ -155,8 +155,9 @@ abstract contract CowWrapper is CowSettlement {
         // trades array: 32 bytes for length + offset pointers + trade data
         length += 32;
         // Each trade needs an offset pointer in the array
-        length += trades.length * 32;
-        for (uint256 i = 0; i < trades.length; i++) {
+        uint256 tradesLength = trades.length;
+        length += tradesLength * 32;
+        for (uint256 i = 0; i < tradesLength; i++) {
             // Each trade struct has fixed and dynamic parts
             // Fixed fields: sellTokenIndex, buyTokenIndex, receiver, sellAmount, buyAmount, validTo, appData, feeAmount, flags, executedAmount: 10 * 32 bytes
             // Dynamic field pointer for signature: 32 bytes
@@ -174,8 +175,9 @@ abstract contract CowWrapper is CowSettlement {
             // 32 bytes for length of this interaction array
             length += 32;
             // 32 bytes for offset pointer to each interaction struct
+            uint256 interactionsLength = interactions[i].length;
             length += interactions[i].length * 32;
-            for (uint256 j = 0; j < interactions[i].length; j++) {
+            for (uint256 j = 0; j < interactionsLength; j++) {
                 // Each interaction struct: target (32 bytes), value (32 bytes), callData offset (32 bytes)
                 // callData length (32 bytes) + callData (padded to 32-byte boundary)
                 length += 3 * 32 + 32 + ((interactions[i][j].callData.length + 31) / 32) * 32;

@@ -6,6 +6,8 @@ import {CowWrapper, CowSettlement} from "../src/vendor/CowWrapper.sol";
 import {IERC20, GPv2Trade, GPv2Interaction, GPv2Authentication} from "cow/GPv2Settlement.sol";
 import {EmptyWrapper} from "./EmptyWrapper.sol";
 
+import {CowWrapperHelpers} from "./helpers/CowWrapperHelpers.sol";
+
 import "forge-std/console.sol";
 
 contract MockAuthentication {
@@ -455,7 +457,7 @@ contract CowWrapperTest is Test, CowWrapper {
         // Build the chained wrapper data:
         // solver -> wrapper1 -> wrapper2 -> wrapper3 -> mockSettlement
         // Each wrapper just needs the next address (32 bytes padded)
-        bytes memory wrapperData = abi.encode(
+        /*bytes memory wrapperData = abi.encode(
             address(wrapper2), // wrapper1 calls wrapper2
             address(wrapper3), // wrapper2 calls wrapper3
             address(mockSettlement) // wrapper3 calls mockSettlement
@@ -464,7 +466,16 @@ contract CowWrapperTest is Test, CowWrapper {
         // Build the full calldata for wrapper1
         bytes memory settleCalldata =
             abi.encodeWithSelector(CowSettlement.settle.selector, tokens, clearingPrices, trades, interactions);
-        bytes memory fullCalldata = abi.encodePacked(settleCalldata, wrapperData);
+        bytes memory fullCalldata = abi.encodePacked(settleCalldata, wrapperData);*/
+
+        address[] memory wrappers = new address[](3);
+        wrappers[0] = address(wrapper1);
+        wrappers[1] = address(wrapper2);
+        wrappers[2] = address(wrapper3);
+
+        bytes[] memory wrapperDatas = new bytes[](3);
+
+        (address target, bytes memory fullCalldata) = CowWrapperHelpers.encodeWrapperCall(wrappers, wrapperDatas, address(mockSettlement), tokens, clearingPrices, trades, interactions);
 
         // Call wrapper1 as the solver
         vm.prank(solver);

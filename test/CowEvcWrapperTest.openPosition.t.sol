@@ -20,6 +20,8 @@ import {CowBaseTest} from "./helpers/CowBaseTest.sol";
 
 import {SignerECDSA} from "./helpers/SignerECDSA.sol";
 
+import {CowWrapperHelpers} from "./helpers/CowWrapperHelpers.sol";
+
 contract CowEvcWrapperOpenPositionTest is CowBaseTest {
     // Euler vaults
 
@@ -170,15 +172,27 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
         vm.stopPrank();
 
         {
-            address[] memory targets = new address[](1);
-            bytes[] memory datas = new bytes[](1);
+
             bytes memory preItemsData = abi.encode(preSettlementItems);
             bytes memory postItemsData = abi.encode(postSettlementItems);
-            bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
-            targets[0] = address(wrapper);
-            datas[0] = abi.encodeWithSelector(
-                wrapper.settle.selector, settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions, evcActions
+            address[] memory wrapperTargets = new address[](1);
+            wrapperTargets[0] = address(wrapper);
+            bytes[] memory wrapperDatas = new bytes[](1);
+            wrapperDatas[0] = abi.encodePacked(preItemsData.length, preItemsData, postItemsData.length, postItemsData);
+
+            address[] memory targets = new address[](1);
+            bytes[] memory datas = new bytes[](1);
+
+            (targets[0], datas[0]) = CowWrapperHelpers.encodeWrapperCall(
+                wrapperTargets, 
+                wrapperDatas, 
+                address(cowSettlement), 
+                settlement.tokens, 
+                settlement.clearingPrices, 
+                settlement.trades, 
+                settlement.interactions
             );
+
             solver.runBatch(targets, datas);
         }
     }
@@ -338,7 +352,7 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
             onBehalfOfAccount: address(this),
             targetContract: address(wrapper),
             value: 0,
-            data: abi.encodeCall(CowEvcWrapper.evcInternalSettle, (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions))
+            data: abi.encodeCall(CowEvcWrapper.evcInternalSettle, (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions, new bytes(0)))
         });
 
         vm.expectRevert(abi.encodeWithSelector(CowEvcWrapper.Unauthorized.selector, address(0)));

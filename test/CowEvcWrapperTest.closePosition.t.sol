@@ -62,7 +62,8 @@ contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
         // Setup interactions
         interactions = [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](2), new GPv2Interaction.Data[](0)];
         interactions[1][0] = getWithdrawInteraction(sellVaultToken, buyAmount * clearingPrices[1] / 1e18);
-        interactions[1][1] = getSwapInteraction(IERC4626(sellVaultToken).asset(), buyToRepayToken, buyAmount * clearingPrices[1] / 1e18);
+        interactions[1][1] =
+            getSwapInteraction(IERC4626(sellVaultToken).asset(), buyToRepayToken, buyAmount * clearingPrices[1] / 1e18);
         return (orderUid, orderDigest, orderData, tokens, clearingPrices, trades, interactions);
     }
 
@@ -141,8 +142,8 @@ contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
         // User signs the batch
         bytes memory batchData = abi.encodeCall(IEVC.batch, items);
         bytes memory batchSignature =
-            // nonce is set to "1" here because it was already consumed once by opening the order
-            signerECDSA.signPermit(user, address(wrapper), 0, 1, block.timestamp, 0, batchData);
+        // nonce is set to "1" here because it was already consumed once by opening the order
+         signerECDSA.signPermit(user, address(wrapper), 0, 1, block.timestamp, 0, batchData);
 
         // before unpranking lets approve the settlement contract
         IEVault(eSUSDS).approve(cowSettlement.vaultRelayer(), type(uint256).max);
@@ -170,7 +171,7 @@ contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
             bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
             targets[0] = address(wrapper);
             datas[0] = abi.encodeWithSelector(
-                wrapper.wrappedSettle.selector, tokens, clearingPrices, trades, interactions, evcActions
+                wrapper.settle.selector, tokens, clearingPrices, trades, interactions, evcActions
             );
             solver.runBatch(targets, datas);
         }
@@ -183,7 +184,6 @@ contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
             5 ether, // rounding in favor of the vault during deposits
             "User should receive eSUSDS"
         );
-
 
         // uint256 susdsBalanceInMilkSwapAfter = IERC20(SUSDS).balanceOf(address(milkSwap));
         // assertEq(susdsBalanceInMilkSwapAfter, susdsBalanceInMilkSwapBefore - buyAmount, "MilkSwap should have less SUSDS");
