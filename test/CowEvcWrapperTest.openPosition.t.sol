@@ -10,6 +10,7 @@ import {IEVault, IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.
 import {EVaultTestBase} from "euler-vault-kit/test/unit/evault/EVaultTestBase.t.sol";
 
 import {CowEvcWrapper, GPv2Trade, GPv2Interaction} from "../src/CowEvcWrapper.sol";
+import {CowWrapper} from "../src/vendor/CowWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 //import {GPv2Settlement} from "cow/GPv2Settlement.sol";
 
@@ -298,14 +299,25 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
         //vm.startPrank(solver);
 
         {
-            address[] memory targets = new address[](1);
-            bytes[] memory datas = new bytes[](1);
+
             bytes memory preItemsData = abi.encode(preSettlementItems);
             bytes memory postItemsData = abi.encode(postSettlementItems);
-            bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
-            targets[0] = address(wrapper);
-            datas[0] = abi.encodeWithSelector(
-                wrapper.settle.selector, settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions, evcActions
+            address[] memory wrapperTargets = new address[](1);
+            wrapperTargets[0] = address(wrapper);
+            bytes[] memory wrapperDatas = new bytes[](1);
+            wrapperDatas[0] = abi.encodePacked(preItemsData.length, preItemsData, postItemsData.length, postItemsData);
+
+            address[] memory targets = new address[](1);
+            bytes[] memory datas = new bytes[](1);
+
+            (targets[0], datas[0]) = CowWrapperHelpers.encodeWrapperCall(
+                wrapperTargets,
+                wrapperDatas,
+                address(cowSettlement),
+                settlement.tokens,
+                settlement.clearingPrices,
+                settlement.trades,
+                settlement.interactions
             );
 
             solver.runBatch(targets, datas);
@@ -439,7 +451,7 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
         // This contract will be the "malicious" solver. It should not be able to complete the settle flow
         //bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
 
-        vm.expectRevert("GPv2Wrapper: not a solver");
+        vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, address(this)));
         wrapper.settle(settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions);
     }
 }

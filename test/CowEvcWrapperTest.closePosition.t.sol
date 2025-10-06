@@ -166,13 +166,27 @@ contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
         console.log("user balance pre", IEVault(eSUSDS).balanceOf(user));
 
         {
+
+            bytes memory preItemsData = abi.encode(preSettlementItems);
+            bytes memory postItemsData = abi.encode(postSettlementItems);
+            address[] memory wrapperTargets = new address[](1);
+            wrapperTargets[0] = address(wrapper);
+            bytes[] memory wrapperDatas = new bytes[](1);
+            wrapperDatas[0] = abi.encodePacked(preItemsData.length, preItemsData, postItemsData.length, postItemsData);
+
             address[] memory targets = new address[](1);
             bytes[] memory datas = new bytes[](1);
-            bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
-            targets[0] = address(wrapper);
-            datas[0] = abi.encodeWithSelector(
-                wrapper.settle.selector, tokens, clearingPrices, trades, interactions, evcActions
+
+            (targets[0], datas[0]) = CowWrapperHelpers.encodeWrapperCall(
+                wrapperTargets,
+                wrapperDatas,
+                address(cowSettlement),
+                tokens,
+                clearingPrices,
+                trades,
+                interactions
             );
+
             solver.runBatch(targets, datas);
         }
 
