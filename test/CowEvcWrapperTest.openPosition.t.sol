@@ -47,10 +47,7 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
     struct LeveragedSettlementData {
         bytes orderUid;
         GPv2Order.Data orderData;
-        IERC20[] tokens;
-        uint256[] clearingPrices;
-        GPv2Trade.Data[] trades;
-        GPv2Interaction.Data[][3] interactions;
+        CowWrapperHelpers.SettleCall settlement;
     }
 
     function getLeveragedOpenSettlement(
@@ -60,13 +57,7 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
         address buyVaultToken,
         uint256 sellAmount,
         uint256 buyAmount
-    )
-        public
-        view
-        returns (
-            LeveragedSettlementData memory r
-        )
-    {
+    ) public view returns (LeveragedSettlementData memory r) {
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
         // Create order data
@@ -89,30 +80,31 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
         r.orderUid = getOrderUid(owner, r.orderData);
 
         // Get trade data
-        r.trades = new GPv2Trade.Data[](1);
-        r.trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, r.orderData.receiver, false);
+        r.settlement.trades = new GPv2Trade.Data[](1);
+        r.settlement.trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, r.orderData.receiver, false);
 
         // Get tokens and prices
-        (r.tokens, r.clearingPrices) = getTokensAndPrices();
+        (r.settlement.tokens, r.settlement.clearingPrices) = getTokensAndPrices();
 
         // Setup interactions
-        r.interactions = [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](3), new GPv2Interaction.Data[](0)];
-        r.interactions[1][0] = getSwapInteraction(sellToken, IERC4626(buyVaultToken).asset(), sellAmount);
-        r.interactions[1][1] = getDepositInteraction(buyVaultToken, buyAmount + 1 ether);
-        r.interactions[1][2] = getSkimInteraction();
+        r.settlement.interactions =
+            [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](3), new GPv2Interaction.Data[](0)];
+        r.settlement.interactions[1][0] = getSwapInteraction(sellToken, IERC4626(buyVaultToken).asset(), sellAmount);
+        r.settlement.interactions[1][1] = getDepositInteraction(buyVaultToken, buyAmount + 1 ether);
+        r.settlement.interactions[1][2] = getSkimInteraction();
     }
 
     function _doLeverageOpen(uint256 sellAmount, uint256 buyAmount) internal {
-
         vm.startPrank(user);
 
         // Get settlement, that sells WETH for SUSDS
         // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
-        LeveragedSettlementData memory settlement = getLeveragedOpenSettlement(user, user, WETH, eSUSDS, sellAmount, buyAmount);
+        LeveragedSettlementData memory levSettlement =
+            getLeveragedOpenSettlement(user, user, WETH, eSUSDS, sellAmount, buyAmount);
 
         // User, pre-approve the order
-        console.logBytes(settlement.orderUid);
-        cowSettlement.setPreSignature(settlement.orderUid, true);
+        console.logBytes(levSettlement.orderUid);
+        cowSettlement.setPreSignature(levSettlement.orderUid, true);
 
         signerECDSA.setPrivateKey(privateKey);
 
@@ -157,7 +149,7 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
 
         vm.stopPrank();
 
-        // pre-settlement will include nested batch signed and executed through `EVC.permit`
+        // pre-levSettlement will include nested batch signed and executed through `EVC.permit`
         IEVC.BatchItem[] memory preSettlementItems = new IEVC.BatchItem[](1);
         preSettlementItems[0] = IEVC.BatchItem({
             onBehalfOfAccount: address(0),
@@ -166,32 +158,29 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
             data: abi.encodeCall(IEVC.permit, (user, address(wrapper), 0, 0, block.timestamp, 0, batchData, batchSignature))
         });
 
-        // post-settlement will check slippage and skim the free cash on the destination vault for the user
+        // post-levSettlement will check slippage and skim the free cash on the destination vault for the user
         IEVC.BatchItem[] memory postSettlementItems = new IEVC.BatchItem[](0);
 
-        // Execute the settlement through the wrapper
+        // Execute the levSettlement through the wrapper
         vm.stopPrank();
 
         {
-
-            bytes memory preItemsData = abi.encode(preSettlementItems);
-            bytes memory postItemsData = abi.encode(postSettlementItems);
             address[] memory wrapperTargets = new address[](1);
-            wrapperTargets[0] = address(wrapper);
             bytes[] memory wrapperDatas = new bytes[](1);
-            wrapperDatas[0] = abi.encodePacked(preItemsData.length, preItemsData, postItemsData.length, postItemsData);
+
+            {
+                bytes memory preItemsData = abi.encode(preSettlementItems);
+                bytes memory postItemsData = abi.encode(postSettlementItems);
+                wrapperTargets[0] = address(wrapper);
+                wrapperDatas[0] =
+                    abi.encodePacked(preItemsData.length, preItemsData, postItemsData.length, postItemsData);
+            }
 
             address[] memory targets = new address[](1);
             bytes[] memory datas = new bytes[](1);
 
             (targets[0], datas[0]) = CowWrapperHelpers.encodeWrapperCall(
-                wrapperTargets, 
-                wrapperDatas, 
-                address(cowSettlement), 
-                settlement.tokens, 
-                settlement.clearingPrices, 
-                settlement.trades, 
-                settlement.interactions
+                wrapperTargets, wrapperDatas, address(cowSettlement), levSettlement.settlement
             );
 
             solver.runBatch(targets, datas);
@@ -233,11 +222,12 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
 
         // Get settlement, that sells WETH for buying SUSDS
         // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
-        LeveragedSettlementData memory settlement = getLeveragedOpenSettlement(user, user, WETH, eSUSDS, sellAmount, buyAmount);
+        LeveragedSettlementData memory levSettlement =
+            getLeveragedOpenSettlement(user, user, WETH, eSUSDS, sellAmount, buyAmount);
 
         // User, pre-approve the order
-        console.logBytes(settlement.orderUid);
-        cowSettlement.setPreSignature(settlement.orderUid, true);
+        console.logBytes(levSettlement.orderUid);
+        cowSettlement.setPreSignature(levSettlement.orderUid, true);
 
         signerECDSA.setPrivateKey(privateKey);
 
@@ -282,7 +272,7 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
 
         vm.stopPrank();
 
-        // pre-settlement will include nested batch signed and executed through `EVC.permit`
+        // pre-levSettlement will include nested batch signed and executed through `EVC.permit`
         IEVC.BatchItem[] memory preSettlementItems = new IEVC.BatchItem[](1);
         preSettlementItems[0] = IEVC.BatchItem({
             onBehalfOfAccount: address(0),
@@ -291,33 +281,30 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
             data: abi.encodeCall(IEVC.permit, (user, address(wrapper), 0, 0, block.timestamp, 0, batchData, batchSignature))
         });
 
-        // post-settlement, first lets assume we don't call the swap verifier
+        // post-levSettlement, first lets assume we don't call the swap verifier
         IEVC.BatchItem[] memory postSettlementItems = new IEVC.BatchItem[](0);
 
-        // Execute the settlement through the wrapper
+        // Execute the levSettlement through the wrapper
         vm.stopPrank();
         //vm.startPrank(solver);
 
         {
-
-            bytes memory preItemsData = abi.encode(preSettlementItems);
-            bytes memory postItemsData = abi.encode(postSettlementItems);
             address[] memory wrapperTargets = new address[](1);
-            wrapperTargets[0] = address(wrapper);
             bytes[] memory wrapperDatas = new bytes[](1);
-            wrapperDatas[0] = abi.encodePacked(preItemsData.length, preItemsData, postItemsData.length, postItemsData);
+
+            {
+                bytes memory preItemsData = abi.encode(preSettlementItems);
+                bytes memory postItemsData = abi.encode(postSettlementItems);
+                wrapperTargets[0] = address(wrapper);
+                wrapperDatas[0] =
+                    abi.encodePacked(preItemsData.length, preItemsData, postItemsData.length, postItemsData);
+            }
 
             address[] memory targets = new address[](1);
             bytes[] memory datas = new bytes[](1);
 
             (targets[0], datas[0]) = CowWrapperHelpers.encodeWrapperCall(
-                wrapperTargets,
-                wrapperDatas,
-                address(cowSettlement),
-                settlement.tokens,
-                settlement.clearingPrices,
-                settlement.trades,
-                settlement.interactions
+                wrapperTargets, wrapperDatas, address(cowSettlement), levSettlement.settlement
             );
 
             solver.runBatch(targets, datas);
@@ -349,8 +336,9 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
 
         // Get settlement, that sells WETH for SUSDS
         // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
-        LeveragedSettlementData memory settlement = getLeveragedOpenSettlement(user, eSUSDS, WETH, eSUSDS, sellAmount, buyAmount);
-        cowSettlement.setPreSignature(settlement.orderUid, true);
+        LeveragedSettlementData memory levSettlement =
+            getLeveragedOpenSettlement(user, eSUSDS, WETH, eSUSDS, sellAmount, buyAmount);
+        cowSettlement.setPreSignature(levSettlement.orderUid, true);
 
         vm.stopPrank();
 
@@ -364,7 +352,16 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
             onBehalfOfAccount: address(this),
             targetContract: address(wrapper),
             value: 0,
-            data: abi.encodeCall(CowEvcWrapper.evcInternalSettle, (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions, new bytes(0)))
+            data: abi.encodeCall(
+                CowEvcWrapper.evcInternalSettle,
+                (
+                    levSettlement.settlement.tokens,
+                    levSettlement.settlement.clearingPrices,
+                    levSettlement.settlement.trades,
+                    levSettlement.settlement.interactions,
+                    new bytes(0)
+                )
+            )
         });
 
         vm.expectRevert(abi.encodeWithSelector(CowEvcWrapper.Unauthorized.selector, address(0)));
@@ -384,11 +381,12 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
 
         // Get settlement, that sells WETH for SUSDS
         // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
-        LeveragedSettlementData memory settlement = getLeveragedOpenSettlement(user, eSUSDS, WETH, eSUSDS, sellAmount, buyAmount);
+        LeveragedSettlementData memory levSettlement =
+            getLeveragedOpenSettlement(user, eSUSDS, WETH, eSUSDS, sellAmount, buyAmount);
 
         // User, pre-approve the order
-        console.logBytes(settlement.orderUid);
-        cowSettlement.setPreSignature(settlement.orderUid, true);
+        console.logBytes(levSettlement.orderUid);
+        cowSettlement.setPreSignature(levSettlement.orderUid, true);
 
         signerECDSA.setPrivateKey(privateKey);
 
@@ -433,7 +431,7 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
 
         vm.stopPrank();
 
-        // pre-settlement will include nested batch signed and executed through `EVC.permit`
+        // pre-levSettlement will include nested batch signed and executed through `EVC.permit`
         IEVC.BatchItem[] memory preSettlementItems = new IEVC.BatchItem[](1);
         preSettlementItems[0] = IEVC.BatchItem({
             onBehalfOfAccount: address(0),
@@ -442,16 +440,21 @@ contract CowEvcWrapperOpenPositionTest is CowBaseTest {
             data: abi.encodeCall(IEVC.permit, (user, address(wrapper), 0, 0, block.timestamp, 0, batchData, batchSignature))
         });
 
-        // post-settlement does not need to do anything because the settlement contract will automatically verify the amount of remaining funds
+        // post-levSettlement does not need to do anything because the levSettlement contract will automatically verify the amount of remaining funds
         IEVC.BatchItem[] memory postSettlementItems = new IEVC.BatchItem[](0);
 
-        // Execute the settlement through the wrapper
+        // Execute the levSettlement through the wrapper
         vm.stopPrank();
 
         // This contract will be the "malicious" solver. It should not be able to complete the settle flow
         //bytes memory evcActions = abi.encode(preSettlementItems, postSettlementItems);
 
         vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, address(this)));
-        wrapper.settle(settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions);
+        wrapper.settle(
+            levSettlement.settlement.tokens,
+            levSettlement.settlement.clearingPrices,
+            levSettlement.settlement.trades,
+            levSettlement.settlement.interactions
+        );
     }
 }

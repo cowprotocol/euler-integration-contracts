@@ -55,16 +55,16 @@ abstract contract CowWrapper is CowSettlement {
         GPv2Trade.Data[] calldata trades,
         GPv2Interaction.Data[][3] calldata interactions
     ) external {
-        emit GasLeft(gasleft());
+        //emit GasLeft(gasleft());
         // Revert if not a valid solver
         if (!AUTHENTICATOR.isSolver(msg.sender)) {
             revert NotASolver(msg.sender);
         }
-        emit GasLeft(gasleft());
+        //emit GasLeft(gasleft());
 
         // Extract additional data appended after settle calldata
         uint256 settleLength = _settleCalldataLength(tokens, clearingPrices, trades, interactions);
-        emit GasLeft(gasleft());
+        //emit GasLeft(gasleft());
 
         // Require additional data for next settlement address
         if (msg.data.length < settleLength + 32) {
@@ -95,7 +95,7 @@ abstract contract CowWrapper is CowSettlement {
         GPv2Interaction.Data[][3] calldata interactions,
         bytes calldata wrapperData
     ) internal {
-        emit GasLeft(gasleft());
+        //emit GasLeft(gasleft());
         // the next settlement address to call will be the next word of the wrapper data
         address nextSettlement = abi.decode(wrapperData, (address));
         wrapperData = wrapperData[32:];
@@ -118,7 +118,7 @@ abstract contract CowWrapper is CowSettlement {
                 abi.encodeWithSelector(CowSettlement.settle.selector, tokens, clearingPrices, trades, interactions);
             // no wrapperData to append
         }
-        emit GasLeft(gasleft());
+        //emit GasLeft(gasleft());
 
         // Call UPSTREAM_SETTLEMENT with the full calldata
         (bool success, bytes memory returnData) = nextSettlement.call(fullCalldata);

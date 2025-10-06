@@ -18,10 +18,7 @@ contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
             bytes memory orderUid,
             bytes32 orderDigest,
             GPv2Order.Data memory orderData,
-            IERC20[] memory tokens,
-            uint256[] memory clearingPrices,
-            GPv2Trade.Data[] memory trades,
-            GPv2Interaction.Data[][3] memory interactions
+            CowWrapperHelpers.SettleCall memory settlement
         )
     {
         uint32 validTo = uint32(block.timestamp + 1 hours);
@@ -47,24 +44,24 @@ contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
         orderDigest = GPv2Order.hash(orderData, cowSettlement.domainSeparator());
 
         // Get trade data
-        trades = new GPv2Trade.Data[](1);
-        trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, orderData.receiver, true);
+        settlement.trades = new GPv2Trade.Data[](1);
+        settlement.trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, orderData.receiver, true);
 
         // Set tokens and prices
-        tokens = new IERC20[](2);
-        tokens[0] = IERC20(sellVaultToken);
-        tokens[1] = IERC20(buyToRepayToken);
+        settlement.tokens = new IERC20[](2);
+        settlement.tokens[0] = IERC20(sellVaultToken);
+        settlement.tokens[1] = IERC20(buyToRepayToken);
 
-        clearingPrices = new uint256[](2);
-        clearingPrices[0] = milkSwap.prices(IERC4626(sellVaultToken).asset());
-        clearingPrices[1] = milkSwap.prices(buyToRepayToken);
+        settlement.clearingPrices = new uint256[](2);
+        settlement.clearingPrices[0] = milkSwap.prices(IERC4626(sellVaultToken).asset());
+        settlement.clearingPrices[1] = milkSwap.prices(buyToRepayToken);
 
         // Setup interactions
-        interactions = [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](2), new GPv2Interaction.Data[](0)];
-        interactions[1][0] = getWithdrawInteraction(sellVaultToken, buyAmount * clearingPrices[1] / 1e18);
-        interactions[1][1] =
-            getSwapInteraction(IERC4626(sellVaultToken).asset(), buyToRepayToken, buyAmount * clearingPrices[1] / 1e18);
-        return (orderUid, orderDigest, orderData, tokens, clearingPrices, trades, interactions);
+        settlement.interactions = [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](2), new GPv2Interaction.Data[](0)];
+        settlement.interactions[1][0] = getWithdrawInteraction(sellVaultToken, buyAmount * settlement.clearingPrices[1] / 1e18);
+        settlement.interactions[1][1] =
+            getSwapInteraction(IERC4626(sellVaultToken).asset(), buyToRepayToken, buyAmount * settlement.clearingPrices[1] / 1e18);
+        return (orderUid, orderDigest, orderData, settlement);
     }
 
     event StartPhase(bytes32 phase);
@@ -91,10 +88,7 @@ contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
             bytes memory orderUid,
             bytes32 orderDigest,
             GPv2Order.Data memory orderData,
-            IERC20[] memory tokens,
-            uint256[] memory clearingPrices,
-            GPv2Trade.Data[] memory trades,
-            GPv2Interaction.Data[][3] memory interactions
+            CowWrapperHelpers.SettleCall memory settlement
         ) = getLeveragedCloseSettlement(user, address(wrapper), eSUSDS, WETH, sellAmount, buyAmount);
 
         // User, pre-approve the order
@@ -166,13 +160,15 @@ contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
         console.log("user balance pre", IEVault(eSUSDS).balanceOf(user));
 
         {
-
-            bytes memory preItemsData = abi.encode(preSettlementItems);
-            bytes memory postItemsData = abi.encode(postSettlementItems);
             address[] memory wrapperTargets = new address[](1);
-            wrapperTargets[0] = address(wrapper);
             bytes[] memory wrapperDatas = new bytes[](1);
-            wrapperDatas[0] = abi.encodePacked(preItemsData.length, preItemsData, postItemsData.length, postItemsData);
+
+            {
+                bytes memory preItemsData = abi.encode(preSettlementItems);
+                bytes memory postItemsData = abi.encode(postSettlementItems);
+                wrapperTargets[0] = address(wrapper);
+                wrapperDatas[0] = abi.encodePacked(preItemsData.length, preItemsData, postItemsData.length, postItemsData);
+            }
 
             address[] memory targets = new address[](1);
             bytes[] memory datas = new bytes[](1);
@@ -181,10 +177,7 @@ contract CowEvcWrapperClosePositionTest is CowEvcWrapperOpenPositionTest {
                 wrapperTargets,
                 wrapperDatas,
                 address(cowSettlement),
-                tokens,
-                clearingPrices,
-                trades,
-                interactions
+                settlement
             );
 
             solver.runBatch(targets, datas);

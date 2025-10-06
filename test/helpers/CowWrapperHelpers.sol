@@ -6,6 +6,13 @@ import {IERC20, GPv2Trade, GPv2Interaction, GPv2Authentication} from "cow/GPv2Se
 import {CowSettlement} from "src/vendor/CowWrapper.sol";
 
 library CowWrapperHelpers {
+    struct SettleCall {
+        IERC20[] tokens;
+        uint256[] clearingPrices;
+        GPv2Trade.Data[] trades;
+        GPv2Interaction.Data[][3] interactions;
+    }
+
     /**
      * @dev This function is intended for testing purposes and is not memory efficient.
      */
@@ -13,12 +20,8 @@ library CowWrapperHelpers {
         address[] calldata wrappers,
         bytes[] calldata wrapperDatas,
         address cowSettlement,
-        IERC20[] calldata tokens,
-        uint256[] calldata clearingPrices,
-        GPv2Trade.Data[] calldata trades,
-        GPv2Interaction.Data[][3] calldata interactions
-    ) external returns (address, bytes memory) {
-        bytes memory wrapperData;
+        SettleCall calldata settlement
+    ) external returns (address target, bytes memory wrapperData) {
         for (uint256 i = 0; i < wrappers.length; i++) {
             wrapperData = abi.encodePacked(
                 wrapperData,
@@ -27,11 +30,11 @@ library CowWrapperHelpers {
             );
         }
 
-        // Build the full calldata for wrapper1
+        // build the settle calldata and append the wrapper data directly to the end of it
         bytes memory settleCalldata =
-            abi.encodeWithSelector(CowSettlement.settle.selector, tokens, clearingPrices, trades, interactions);
-        bytes memory fullCalldata = abi.encodePacked(settleCalldata, wrapperData);
+            abi.encodeWithSelector(CowSettlement.settle.selector, settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions);
+        wrapperData = abi.encodePacked(settleCalldata, wrapperData);
 
-        return (wrappers[0], fullCalldata);
+        return (wrappers[0], wrapperData);
     }
 }

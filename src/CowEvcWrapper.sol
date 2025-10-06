@@ -25,6 +25,7 @@ contract CowEvcWrapper is CowWrapper, GPv2Signing {
     error MultiplePossibleReceivers(
         address resolvedVault, address resolvedSender, address secondVault, address secondSender
     );
+    error PostActionsAlreadySet(bytes32 orderDigest, uint256 existingActionsCount);
 
     error NotEVCSettlement();
 
@@ -39,13 +40,19 @@ contract CowEvcWrapper is CowWrapper, GPv2Signing {
     }
 
     function setRequiredPostActions(bytes32 orderDigest, IEVC.BatchItem[] calldata actions) external {
-        postActions[orderDigest] = actions;
+        // TODO: anyone who knows the order ID can set this function (need to restrict to solvers)
+        if (postActions[orderDigest].length > 0) {
+            revert PostActionsAlreadySet(orderDigest, postActions[orderDigest].length);
+        }
+        for (uint256 i = 0;i < actions.length;i++) {
+            postActions[orderDigest].push(actions[i]);
+        }
     }
 
     function executePostActions(bytes32 orderDigest) external {
         if (postActions[orderDigest].length > 0) {
             EVC.batch(postActions[orderDigest]);
-            postActions[orderDigest] = new IEVC.BatchItem[](0);
+            //postActions[orderDigest] = new IEVC.BatchItem[](0);
         }
     }
 
@@ -80,17 +87,19 @@ contract CowEvcWrapper is CowWrapper, GPv2Signing {
 
         // Decode wrapperData into pre and post settlement actions
         // We load the length in advance so we know how much to read and advance
-        uint256 preSettlementItemsDataSize = uint256(bytes32(wrapperData[0:32]));
-        wrapperData = wrapperData[32:];
-        (IEVC.BatchItem[] memory preSettlementItems) =
-            abi.decode(wrapperData[:preSettlementItemsDataSize], (IEVC.BatchItem[]));
-        wrapperData = wrapperData[preSettlementItemsDataSize:];
+        IEVC.BatchItem[] memory preSettlementItems;
+        IEVC.BatchItem[] memory postSettlementItems;
+        {
+            uint256 preSettlementItemsDataSize = uint256(bytes32(wrapperData[0:32]));
+            wrapperData = wrapperData[32:];
+            (preSettlementItems) = abi.decode(wrapperData[:preSettlementItemsDataSize], (IEVC.BatchItem[]));
+            wrapperData = wrapperData[preSettlementItemsDataSize:];
 
-        uint256 postSettlementItemsDataSize = uint256(bytes32(wrapperData[0:32]));
-        wrapperData = wrapperData[32:];
-        (IEVC.BatchItem[] memory postSettlementItems) =
-            abi.decode(wrapperData[:postSettlementItemsDataSize], (IEVC.BatchItem[]));
-        wrapperData = wrapperData[postSettlementItemsDataSize:];
+            uint256 postSettlementItemsDataSize = uint256(bytes32(wrapperData[0:32]));
+            wrapperData = wrapperData[32:];
+            (postSettlementItems) = abi.decode(wrapperData[:postSettlementItemsDataSize], (IEVC.BatchItem[]));
+            wrapperData = wrapperData[postSettlementItemsDataSize:];
+        }
 
         IEVC.BatchItem[] memory items =
             new IEVC.BatchItem[](preSettlementItems.length + postSettlementItems.length + 1 + trades.length);
@@ -113,26 +122,34 @@ contract CowEvcWrapper is CowWrapper, GPv2Signing {
             items[preSettlementItems.length + 1 + i] = postSettlementItems[i];
         }
 
+        postSettlementItems = processPostActions(tokens, trades, wrapperData);
+        for (uint256 i = 0;i < postSettlementItems.length;i++) {
+            items[items.length - 1 - i] = postSettlementItems[postSettlementItems.length - 1 - i];
+        }
+
+        // Execute all items in a single batch
+        EVC.batch(items);
+        settleState = 0;
+    }
+
+    function processPostActions(IERC20[] calldata tokens, GPv2Trade.Data[] calldata trades, bytes calldata wrapperData) internal view returns (IEVC.BatchItem[] memory newPostActions) {
         // Users can force post settlement actions to also occur in `preSettlementItems`. So we call ourself to enforce this
         address payable finalSettlement = abi.decode(wrapperData[wrapperData.length - 32:wrapperData.length], (address));
         GPv2Order.Data memory o;
+        newPostActions = new IEVC.BatchItem[](trades.length);
         for (uint256 i = 0; i < trades.length; i++) {
             GPv2Trade.extractOrder(trades[i], tokens, o);
             bytes32 orderDigest = GPv2Order.hash(
                 o,
                 GPv2Settlement(finalSettlement).domainSeparator() // TODO can be more efficient
             );
-            items[preSettlementItems.length + postSettlementItems.length + 1 + i] = IEVC.BatchItem({
+            newPostActions[i] = IEVC.BatchItem({
                 onBehalfOfAccount: address(this),
                 targetContract: address(this),
                 value: 0,
                 data: abi.encodeCall(this.executePostActions, (orderDigest))
             });
         }
-
-        // Execute all items in a single batch
-        EVC.batch(items);
-        settleState = 0;
     }
 
     /// @notice Internal settlement function called by EVC
