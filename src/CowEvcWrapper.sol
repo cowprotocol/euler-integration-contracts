@@ -2,7 +2,6 @@
 pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
-//import {IGPv2Settlement, GPv2Interaction} from "./vendor/interfaces/IGPv2Settlement.sol";
 import {IGPv2Authentication} from "./vendor/interfaces/IGPv2Authentication.sol";
 
 import {GPv2Signing, IERC20, GPv2Trade} from "cow/mixins/GPv2Signing.sol";

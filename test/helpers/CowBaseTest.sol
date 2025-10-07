@@ -12,8 +12,8 @@ import {IVault} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcWrapper} from "../../src/CowEvcWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
+import {GPv2Settlement} from "cow/GPv2Settlement.sol";
 import {CowEvcWrapper, GPv2Trade, GPv2Interaction} from "../../src/CowEvcWrapper.sol";
-import {IGPv2Settlement} from "../../src/vendor/interfaces/IGPv2Settlement.sol";
 
 import {MilkSwap} from "./MilkSwap.sol";
 import {GPv2OrderHelper} from "./GPv2OrderHelper.sol";
@@ -47,7 +47,7 @@ contract CowBaseTest is EVaultTestBase {
     address payable constant realEVC = payable(0x0C9a3dd6b8F28529d72d7f9cE918D493519EE383);
     address internal swapVerifier = 0xae26485ACDDeFd486Fe9ad7C2b34169d360737c7;
 
-    IGPv2Settlement constant cowSettlement = IGPv2Settlement(payable(0x9008D19f58AAbD9eD0D60971565AA8510560ab41));
+    GPv2Settlement constant cowSettlement = GPv2Settlement(payable(0x9008D19f58AAbD9eD0D60971565AA8510560ab41));
 
     CowEvcWrapper public wrapper;
     MilkSwap public milkSwap;
@@ -76,7 +76,7 @@ contract CowBaseTest is EVaultTestBase {
         wrapper = new CowEvcWrapper(address(evc), payable(cowSettlement));
 
         // Add wrapper and our fake solver as solver
-        GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(cowSettlement.authenticator());
+        GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(cowSettlement.authenticator()));
         address manager = allowList.manager();
         // vm.deal(address(manager), 1e18);
         vm.startPrank(manager);
@@ -94,7 +94,7 @@ contract CowBaseTest is EVaultTestBase {
         IERC20(WETH).approve(address(milkSwap), type(uint256).max);
 
         // User has approved WETH for COW Protocol
-        address vaultRelayer = cowSettlement.vaultRelayer();
+        address vaultRelayer = address(cowSettlement.vaultRelayer());
         vm.prank(user);
         IERC20(WETH).approve(vaultRelayer, type(uint256).max);
 
