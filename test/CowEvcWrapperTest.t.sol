@@ -11,7 +11,6 @@ import {EVaultTestBase} from "euler-vault-kit/test/unit/evault/EVaultTestBase.t.
 
 import {CowEvcWrapper, GPv2Trade, GPv2Interaction} from "../src/CowEvcWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
-//import {GPv2Settlement} from "cow/GPv2Settlement.sol";
 
 import {IERC20} from "cow/libraries/GPv2Trade.sol";
 import {console} from "forge-std/Test.sol";
@@ -92,8 +91,6 @@ contract CowEvcWrapperTest is CowBaseTest {
         vm.stopPrank();
         vm.startPrank(address(solver));
 
-        //assertEq(IERC20(SUSDS).balanceOf(user), buyAmount, "User should receive SUSDS");
-        //console.log("The pre balance", IERC20(SUSDS).balanceOf(settlement));
         wrapper.wrappedSettle(tokens, clearingPrices, trades, interactions, emptySettleActions);
 
         // Verify the swap was executed
@@ -216,9 +213,6 @@ contract CowEvcWrapperTest is CowBaseTest {
             "User should receive eSUSDS"
         );
         assertEq(IEVault(eWETH).debtOf(user), sellAmount, "User should receive eWETH debt");
-
-        // uint256 susdsBalanceInMilkSwapAfter = IERC20(SUSDS).balanceOf(address(milkSwap));
-        // assertEq(susdsBalanceInMilkSwapAfter, susdsBalanceInMilkSwapBefore - buyAmount, "MilkSwap should have less SUSDS");
     }
 
     function test_leverage_MaliciousSolverDoesntRedepositFull() external {
@@ -332,9 +326,6 @@ contract CowEvcWrapperTest is CowBaseTest {
             "User should receive eSUSDS"
         );
         assertEq(IEVault(eWETH).debtOf(user), sellAmount, "User should receive eWETH debt");
-
-        // uint256 susdsBalanceInMilkSwapAfter = IERC20(SUSDS).balanceOf(address(milkSwap));
-        // assertEq(susdsBalanceInMilkSwapAfter, susdsBalanceInMilkSwapBefore - buyAmount, "MilkSwap should have less SUSDS");
     }
 
     function test_leverage_MaliciousNonSolverCallsInternalSettleDirectly() external {

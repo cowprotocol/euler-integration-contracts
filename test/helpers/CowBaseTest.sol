@@ -34,7 +34,6 @@ contract CowBaseTest is EVaultTestBase {
     uint256 BLOCK_NUMBER = 22546006;
     string FORK_RPC_URL = vm.envOr("FORK_RPC_URL", string(""));
 
-    //address constant solver = 0x7E2eF26AdccB02e57258784957922AEEFEe807e5; // quasilabs
     address constant allowListManager = 0xA03be496e67Ec29bC62F01a428683D7F9c204930;
 
     address constant SUSDS = 0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD;
@@ -99,7 +98,6 @@ contract CowBaseTest is EVaultTestBase {
         IERC20(WETH).approve(vaultRelayer, type(uint256).max);
 
         // Setup labels
-        //vm.label(solver, "solver");
         vm.label(allowListManager, "allowListManager");
         vm.label(user, "user");
         vm.label(SUSDS, "SUSDS");
