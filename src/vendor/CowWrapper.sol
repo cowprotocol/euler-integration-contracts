@@ -25,6 +25,7 @@ interface CowSettlement {
  */
 abstract contract CowWrapper is CowSettlement {
     event GasLeft(uint256);
+
     error NotASolver(address unauthorized);
     error WrapperHasNoSettleTarget(uint256 settleDataLength, uint256 fullCalldataLength);
 
@@ -67,15 +68,9 @@ abstract contract CowWrapper is CowSettlement {
     /**
      * @dev The logic for the wrapper. During this function, `_internalSettle` should be called. `wrapperData` may be consumed as required for the wrapper's particular requirements
      */
-    function _wrap(
-        bytes calldata settleData,
-        bytes calldata wrapperData
-    ) internal virtual;
+    function _wrap(bytes calldata settleData, bytes calldata wrapperData) internal virtual;
 
-    function _internalSettle(
-        bytes calldata settleData,
-        bytes calldata wrapperData
-    ) internal {
+    function _internalSettle(bytes calldata settleData, bytes calldata wrapperData) internal {
         // the next settlement address to call will be the next word of the wrapper data
         address nextSettlement;
         assembly {
@@ -85,7 +80,8 @@ abstract contract CowWrapper is CowSettlement {
         // Encode the settle call
         bytes memory fullCalldata;
 
-        (bool success, bytes memory returnData) = nextSettlement.call(abi.encodePacked(CowSettlement.settle.selector, settleData, wrapperData));
+        (bool success, bytes memory returnData) =
+            nextSettlement.call(abi.encodePacked(CowSettlement.settle.selector, settleData, wrapperData));
 
         //(bool success, bytes memory returnData) = nextSettlement.call(fullCalldata);
         if (!success) {
@@ -101,14 +97,24 @@ abstract contract CowWrapper is CowSettlement {
      * This can be used to determine if there is additional data appended to msg.data.
      * @return end The calldata position in bytes of the end of settle() function calldata
      */
-    function _settleCalldataLength(
-        GPv2Interaction.Data[][3] calldata interactions
-    ) internal pure returns (uint256 end) {
+    function _settleCalldataLength(GPv2Interaction.Data[][3] calldata interactions)
+        internal
+        pure
+        returns (uint256 end)
+    {
         // NOTE: technically this function could fail to return the correct length, if the data encoded in the ABI is provided indexed in an unusual order
         // however, doing a deeper check of the total data is very expensive and we are generally working with callers who provide data in a verifiably standardized format
         GPv2Interaction.Data[] calldata lastInteractions = interactions[2];
-        assembly {
-            end := add(lastInteractions.offset, lastInteractions.length)
+        if (lastInteractions.length > 0) {
+            bytes calldata lastInteraction = lastInteractions[lastInteractions.length - 1].callData;
+            uint256 length = (lastInteraction.length + 31) / 32 * 32;
+            assembly {
+                end := add(lastInteraction.offset, length)
+            }
+        } else {
+            assembly {
+                end := add(lastInteractions.offset, lastInteractions.length)
+            }
         }
     }
 }

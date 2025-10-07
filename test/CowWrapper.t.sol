@@ -121,13 +121,9 @@ contract CowWrapperTest is Test, CowWrapper {
         MockAuthentication(address(0)).addSolver(address(wrapper1));
         MockAuthentication(address(0)).addSolver(address(wrapper2));
         MockAuthentication(address(0)).addSolver(address(wrapper3));
-
     }
 
-    function _wrap(
-        bytes calldata settleData,
-        bytes calldata wrapperData
-    ) internal override {
+    function _wrap(bytes calldata settleData, bytes calldata wrapperData) internal override {
         // Record the wrap call
         WrapCall storage call_ = wrapCalls.push();
         call_.settleData = settleData;
@@ -139,18 +135,15 @@ contract CowWrapperTest is Test, CowWrapper {
 
     // These function needs to be exposed because the internal function expects calldata, so this is convienience to accomplish that
     function exposed_settleCalldataLength(
-        IERC20[] calldata tokens,
-        uint256[] calldata clearingPrices,
-        GPv2Trade.Data[] calldata trades,
+        IERC20[] calldata,
+        uint256[] calldata,
+        GPv2Trade.Data[] calldata,
         GPv2Interaction.Data[][3] calldata interactions
     ) external pure returns (uint256) {
         return _settleCalldataLength(interactions);
     }
 
-    function exposed_internalSettle(
-        bytes calldata settleData,
-        bytes calldata wrapperData
-    ) external {
+    function exposed_internalSettle(bytes calldata settleData, bytes calldata wrapperData) external {
         _internalSettle(settleData, wrapperData);
     }
 
@@ -181,7 +174,8 @@ contract CowWrapperTest is Test, CowWrapper {
         GPv2Interaction.Data[][3] memory interactions =
             [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0)];
 
-        bytes memory encoded = abi.encodeWithSelector(this.settle.selector, tokens, clearingPrices, trades, interactions);
+        bytes memory encoded =
+            abi.encodeWithSelector(this.settle.selector, tokens, clearingPrices, trades, interactions);
 
         // Log the length difference
         uint256 calculated = this.exposed_settleCalldataLength(tokens, clearingPrices, trades, interactions);
@@ -326,7 +320,6 @@ contract CowWrapperTest is Test, CowWrapper {
 
         uint256 length = this.exposed_settleCalldataLength(tokens, clearingPrices, trades, interactions);
 
-        // Base: 452, Tokens: 96, Prices: 96, Trade1: 325, Trade2: 332, Int[0][0]: 132, Int[2][0]: 134
         assertEq(
             length, abi.encodeWithSelector(this.settle.selector, tokens, clearingPrices, trades, interactions).length
         );
@@ -458,20 +451,21 @@ contract CowWrapperTest is Test, CowWrapper {
 
         bytes[] memory wrapperDatas = new bytes[](3);
 
-        (address target, bytes memory fullCalldata) = CowWrapperHelpers.encodeWrapperCall(wrappers, wrapperDatas, address(mockSettlement), settlement);
+        (address target, bytes memory fullCalldata) =
+            CowWrapperHelpers.encodeWrapperCall(wrappers, wrapperDatas, address(mockSettlement), settlement);
 
         // Call wrapper1 as the solver
         vm.prank(solver);
-        (bool success,) = address(wrapper1).call(fullCalldata);
+        (bool success,) = target.call(fullCalldata);
         assertTrue(success, "Chained wrapper call should succeed");
 
         // Verify that mockSettlement was called
         assertEq(mockSettlement.getSettleCallCount(), 1, "MockSettlement should be called once");
 
         // Verify the settlement received the correct parameters
-        //(uint256 tokenCount, uint256 priceCount, uint256 tradeCount,) = mockSettlement.getLastSettleCall();
-        //assertEq(tokenCount, 2, "Should have 2 tokens");
-        //assertEq(priceCount, 2, "Should have 2 prices");
-        //assertEq(tradeCount, 1, "Should have 1 trade");
+        (uint256 tokenCount, uint256 priceCount, uint256 tradeCount,) = mockSettlement.getLastSettleCall();
+        assertEq(tokenCount, 2, "Should have 2 tokens");
+        assertEq(priceCount, 2, "Should have 2 prices");
+        assertEq(tradeCount, 1, "Should have 1 trade");
     }
 }
