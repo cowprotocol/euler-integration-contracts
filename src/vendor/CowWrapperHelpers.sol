@@ -32,8 +32,13 @@ contract CowWrapperHelpers {
     /// @param authenticatorContract The authentication contract that authenticated the settlement as a solver
     error SettlementContractShouldNotBeSolver(address settlementContract, address authenticatorContract);
 
+    /// @notice A definition for a single call to a wrapper
+    /// @dev This corresponds to the `wrappers` item structure on the CoW Orderbook API
     struct WrapperCall {
+        /// @notice The smart contract that will be receiving the call
         address target;
+
+        /// @notice Any additional data which will be required to execute the wrapper call
         bytes data;
     }
 
