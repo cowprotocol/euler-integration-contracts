@@ -11,7 +11,11 @@ interface GPv2Authentication {
     function isSolver(address prospectiveSolver) external view returns (bool);
 }
 
+/// @title CoW Settlement Interface
+/// @notice Minimal interface for CoW Protocol's settlement contract
+/// @dev Used for type-safe calls to the settlement contract's settle function
 interface CowSettlement {
+    /// @notice Trade data structure matching GPv2Settlement
     struct GPv2TradeData {
         uint256 sellTokenIndex;
         uint256 buyTokenIndex;
@@ -25,11 +29,19 @@ interface CowSettlement {
         uint256 executedAmount;
         bytes signature;
     }
+
+    /// @notice Interaction data structure for pre/intra/post-settlement hooks
     struct GPv2InteractionData {
         address target;
         uint256 value;
         bytes callData;
     }
+
+    /// @notice Settles a batch of trades atomically
+    /// @param tokens Array of token addresses involved in the settlement
+    /// @param clearingPrices Array of clearing prices for each token
+    /// @param trades Array of trades to execute
+    /// @param interactions Array of three interaction arrays (pre, intra, post-settlement)
     function settle(
         address[] calldata tokens,
         uint256[] calldata clearingPrices,
@@ -38,38 +50,62 @@ interface CowSettlement {
     ) external;
 }
 
+/// @title CoW Wrapper Interface
+/// @notice Interface for wrapper contracts that add custom logic around CoW settlements
+/// @dev Wrappers can be chained together to compose multiple settlement operations
 interface ICowWrapper {
+    /// @notice Initiates a wrapped settlement call
+    /// @dev This is the entry point for wrapped settlements. The wrapper will execute custom logic
+    ///      before calling the next wrapper or settlement contract in the chain.
+    /// @param settleData ABI-encoded call to CowSettlement.settle()
+    /// @param wrapperData Encoded chain of wrapper-specific data followed by addresses of next wrappers/settlement
     function wrappedSettle(
         bytes calldata settleData,
         bytes calldata wrapperData
     ) external;
 }
 
-/**
- * @dev Base contract defining required methods for wrappers of the GPv2Settlement contract for CoW orders
- * A wrapper should:
- * * call the equivalent `settle` on the GPv2Settlement contract (0x9008D19f58AAbD9eD0D60971565AA8510560ab41)
- * * verify that the caller is authorized via the GPv2Authentication contract.
- * A wrapper may also execute, or otherwise put the blockchain in a state that needs to be established prior to settlement.
- * Additionally, it needs to be approved by the GPv2Authentication contract
- */
+/// @title CoW Wrapper Base Contract
+/// @notice Abstract base contract for creating wrapper contracts around CoW Protocol settlements
+/// @dev A wrapper enables custom pre/post-settlement and context-setting logic and can be chained with other wrappers.
+///      Wrappers must:
+///      - Be approved by the GPv2Authentication contract
+///      - Verify the caller is an authenticated solver
+///      - Eventually call settle() on the approved GPv2Settlement contract
+///      - Implement _wrap() for custom logic
+///      - Implement parseWrapperData() for validation of implementation-specific wrapperData
 abstract contract CowWrapper {
-    event GasLeft(uint256);
-
+    /// @notice Thrown when the caller is not an authenticated solver
+    /// @param unauthorized The address that attempted to call wrappedSettle
     error NotASolver(address unauthorized);
+
+    /// @notice Thrown when wrapper data doesn't contain a settlement target address
+    /// @param wrapperDataLength The actual length of wrapper data provided
+    /// @param requiredWrapperDataLength The minimum required length (20 bytes for an address)
     error WrapperHasNoSettleTarget(uint256 wrapperDataLength, uint256 requiredWrapperDataLength);
+
+    /// @notice Thrown when settle data doesn't contain the correct function selector
+    /// @param invalidSettleData The invalid settle data that was provided
     error InvalidSettleData(bytes invalidSettleData);
 
+    /// @notice The authentication contract used to verify solvers
+    /// @dev This is typically the GPv2AllowListAuthentication contract
     GPv2Authentication public immutable AUTHENTICATOR;
 
+    /// @notice Constructs a new CowWrapper
+    /// @param authenticator_ The GPv2Authentication contract to use for solver or upstream wrapper verification
     constructor(GPv2Authentication authenticator_) {
         // retrieve the authentication we are supposed to use from the settlement contract
         AUTHENTICATOR = authenticator_;
     }
 
-    /**
-     * @dev Called to initiate a wrapped call against the settlement function. See GPv2Settlement.settle() for more information.
-     */
+    /// @notice Initiates a wrapped settlement call
+    /// @dev Entry point for solvers to execute wrapped settlements. Verifies the caller is a solver,
+    ///      validates wrapper data, then delegates to _wrap() for custom logic.
+    /// @param settleData ABI-encoded call to CowSettlement.settle() containing trade data
+    /// @param wrapperData Encoded data for this wrapper and the chain of next wrappers/settlement.
+    ///                    Format: [wrapper-specific-data][next-address][remaining-wrapper-data]
+    ///                    Must be at least 20 bytes to contain the next settlement target address.
     function wrappedSettle(
         bytes calldata settleData,
         bytes calldata wrapperData
@@ -79,47 +115,60 @@ abstract contract CowWrapper {
             revert NotASolver(msg.sender);
         }
 
-        // Require additional data for next settlement address
+        // Require wrapper data to contain at least the next settlement address (20 bytes)
         if (wrapperData.length < 20) {
             revert WrapperHasNoSettleTarget(wrapperData.length, 20);
         }
 
-        // the settle data will always be after the first 4 bytes (selector), up to the computed data end point
+        // Delegate to the wrapper's custom logic
         _wrap(settleData, wrapperData);
     }
 
-    /**
-     * @dev The logic for the wrapper. During this function, `_internalSettle` should be called. `wrapperData` may be consumed as required for the wrapper's particular requirements
-     */
+    /// @notice Internal function containing the wrapper's custom logic
+    /// @dev Must be implemented by concrete wrapper contracts. Should execute custom logic
+    ///      then eventually call _internalSettle() to continue the settlement chain.
+    /// @param settleData ABI-encoded call to CowSettlement.settle()
+    /// @param wrapperData The wrapper data, which may be parsed and consumed as needed
     function _wrap(bytes calldata settleData, bytes calldata wrapperData) internal virtual;
 
+    /// @notice Continues the settlement chain by calling the next wrapper or settlement contract
+    /// @dev Extracts the next target address from wrapperData and either:
+    ///      - Calls CowSettlement.settle() directly if no more wrappers remain, or
+    ///      - Calls the next CowWrapper.wrappedSettle() to continue the chain
+    /// @param settleData ABI-encoded call to CowSettlement.settle()
+    /// @param wrapperData Remaining wrapper data starting with the next target address (20 bytes)
     function _internalSettle(bytes calldata settleData, bytes calldata wrapperData) internal {
-        // the next settlement address to call will be the next word of the wrapper data
+        // Extract the next settlement address from the first 20 bytes of wrapperData
+        // Assembly is used to efficiently read the address from calldata
         address nextSettlement;
         assembly {
+            // Load 32 bytes starting 12 bytes before wrapperData offset to get the address
+            // (addresses are 20 bytes, right-padded in 32-byte words)
             nextSettlement := calldataload(sub(wrapperData.offset, 12))
         }
+
+        // Skip past the address we just read
         wrapperData = wrapperData[20:];
-        // Encode the settle call
 
         if (wrapperData.length == 0) {
-            // sanity: make sure we are about to call the `settle` function on the settlement contract
+            // No more wrapper data - we're calling the final settlement contract
+            // Verify the settle data has the correct function selector
             if (bytes4(settleData[:4]) != CowSettlement.settle.selector) {
                 revert InvalidSettleData(settleData);
             }
 
-            // we can now call the settlement contract with the settle data verbatim
-            (bool success, bytes memory returnData) =
-                nextSettlement.call(settleData);
+            // Call the settlement contract directly with the settle data
+            (bool success, bytes memory returnData) = nextSettlement.call(settleData);
 
             if (!success) {
-                // Bubble up the revert reason
+                // Bubble up the revert reason from the settlement contract
                 assembly {
                     revert(add(returnData, 0x20), mload(returnData))
                 }
             }
         }
         else {
+            // More wrapper data remains - call the next wrapper in the chain
             CowWrapper(nextSettlement).wrappedSettle(settleData, wrapperData);
         }
     }
