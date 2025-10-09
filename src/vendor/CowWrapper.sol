@@ -2,32 +2,63 @@
 pragma solidity >=0.7.6 <0.9.0;
 pragma abicoder v2;
 
-import {IERC20, GPv2Trade, GPv2Interaction, GPv2Authentication} from "cow/GPv2Settlement.sol";
-
-import "forge-std/console.sol";
+/// @title Gnosis Protocol v2 Authentication Interface
+/// @author Gnosis Developers
+interface GPv2Authentication {
+    /// @dev determines whether the provided address is an authenticated solver.
+    /// @param prospectiveSolver the address of prospective solver.
+    /// @return true when prospectiveSolver is an authenticated solver, otherwise false.
+    function isSolver(address prospectiveSolver) external view returns (bool);
+}
 
 interface CowSettlement {
+    struct GPv2TradeData {
+        uint256 sellTokenIndex;
+        uint256 buyTokenIndex;
+        address receiver;
+        uint256 sellAmount;
+        uint256 buyAmount;
+        uint32 validTo;
+        bytes32 appData;
+        uint256 feeAmount;
+        uint256 flags;
+        uint256 executedAmount;
+        bytes signature;
+    }
+    struct GPv2InteractionData {
+        address target;
+        uint256 value;
+        bytes callData;
+    }
     function settle(
-        IERC20[] calldata tokens,
+        address[] calldata tokens,
         uint256[] calldata clearingPrices,
-        GPv2Trade.Data[] calldata trades,
-        GPv2Interaction.Data[][3] calldata interactions
+        GPv2TradeData[] calldata trades,
+        GPv2InteractionData[][3] calldata interactions
+    ) external;
+}
+
+interface ICowWrapper {
+    function wrappedSettle(
+        bytes calldata settleData,
+        bytes calldata wrapperData
     ) external;
 }
 
 /**
- * @dev Interface defining required methods for wrappers of the GPv2Settlement contract for CoW orders
+ * @dev Base contract defining required methods for wrappers of the GPv2Settlement contract for CoW orders
  * A wrapper should:
  * * call the equivalent `settle` on the GPv2Settlement contract (0x9008D19f58AAbD9eD0D60971565AA8510560ab41)
  * * verify that the caller is authorized via the GPv2Authentication contract.
  * A wrapper may also execute, or otherwise put the blockchain in a state that needs to be established prior to settlement.
  * Additionally, it needs to be approved by the GPv2Authentication contract
  */
-abstract contract CowWrapper is CowSettlement {
+abstract contract CowWrapper {
     event GasLeft(uint256);
 
     error NotASolver(address unauthorized);
-    error WrapperHasNoSettleTarget(uint256 settleDataLength, uint256 fullCalldataLength);
+    error WrapperHasNoSettleTarget(uint256 wrapperDataLength, uint256 requiredWrapperDataLength);
+    error InvalidSettleData(bytes invalidSettleData);
 
     GPv2Authentication public immutable AUTHENTICATOR;
 
@@ -39,30 +70,22 @@ abstract contract CowWrapper is CowSettlement {
     /**
      * @dev Called to initiate a wrapped call against the settlement function. See GPv2Settlement.settle() for more information.
      */
-    function settle(
-        IERC20[] calldata tokens,
-        uint256[] calldata clearingPrices,
-        GPv2Trade.Data[] calldata trades,
-        GPv2Interaction.Data[][3] calldata interactions
+    function wrappedSettle(
+        bytes calldata settleData,
+        bytes calldata wrapperData
     ) external {
         // Revert if not a valid solver
         if (!AUTHENTICATOR.isSolver(msg.sender)) {
             revert NotASolver(msg.sender);
         }
 
-        // Extract additional data appended after settle calldata
-        uint256 settleEnd = _settleCalldataLength(interactions);
-
         // Require additional data for next settlement address
-        if (msg.data.length < settleEnd + 32) {
-            revert WrapperHasNoSettleTarget(settleEnd, msg.data.length);
+        if (wrapperData.length < 20) {
+            revert WrapperHasNoSettleTarget(wrapperData.length, 20);
         }
 
-        // Additional data exists after the settle parameters
-        bytes calldata additionalData = msg.data[settleEnd:];
-
         // the settle data will always be after the first 4 bytes (selector), up to the computed data end point
-        _wrap(msg.data[4:settleEnd], additionalData);
+        _wrap(settleData, wrapperData);
     }
 
     /**
@@ -74,47 +97,30 @@ abstract contract CowWrapper is CowSettlement {
         // the next settlement address to call will be the next word of the wrapper data
         address nextSettlement;
         assembly {
-            nextSettlement := calldataload(wrapperData.offset)
+            nextSettlement := calldataload(sub(wrapperData.offset, 12))
         }
-        wrapperData = wrapperData[32:];
+        wrapperData = wrapperData[20:];
         // Encode the settle call
-        bytes memory fullCalldata;
 
-        (bool success, bytes memory returnData) =
-            nextSettlement.call(abi.encodePacked(CowSettlement.settle.selector, settleData, wrapperData));
+        if (wrapperData.length == 0) {
+            // sanity: make sure we are about to call the `settle` function on the settlement contract
+            if (bytes4(settleData[:4]) != CowSettlement.settle.selector) {
+                revert InvalidSettleData(settleData);
+            }
 
-        //(bool success, bytes memory returnData) = nextSettlement.call(fullCalldata);
-        if (!success) {
-            // Bubble up the revert reason
-            assembly {
-                revert(add(returnData, 0x20), mload(returnData))
+            // we can now call the settlement contract with the settle data verbatim
+            (bool success, bytes memory returnData) =
+                nextSettlement.call(settleData);
+
+            if (!success) {
+                // Bubble up the revert reason
+                assembly {
+                    revert(add(returnData, 0x20), mload(returnData))
+                }
             }
         }
-    }
-
-    /**
-     * @dev Computes the length of the settle() calldata in bytes.
-     * This can be used to determine if there is additional data appended to msg.data.
-     * @return end The calldata position in bytes of the end of settle() function calldata
-     */
-    function _settleCalldataLength(GPv2Interaction.Data[][3] calldata interactions)
-        internal
-        pure
-        returns (uint256 end)
-    {
-        // NOTE: technically this function could fail to return the correct length, if the data encoded in the ABI is provided indexed in an unusual order
-        // however, doing a deeper check of the total data is very expensive and we are generally working with callers who provide data in a verifiably standardized format
-        GPv2Interaction.Data[] calldata lastInteractions = interactions[2];
-        if (lastInteractions.length > 0) {
-            bytes calldata lastInteraction = lastInteractions[lastInteractions.length - 1].callData;
-            uint256 length = (lastInteraction.length + 31) / 32 * 32;
-            assembly {
-                end := add(lastInteraction.offset, length)
-            }
-        } else {
-            assembly {
-                end := add(lastInteractions.offset, lastInteractions.length)
-            }
+        else {
+            CowWrapper(nextSettlement).wrappedSettle(settleData, wrapperData);
         }
     }
 }
