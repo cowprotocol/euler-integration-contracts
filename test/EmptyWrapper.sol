@@ -13,4 +13,9 @@ contract EmptyWrapper is CowWrapper {
     ) internal override {
         _internalSettle(settleData, wrappedData);
     }
+
+    function parseWrapperData(bytes calldata wrapperData) external pure override returns (bytes calldata remainingWrapperData) {
+        // EmptyWrapper doesn't consume any wrapper data
+        return wrapperData;
+    }
 }

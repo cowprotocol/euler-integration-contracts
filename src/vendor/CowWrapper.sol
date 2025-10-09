@@ -43,6 +43,12 @@ interface ICowWrapper {
         bytes calldata settleData,
         bytes calldata wrapperData
     ) external;
+
+    /**
+     * @dev Parses the wrapper data for this wrapper.
+     * @return remainingWrapperData Any wrapper data that was not read in order to parse the wrapper data.
+     */
+    function parseWrapperData(bytes calldata wrapperData) external view returns (bytes calldata remainingWrapperData);
 }
 
 /**
@@ -87,6 +93,12 @@ abstract contract CowWrapper {
         // the settle data will always be after the first 4 bytes (selector), up to the computed data end point
         _wrap(settleData, wrapperData);
     }
+
+    /**
+     * @dev Parses the wrapper data for this wrapper.
+     * @return remainingWrapperData Any wrapper data that was not read in order to parse the wrapper data.
+     */
+    function parseWrapperData(bytes calldata wrapperData) external virtual view returns (bytes calldata remainingWrapperData);
 
     /**
      * @dev The logic for the wrapper. During this function, `_internalSettle` should be called. `wrapperData` may be consumed as required for the wrapper's particular requirements

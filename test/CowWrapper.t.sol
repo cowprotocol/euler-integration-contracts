@@ -6,7 +6,7 @@ import {CowWrapper, CowSettlement, GPv2Authentication} from "../src/vendor/CowWr
 import {IERC20, GPv2Trade, GPv2Interaction} from "cow/GPv2Settlement.sol";
 import {EmptyWrapper} from "./EmptyWrapper.sol";
 
-import {CowWrapperHelpers} from "./helpers/CowWrapperHelpers.sol";
+import {CowWrapperHelpers} from "../src/vendor/CowWrapperHelpers.sol";
 
 import "forge-std/console.sol";
 
@@ -27,6 +27,7 @@ contract MockSettlement {
         IERC20[] tokens;
         uint256[] clearingPrices;
         GPv2Trade.Data[] trades;
+        GPv2Interaction.Data[][3] interactions;
         bytes additionalData;
     }
 
@@ -36,11 +37,16 @@ contract MockSettlement {
         IERC20[] calldata tokens,
         uint256[] calldata clearingPrices,
         GPv2Trade.Data[] calldata trades,
-        GPv2Interaction.Data[][3] calldata
+        GPv2Interaction.Data[][3] calldata interactions
     ) external {
         SettleCall storage call_ = settleCalls.push();
         call_.tokens = tokens;
         call_.clearingPrices = clearingPrices;
+        for (uint256 i = 0;i < 3;i++) {
+            for (uint256 j = 0;j < interactions[i].length;i++) {
+                call_.interactions[i].push(interactions[i][j]);
+            }
+        }
 
         for (uint256 i = 0; i < trades.length; i++) {
             call_.trades.push(trades[i]);
@@ -81,6 +87,7 @@ contract MockSettlement {
 contract CowWrapperTest is Test, CowWrapper {
     MockAuthentication public authenticator;
     MockSettlement public mockSettlement;
+    CowWrapperHelpers helpers;
     address public solver;
 
     EmptyWrapper private wrapper1;
@@ -111,6 +118,7 @@ contract CowWrapperTest is Test, CowWrapper {
         MockAuthentication(address(0)).addSolver(solver);
 
         mockSettlement = new MockSettlement();
+        helpers = new CowWrapperHelpers(GPv2Authentication(address(0)), GPv2Authentication(address(0)));
 
         // Create three EmptyWrapper instances
         wrapper1 = new EmptyWrapper(GPv2Authentication(address(0)));
@@ -135,6 +143,11 @@ contract CowWrapperTest is Test, CowWrapper {
 
     function exposed_internalSettle(bytes calldata settleData, bytes calldata wrapperData) external {
         _internalSettle(settleData, wrapperData);
+    }
+
+    function parseWrapperData(bytes calldata wrapperData) external pure override returns (bytes calldata remainingWrapperData) {
+        // CowWrapperTest doesn't consume any wrapper data
+        return wrapperData;
     }
 
     function test_wrap_ReceivesCorrectParameters() public {
@@ -230,7 +243,7 @@ contract CowWrapperTest is Test, CowWrapper {
     }
 
     function test_integration_ThreeWrappersChained() public {
-        CowWrapperHelpers.SettleCall memory settlement;
+        MockSettlement.SettleCall memory settlement;
 
         settlement.tokens = new IERC20[](2);
         settlement.tokens[0] = IERC20(address(0x1));
@@ -255,7 +268,7 @@ contract CowWrapperTest is Test, CowWrapper {
             signature: hex"aabbccddee"
         });
 
-        settlement.interactions =
+        settlement.interactions = 
             [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0)];
 
         // Build the chained wrapper data:
@@ -268,13 +281,14 @@ contract CowWrapperTest is Test, CowWrapper {
 
         bytes[] memory wrapperDatas = new bytes[](3);
 
-        (address target, bytes memory fullCalldata) =
-            CowWrapperHelpers.encodeWrapperCall(wrappers, wrapperDatas, address(mockSettlement), settlement);
+        bytes memory settleData = abi.encodeCall(MockSettlement.settle, (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions));
+
+        bytes memory wrapperData =
+            helpers.verifyAndBuildWrapperData(wrappers, wrapperDatas, address(mockSettlement));
 
         // Call wrapper1 as the solver
         vm.prank(solver);
-        (bool success,) = target.call(fullCalldata);
-        assertTrue(success, "Chained wrapper call should succeed");
+        wrapper1.wrappedSettle(settleData, wrapperData);
 
         // Verify that mockSettlement was called
         assertEq(mockSettlement.getSettleCallCount(), 1, "MockSettlement should be called once");
