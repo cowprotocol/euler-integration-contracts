@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity >=0.7.6 <0.9.0;
 pragma abicoder v2;
 
@@ -95,7 +95,6 @@ abstract contract CowWrapper {
     /// @notice Constructs a new CowWrapper
     /// @param authenticator_ The GPv2Authentication contract to use for solver or upstream wrapper verification
     constructor(GPv2Authentication authenticator_) {
-        // retrieve the authentication we are supposed to use from the settlement contract
         AUTHENTICATOR = authenticator_;
     }
 
