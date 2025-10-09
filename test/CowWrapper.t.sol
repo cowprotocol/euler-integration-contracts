@@ -168,16 +168,16 @@ contract CowWrapperTest is Test, CowWrapper {
 
         bytes memory customWrapperData = hex"deadbeef";
 
-        address[] memory wrappers = new address[](1);
-        wrappers[0] = address(this);
-
-        bytes[] memory wrapperDatas = new bytes[](1);
-        wrapperDatas[0] = customWrapperData;
+        CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](1);
+        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({
+            target: address(this),
+            data: customWrapperData
+        });
 
         skipWrappedData = customWrapperData.length;
 
         bytes memory settleData = abi.encodeCall(MockSettlement.settle, (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions));
-        bytes memory wrapperData = helpers.verifyAndBuildWrapperData(wrappers, wrapperDatas, address(mockSettlement));
+        bytes memory wrapperData = helpers.verifyAndBuildWrapperData(wrapperCalls, address(mockSettlement));
 
         vm.prank(solver);
         this.wrappedSettle(settleData, wrapperData);
@@ -201,11 +201,10 @@ contract CowWrapperTest is Test, CowWrapper {
         settlement.interactions =
             [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0)];
 
-        address[] memory wrappers = new address[](0);
-        bytes[] memory wrapperDatas = new bytes[](0);
+        CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](0);
 
         bytes memory settleData = abi.encodeCall(MockSettlement.settle, (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions));
-        bytes memory wrapperData = helpers.verifyAndBuildWrapperData(wrappers, wrapperDatas, address(mockSettlement));
+        bytes memory wrapperData = helpers.verifyAndBuildWrapperData(wrapperCalls, address(mockSettlement));
 
         vm.prank(solver);
         this.wrappedSettle(settleData, wrapperData);
@@ -285,17 +284,24 @@ contract CowWrapperTest is Test, CowWrapper {
         // Build the chained wrapper data:
         // solver -> wrapper1 -> wrapper2 -> wrapper3 -> mockSettlement
 
-        address[] memory wrappers = new address[](3);
-        wrappers[0] = address(wrapper1);
-        wrappers[1] = address(wrapper2);
-        wrappers[2] = address(wrapper3);
-
-        bytes[] memory wrapperDatas = new bytes[](3);
+        CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](3);
+        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({
+            target: address(wrapper1),
+            data: hex""
+        });
+        wrapperCalls[1] = CowWrapperHelpers.WrapperCall({
+            target: address(wrapper2),
+            data: hex""
+        });
+        wrapperCalls[2] = CowWrapperHelpers.WrapperCall({
+            target: address(wrapper3),
+            data: hex""
+        });
 
         bytes memory settleData = abi.encodeCall(MockSettlement.settle, (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions));
 
         bytes memory wrapperData =
-            helpers.verifyAndBuildWrapperData(wrappers, wrapperDatas, address(mockSettlement));
+            helpers.verifyAndBuildWrapperData(wrapperCalls, address(mockSettlement));
 
         // Call wrapper1 as the solver
         vm.prank(solver);

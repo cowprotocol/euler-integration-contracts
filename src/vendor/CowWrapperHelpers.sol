@@ -10,11 +10,6 @@ import {GPv2Authentication, ICowWrapper} from "./CowWrapper.sol";
 /// @notice Helper contract providing validation and encoding utilities for CoW Protocol wrapper chains
 /// @dev This contract is not designed to be gas-efficient and is intended for off-chain use only.
 contract CowWrapperHelpers {
-    /// @notice Thrown when wrapper and wrapper data array lengths don't match
-    /// @param wrappersLength The length of the wrappers array
-    /// @param individualWrapperDatasLength The length of the wrapper data array
-    error InvalidInputLengths(uint256 wrappersLength, uint256 individualWrapperDatasLength);
-
     /// @notice Thrown when a provided address is not an authenticated wrapper
     /// @param wrapperIndex The index of the invalid wrapper in the array
     /// @param unauthorized The address that is not authenticated as a wrapper
@@ -37,6 +32,11 @@ contract CowWrapperHelpers {
     /// @param authenticatorContract The authentication contract that authenticated the settlement as a solver
     error SettlementContractShouldNotBeSolver(address settlementContract, address authenticatorContract);
 
+    struct WrapperCall {
+        address target;
+        bytes data;
+    }
+
     /// @notice The authentication contract used to verify wrapper contracts
     GPv2Authentication public immutable WRAPPER_AUTHENTICATOR;
 
@@ -53,31 +53,24 @@ contract CowWrapperHelpers {
 
     /// @notice Validates a wrapper chain configuration and builds the properly formatted wrapper data
     /// @dev Performs comprehensive validation of the wrapper chain before encoding:
-    ///      1. Verifies array lengths match
-    ///      2. Verifies each wrapper is authenticated via WRAPPER_AUTHENTICATOR
-    ///      3. Verifies each wrapper's data is valid and fully consumed by calling parseWrapperData
-    ///      4. Verifies the settlement contract is not authenticated as a solver
+    ///      1. Verifies each wrapper is authenticated via WRAPPER_AUTHENTICATOR
+    ///      2. Verifies each wrapper's data is valid and fully consumed by calling parseWrapperData
+    ///      3. Verifies the settlement contract is not authenticated as a solver
     ///      The returned wrapper data format is: [data0][addr1][data1][addr2][data2]...[settlement]
     ///      where data0 is for the first wrapper, addr1 is the second wrapper address, etc.
-    /// @param wrapperAddresses Array of wrapper contract addresses in execution order
-    /// @param individualWrapperDatas Array of wrapper-specific data corresponding to each wrapper
+    /// @param wrapperCalls Array of calls in execution order
     /// @param settlementContract The final settlement contract address to call after all wrappers
     /// @return wrapperData The encoded wrapper data ready to be passed to the first wrapper's wrappedSettle
-    function verifyAndBuildWrapperData(address[] calldata wrapperAddresses, bytes[] calldata individualWrapperDatas, address settlementContract) external view returns (bytes memory wrapperData) {
-        // Basic Sanity: Input arrays should have correct length
-        if (wrapperAddresses.length != individualWrapperDatas.length) {
-            revert InvalidInputLengths(wrapperAddresses.length, individualWrapperDatas.length);
-        }
-        
-        for (uint256 i = 0;i < wrapperAddresses.length;i++) {
+    function verifyAndBuildWrapperData(WrapperCall[] memory wrapperCalls, address settlementContract) external view returns (bytes memory wrapperData) {
+        for (uint256 i = 0;i < wrapperCalls.length;i++) {
             // Wrapper must be authorized
-            if (!WRAPPER_AUTHENTICATOR.isSolver(wrapperAddresses[i])) {
-                revert NotAWrapper(i, wrapperAddresses[i], address(WRAPPER_AUTHENTICATOR));
+            if (!WRAPPER_AUTHENTICATOR.isSolver(wrapperCalls[i].target)) {
+                revert NotAWrapper(i, wrapperCalls[i].target, address(WRAPPER_AUTHENTICATOR));
             }
 
 
             // The wrapper data must be parsable and fully consumed
-            try ICowWrapper(wrapperAddresses[i]).parseWrapperData(individualWrapperDatas[i]) returns (bytes memory remainingWrapperData) {
+            try ICowWrapper(wrapperCalls[i].target).parseWrapperData(wrapperCalls[i].data) returns (bytes memory remainingWrapperData) {
                 if (remainingWrapperData.length > 0) {
                     revert WrapperDataNotFullyConsumed(i, remainingWrapperData);
                 }
@@ -91,16 +84,11 @@ contract CowWrapperHelpers {
             revert SettlementContractShouldNotBeSolver(settlementContract, address(SOLVER_AUTHENTICATOR));
         }
 
-        uint256 totalIndividualWrapperDatasLength = 0;
-        for (uint256 i = 0;i < individualWrapperDatas.length;i++) {
-            totalIndividualWrapperDatasLength += individualWrapperDatas[i].length;
-        }
+        if (wrapperCalls.length > 0) {
+            wrapperData = abi.encodePacked(wrapperCalls[0].data);
 
-        if (wrapperAddresses.length > 0) {
-            wrapperData = abi.encodePacked(individualWrapperDatas[0]);
-
-            for (uint256 i = 1;i < individualWrapperDatas.length;i++) {
-                wrapperData = abi.encodePacked(wrapperData, wrapperAddresses[i], individualWrapperDatas[i]);
+            for (uint256 i = 1;i < wrapperCalls.length;i++) {
+                wrapperData = abi.encodePacked(wrapperData, wrapperCalls[i].target, wrapperCalls[i].data);
             }
         }
 
