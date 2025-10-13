@@ -110,14 +110,10 @@ abstract contract CowWrapper {
         bytes calldata wrapperData
     ) external {
         // Revert if not a valid solver
-        if (!AUTHENTICATOR.isSolver(msg.sender)) {
-            revert NotASolver(msg.sender);
-        }
+        require(AUTHENTICATOR.isSolver(msg.sender), NotASolver(msg.sender));
 
         // Require wrapper data to contain at least the next settlement address (20 bytes)
-        if (wrapperData.length < 20) {
-            revert WrapperHasNoSettleTarget(wrapperData.length, 20);
-        }
+        require(wrapperData >= 20, WrapperHasNoSettleTarget(wrapperData.length, 20));
 
         // Delegate to the wrapper's custom logic
         _wrap(settleData, wrapperData);
@@ -147,9 +143,7 @@ abstract contract CowWrapper {
         if (wrapperData.length == 0) {
             // No more wrapper data - we're calling the final settlement contract
             // Verify the settle data has the correct function selector
-            if (bytes4(settleData[:4]) != CowSettlement.settle.selector) {
-                revert InvalidSettleData(settleData);
-            }
+            require(bytes4(settleData[:4]) == CowSettlement.settle.selector, InvalidSettleData(settleData));
 
             // Call the settlement contract directly with the settle data
             (bool success, bytes memory returnData) = nextSettlement.call(settleData);
