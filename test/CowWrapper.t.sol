@@ -2,7 +2,7 @@
 pragma solidity ^0.8;
 
 import {Test} from "forge-std/Test.sol";
-import {CowWrapper, CowSettlement, GPv2Authentication} from "../src/vendor/CowWrapper.sol";
+import {CowWrapper, CowSettlement, CowAuthentication} from "../src/vendor/CowWrapper.sol";
 import {IERC20, GPv2Trade, GPv2Interaction} from "cow/GPv2Settlement.sol";
 import {EmptyWrapper} from "./EmptyWrapper.sol";
 
@@ -104,7 +104,7 @@ contract CowWrapperTest is Test, CowWrapper {
 
     uint256 private skipWrappedData;
 
-    constructor() CowWrapper(GPv2Authentication(address(0))) {
+    constructor() CowWrapper(CowAuthentication(address(0))) {
         // Constructor will be called in setUp with proper authenticator
     }
 
@@ -118,12 +118,12 @@ contract CowWrapperTest is Test, CowWrapper {
         MockAuthentication(address(0)).addSolver(solver);
 
         mockSettlement = new MockSettlement();
-        helpers = new CowWrapperHelpers(GPv2Authentication(address(0)), GPv2Authentication(address(0)));
+        helpers = new CowWrapperHelpers(CowAuthentication(address(0)), CowAuthentication(address(0)));
 
         // Create three EmptyWrapper instances
-        wrapper1 = new EmptyWrapper(GPv2Authentication(address(0)));
-        wrapper2 = new EmptyWrapper(GPv2Authentication(address(0)));
-        wrapper3 = new EmptyWrapper(GPv2Authentication(address(0)));
+        wrapper1 = new EmptyWrapper(CowAuthentication(address(0)));
+        wrapper2 = new EmptyWrapper(CowAuthentication(address(0)));
+        wrapper3 = new EmptyWrapper(CowAuthentication(address(0)));
 
         // Add all wrappers as solvers
         MockAuthentication(address(0)).addSolver(address(wrapper1));

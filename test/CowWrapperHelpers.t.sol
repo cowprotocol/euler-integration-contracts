@@ -3,7 +3,7 @@ pragma solidity ^0.8;
 
 import {Test} from "forge-std/Test.sol";
 import {CowWrapperHelpers} from "../src/vendor/CowWrapperHelpers.sol";
-import {CowWrapper, GPv2Authentication, ICowWrapper} from "../src/vendor/CowWrapper.sol";
+import {CowWrapper, CowAuthentication, ICowWrapper} from "../src/vendor/CowWrapper.sol";
 
 contract MockAuthenticator {
     mapping(address => bool) public solvers;
@@ -20,7 +20,7 @@ contract MockAuthenticator {
 contract MockWrapper is CowWrapper {
     uint256 public consumeBytes;
 
-    constructor(GPv2Authentication authenticator_, uint256 consumeBytes_) CowWrapper(authenticator_) {
+    constructor(CowAuthentication authenticator_, uint256 consumeBytes_) CowWrapper(authenticator_) {
         consumeBytes = consumeBytes_;
     }
 
@@ -34,7 +34,7 @@ contract MockWrapper is CowWrapper {
 }
 
 contract BrokenWrapper is CowWrapper {
-    constructor(GPv2Authentication authenticator_) CowWrapper(authenticator_) {}
+    constructor(CowAuthentication authenticator_) CowWrapper(authenticator_) {}
 
     function _wrap(bytes calldata, bytes calldata) internal override {
         // Not used in these tests
@@ -59,15 +59,15 @@ contract CowWrapperHelpersTest is Test {
     function setUp() public {
         wrapperAuth = new MockAuthenticator();
         solverAuth = new MockAuthenticator();
-        helpers = new CowWrapperHelpers(GPv2Authentication(address(wrapperAuth)), GPv2Authentication(address(solverAuth)));
+        helpers = new CowWrapperHelpers(CowAuthentication(address(wrapperAuth)), CowAuthentication(address(solverAuth)));
 
         settlement = makeAddr("settlement");
 
         // Create mock wrappers
-        wrapper1 = new MockWrapper(GPv2Authentication(address(wrapperAuth)), 4);
-        wrapper2 = new MockWrapper(GPv2Authentication(address(wrapperAuth)), 8);
-        wrapper3 = new MockWrapper(GPv2Authentication(address(wrapperAuth)), 0);
-        brokenWrapper = new BrokenWrapper(GPv2Authentication(address(wrapperAuth)));
+        wrapper1 = new MockWrapper(CowAuthentication(address(wrapperAuth)), 4);
+        wrapper2 = new MockWrapper(CowAuthentication(address(wrapperAuth)), 8);
+        wrapper3 = new MockWrapper(CowAuthentication(address(wrapperAuth)), 0);
+        brokenWrapper = new BrokenWrapper(CowAuthentication(address(wrapperAuth)));
 
         // Add wrappers as solvers
         wrapperAuth.addSolver(address(wrapper1));

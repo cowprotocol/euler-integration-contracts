@@ -5,7 +5,7 @@ pragma abicoder v2;
 import "../src/vendor/CowWrapper.sol";
 
 contract EmptyWrapper is CowWrapper {
-    constructor(GPv2Authentication authenticator_) CowWrapper(authenticator_) {}
+    constructor(CowAuthentication authenticator_) CowWrapper(authenticator_) {}
 
     function _wrap(
         bytes calldata settleData,

@@ -2,16 +2,16 @@
 pragma solidity >=0.7.6 <0.9.0;
 pragma abicoder v2;
 
-/// @title Gnosis Protocol v2 Authentication Interface
+/// @title CoW Protocol Authentication Interface
 /// @author CoW DAO developers
-interface CowProtocolAuthentication {
+interface CowAuthentication {
     /// @dev determines whether the provided address is an authenticated solver.
     /// @param prospectiveSolver the address of prospective solver.
     /// @return true when prospectiveSolver is an authenticated solver, otherwise false.
     function isSolver(address prospectiveSolver) external view returns (bool);
 }
 
-/// @title CoW Settlement Interface
+/// @title CoW Protocol Settlement Interface
 /// @notice Minimal interface for CoW Protocol's settlement contract
 /// @dev Used for type-safe calls to the settlement contract's settle function
 interface CowSettlement {
@@ -50,7 +50,7 @@ interface CowSettlement {
     ) external;
 }
 
-/// @title CoW Wrapper Interface
+/// @title CoW Protocol Wrapper Interface
 /// @notice Interface for wrapper contracts that add custom logic around CoW settlements
 /// @dev Wrappers can be chained together to compose multiple settlement operations
 interface ICowWrapper {
@@ -72,7 +72,7 @@ interface ICowWrapper {
     function parseWrapperData(bytes calldata wrapperData) external view returns (bytes calldata remainingWrapperData);
 }
 
-/// @title CoW Wrapper Base Contract
+/// @title CoW Protocol Wrapper Base Contract
 /// @notice Abstract base contract for creating wrapper contracts around CoW Protocol settlements
 /// @dev A wrapper enables custom pre/post-settlement and context-setting logic and can be chained with other wrappers.
 ///      Wrappers must:
@@ -97,11 +97,11 @@ abstract contract CowWrapper {
 
     /// @notice The authentication contract used to verify solvers
     /// @dev This is typically the GPv2AllowListAuthentication contract
-    GPv2Authentication public immutable AUTHENTICATOR;
+    CowAuthentication public immutable AUTHENTICATOR;
 
     /// @notice Constructs a new CowWrapper
     /// @param authenticator_ The GPv2Authentication contract to use for solver or upstream wrapper verification
-    constructor(GPv2Authentication authenticator_) {
+    constructor(CowAuthentication authenticator_) {
         AUTHENTICATOR = authenticator_;
     }
 
@@ -120,7 +120,7 @@ abstract contract CowWrapper {
         require(AUTHENTICATOR.isSolver(msg.sender), NotASolver(msg.sender));
 
         // Require wrapper data to contain at least the next settlement address (20 bytes)
-        require(wrapperData >= 20, WrapperHasNoSettleTarget(wrapperData.length, 20));
+        require(wrapperData.length >= 20, WrapperHasNoSettleTarget(wrapperData.length, 20));
 
         // Delegate to the wrapper's custom logic
         _wrap(settleData, wrapperData);

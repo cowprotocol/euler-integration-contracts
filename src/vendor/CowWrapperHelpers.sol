@@ -4,9 +4,9 @@ pragma abicoder v2;
 
 import "forge-std/console.sol";
 
-import {GPv2Authentication, ICowWrapper} from "./CowWrapper.sol";
+import {CowAuthentication, ICowWrapper} from "./CowWrapper.sol";
 
-/// @title CoW Wrapper Helpers
+/// @title CoW Protocol Wrapper Helpers
 /// @notice Helper contract providing validation and encoding utilities for CoW Protocol wrapper chains
 /// @dev This contract is not designed to be gas-efficient and is intended for off-chain use only.
 contract CowWrapperHelpers {
@@ -43,15 +43,15 @@ contract CowWrapperHelpers {
     }
 
     /// @notice The authentication contract used to verify wrapper contracts
-    GPv2Authentication public immutable WRAPPER_AUTHENTICATOR;
+    CowAuthentication public immutable WRAPPER_AUTHENTICATOR;
 
     /// @notice The authentication contract used to verify solvers
-    GPv2Authentication public immutable SOLVER_AUTHENTICATOR;
+    CowAuthentication public immutable SOLVER_AUTHENTICATOR;
 
     /// @notice Constructs a new CowWrapperHelpers contract
-    /// @param wrapperAuthenticator_ The GPv2Authentication contract used to verify wrapper contracts
-    /// @param solverAuthenticator_ The GPv2Authentication contract used to verify solvers
-    constructor(GPv2Authentication wrapperAuthenticator_, GPv2Authentication solverAuthenticator_) {
+    /// @param wrapperAuthenticator_ The CowAuthentication contract used to verify wrapper contracts
+    /// @param solverAuthenticator_ The CowAuthentication contract used to verify solvers
+    constructor(CowAuthentication wrapperAuthenticator_, CowAuthentication solverAuthenticator_) {
         WRAPPER_AUTHENTICATOR = wrapperAuthenticator_;
         SOLVER_AUTHENTICATOR = solverAuthenticator_;
     }
