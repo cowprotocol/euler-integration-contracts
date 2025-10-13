@@ -24,20 +24,20 @@ contract MockAuthentication {
 
 contract MockSettlement {
     struct SettleCall {
-        IERC20[] tokens;
+        address[] tokens;
         uint256[] clearingPrices;
-        GPv2Trade.Data[] trades;
-        GPv2Interaction.Data[][3] interactions;
+        CowSettlement.CowTradeData[] trades;
+        CowSettlement.CowInteractionData[][3] interactions;
         bytes additionalData;
     }
 
     SettleCall[] public settleCalls;
 
     function settle(
-        IERC20[] calldata tokens,
+        address[] calldata tokens,
         uint256[] calldata clearingPrices,
-        GPv2Trade.Data[] calldata trades,
-        GPv2Interaction.Data[][3] calldata interactions
+        CowSettlement.CowTradeData[] calldata trades,
+        CowSettlement.CowInteractionData[][3] calldata interactions
     ) external {
         SettleCall storage call_ = settleCalls.push();
         call_.tokens = tokens;
@@ -156,15 +156,15 @@ contract CowWrapperTest is Test, CowWrapper {
     function test_wrap_ReceivesCorrectParameters() public {
         MockSettlement.SettleCall memory settlement;
 
-        settlement.tokens = new IERC20[](1);
-        settlement.tokens[0] = IERC20(address(0x1));
+        settlement.tokens = new address[](1);
+        settlement.tokens[0] = address(0x1);
 
         settlement.clearingPrices = new uint256[](1);
         settlement.clearingPrices[0] = 100;
 
-        settlement.trades = new GPv2Trade.Data[](0);
+        settlement.trades = new CowSettlement.CowTradeData[](0);
         settlement.interactions =
-            [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0)];
+            [new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0)];
 
         bytes memory customWrapperData = hex"deadbeef";
 
@@ -191,15 +191,15 @@ contract CowWrapperTest is Test, CowWrapper {
     function test_internalSettle_CallsNextSettlement() public {
         MockSettlement.SettleCall memory settlement;
 
-        settlement.tokens = new IERC20[](1);
-        settlement.tokens[0] = IERC20(address(0x1));
+        settlement.tokens = new address[](1);
+        settlement.tokens[0] = address(0x1);
 
         settlement.clearingPrices = new uint256[](1);
         settlement.clearingPrices[0] = 100;
 
-        settlement.trades = new GPv2Trade.Data[](0);
+        settlement.trades = new CowSettlement.CowTradeData[](0);
         settlement.interactions =
-            [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0)];
+            [new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0)];
 
         CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](0);
 
@@ -255,16 +255,16 @@ contract CowWrapperTest is Test, CowWrapper {
     function test_integration_ThreeWrappersChained() public {
         MockSettlement.SettleCall memory settlement;
 
-        settlement.tokens = new IERC20[](2);
-        settlement.tokens[0] = IERC20(address(0x1));
-        settlement.tokens[1] = IERC20(address(0x2));
+        settlement.tokens = new address[](2);
+        settlement.tokens[0] = address(0x1);
+        settlement.tokens[1] = address(0x2);
 
         settlement.clearingPrices = new uint256[](2);
         settlement.clearingPrices[0] = 100;
         settlement.clearingPrices[1] = 200;
 
-        settlement.trades = new GPv2Trade.Data[](1);
-        settlement.trades[0] = GPv2Trade.Data({
+        settlement.trades = new CowSettlement.CowTradeData[](1);
+        settlement.trades[0] = CowSettlement.CowTradeData({
             sellTokenIndex: 0,
             buyTokenIndex: 1,
             receiver: address(0x123),
@@ -278,8 +278,8 @@ contract CowWrapperTest is Test, CowWrapper {
             signature: hex"aabbccddee"
         });
 
-        settlement.interactions = 
-            [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0)];
+        settlement.interactions =
+            [new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0)];
 
         // Build the chained wrapper data:
         // solver -> wrapper1 -> wrapper2 -> wrapper3 -> mockSettlement

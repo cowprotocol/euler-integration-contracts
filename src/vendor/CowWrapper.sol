@@ -16,7 +16,7 @@ interface CowAuthentication {
 /// @dev Used for type-safe calls to the settlement contract's settle function
 interface CowSettlement {
     /// @notice Trade data structure matching GPv2Settlement
-    struct GPv2TradeData {
+    struct CowTradeData {
         uint256 sellTokenIndex;
         uint256 buyTokenIndex;
         address receiver;
@@ -31,7 +31,7 @@ interface CowSettlement {
     }
 
     /// @notice Interaction data structure for pre/intra/post-settlement hooks
-    struct GPv2InteractionData {
+    struct CowInteractionData {
         address target;
         uint256 value;
         bytes callData;
@@ -45,8 +45,8 @@ interface CowSettlement {
     function settle(
         address[] calldata tokens,
         uint256[] calldata clearingPrices,
-        GPv2TradeData[] calldata trades,
-        GPv2InteractionData[][3] calldata interactions
+        CowTradeData[] calldata trades,
+        CowInteractionData[][3] calldata interactions
     ) external;
 }
 
@@ -76,9 +76,9 @@ interface ICowWrapper {
 /// @notice Abstract base contract for creating wrapper contracts around CoW Protocol settlements
 /// @dev A wrapper enables custom pre/post-settlement and context-setting logic and can be chained with other wrappers.
 ///      Wrappers must:
-///      - Be approved by the GPv2Authentication contract
+///      - Be approved by the CowAuthentication contract
 ///      - Verify the caller is an authenticated solver
-///      - Eventually call settle() on the approved GPv2Settlement contract
+///      - Eventually call settle() on the approved CowSettlement contract
 ///      - Implement _wrap() for custom logic
 ///      - Implement parseWrapperData() for validation of implementation-specific wrapperData
 abstract contract CowWrapper {
@@ -96,11 +96,11 @@ abstract contract CowWrapper {
     error InvalidSettleData(bytes invalidSettleData);
 
     /// @notice The authentication contract used to verify solvers
-    /// @dev This is typically the GPv2AllowListAuthentication contract
+    /// @dev This is typically the CowAllowListAuthentication contract
     CowAuthentication public immutable AUTHENTICATOR;
 
     /// @notice Constructs a new CowWrapper
-    /// @param authenticator_ The GPv2Authentication contract to use for solver or upstream wrapper verification
+    /// @param authenticator_ The CowAuthentication contract to use for solver or upstream wrapper verification
     constructor(CowAuthentication authenticator_) {
         AUTHENTICATOR = authenticator_;
     }
@@ -148,7 +148,6 @@ abstract contract CowWrapper {
     /// @param wrapperData Remaining wrapper data starting with the next target address (20 bytes)
     function _internalSettle(bytes calldata settleData, bytes calldata wrapperData) internal {
         // Extract the next settlement address from the first 20 bytes of wrapperData
-        // Assembly is used to efficiently read the address from calldata
         address nextSettlement = address(bytes20(wrapperData[:20]));
 
         // Skip past the address we just read
