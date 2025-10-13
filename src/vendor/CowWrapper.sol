@@ -3,8 +3,8 @@ pragma solidity >=0.7.6 <0.9.0;
 pragma abicoder v2;
 
 /// @title Gnosis Protocol v2 Authentication Interface
-/// @author Gnosis Developers
-interface GPv2Authentication {
+/// @author CoW DAO developers
+interface CowProtocolAuthentication {
     /// @dev determines whether the provided address is an authenticated solver.
     /// @param prospectiveSolver the address of prospective solver.
     /// @return true when prospectiveSolver is an authenticated solver, otherwise false.
@@ -117,14 +117,10 @@ abstract contract CowWrapper {
         bytes calldata wrapperData
     ) external {
         // Revert if not a valid solver
-        if (!AUTHENTICATOR.isSolver(msg.sender)) {
-            revert NotASolver(msg.sender);
-        }
+        require(AUTHENTICATOR.isSolver(msg.sender), NotASolver(msg.sender));
 
         // Require wrapper data to contain at least the next settlement address (20 bytes)
-        if (wrapperData.length < 20) {
-            revert WrapperHasNoSettleTarget(wrapperData.length, 20);
-        }
+        require(wrapperData >= 20, WrapperHasNoSettleTarget(wrapperData.length, 20));
 
         // Delegate to the wrapper's custom logic
         _wrap(settleData, wrapperData);
@@ -153,12 +149,7 @@ abstract contract CowWrapper {
     function _internalSettle(bytes calldata settleData, bytes calldata wrapperData) internal {
         // Extract the next settlement address from the first 20 bytes of wrapperData
         // Assembly is used to efficiently read the address from calldata
-        address nextSettlement;
-        assembly {
-            // Load 32 bytes starting 12 bytes before wrapperData offset to get the address
-            // (addresses are 20 bytes, right-padded in 32-byte words)
-            nextSettlement := calldataload(sub(wrapperData.offset, 12))
-        }
+        address nextSettlement = address(bytes20(wrapperData[:20]));
 
         // Skip past the address we just read
         wrapperData = wrapperData[20:];
@@ -166,9 +157,7 @@ abstract contract CowWrapper {
         if (wrapperData.length == 0) {
             // No more wrapper data - we're calling the final settlement contract
             // Verify the settle data has the correct function selector
-            if (bytes4(settleData[:4]) != CowSettlement.settle.selector) {
-                revert InvalidSettleData(settleData);
-            }
+            require(bytes4(settleData[:4]) == CowSettlement.settle.selector, InvalidSettleData(settleData));
 
             // Call the settlement contract directly with the settle data
             (bool success, bytes memory returnData) = nextSettlement.call(settleData);
