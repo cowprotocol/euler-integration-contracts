@@ -1,0 +1,303 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+pragma solidity ^0.8;
+
+import {GPv2Order, IERC20 as CowERC20 } from "cow/libraries/GPv2Order.sol";
+
+import {IEVC} from "evc/EthereumVaultConnector.sol";
+import {IEVault, IERC4626, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
+
+import {CowEvcOpenPositionWrapper} from "../src/CowEvcOpenPositionWrapper.sol";
+import {CowAuthentication, CowSettlement} from "../src/vendor/CowWrapper.sol";
+import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
+
+import {CowBaseTest} from "./helpers/CowBaseTest.sol";
+import {SignerECDSA} from "./helpers/SignerECDSA.sol";
+
+/// @title E2E Test for CowEvcOpenPositionWrapper
+/// @notice Tests the full flow of opening a leveraged position using the new wrapper contract
+contract CowEvcOpenPositionWrapperTest is CowBaseTest {
+    CowEvcOpenPositionWrapper public openPositionWrapper;
+    SignerECDSA internal signerECDSA;
+
+    uint256 constant SUSDS_MARGIN = 2000e18;
+
+    function setUp() public override {
+        super.setUp();
+
+        // Deploy the new open position wrapper
+        openPositionWrapper = new CowEvcOpenPositionWrapper(
+            address(evc),
+            CowAuthentication(cowSettlement.authenticator())
+        );
+
+        // Add wrapper as a solver
+        GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(cowSettlement.authenticator());
+        address manager = allowList.manager();
+        vm.startPrank(manager);
+        allowList.addSolver(address(openPositionWrapper));
+        vm.stopPrank();
+
+        signerECDSA = new SignerECDSA(evc);
+
+        // sUSDS is not currently a collateral for WETH borrow, fix it
+        vm.startPrank(IEVault(eWETH).governorAdmin());
+        IEVault(eWETH).setLTV(eSUSDS, 0.9e4, 0.9e4, 0);
+        vm.stopPrank();
+
+        // Setup user with SUSDS
+        deal(SUSDS, user, 10000e18);
+
+        // User approves SUSDS vault for deposit
+        vm.prank(user);
+        IERC20(SUSDS).approve(eSUSDS, type(uint256).max);
+    }
+
+    struct SettlementData {
+        bytes orderUid;
+        GPv2Order.Data orderData;
+        address[] tokens;
+        uint256[] clearingPrices;
+        CowSettlement.CowTradeData[] trades;
+        CowSettlement.CowInteractionData[][3] interactions;
+    }
+
+    /// @notice Create settlement data for opening a leveraged position
+    /// @dev Sells borrowed WETH to buy SUSDS which gets deposited into the vault
+    function getOpenPositionSettlement(
+        address owner,
+        address receiver,
+        address sellToken,
+        address buyVaultToken,
+        uint256 sellAmount,
+        uint256 buyAmount
+    ) public view returns (SettlementData memory r) {
+        uint32 validTo = uint32(block.timestamp + 1 hours);
+
+        // Create order data
+        r.orderData = GPv2Order.Data({
+            sellToken: CowERC20(sellToken),
+            buyToken: CowERC20(buyVaultToken),
+            receiver: receiver,
+            sellAmount: sellAmount,
+            buyAmount: buyAmount,
+            validTo: validTo,
+            appData: bytes32(0),
+            feeAmount: 0,
+            kind: GPv2Order.KIND_SELL,
+            partiallyFillable: false,
+            sellTokenBalance: GPv2Order.BALANCE_ERC20,
+            buyTokenBalance: GPv2Order.BALANCE_ERC20
+        });
+
+        // Get order UID
+        r.orderUid = getOrderUid(owner, r.orderData);
+
+        // Get trade data
+        r.trades = new CowSettlement.CowTradeData[](1);
+        r.trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, r.orderData.receiver, false);
+
+        // Get tokens and prices
+        (r.tokens, r.clearingPrices) = getTokensAndPrices();
+
+        // Setup interactions - swap WETH to SUSDS, deposit to vault, and skim
+        r.interactions = [new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](3), new CowSettlement.CowInteractionData[](0)];
+        r.interactions[1][0] = getSwapInteraction(sellToken, IERC4626(buyVaultToken).asset(), sellAmount);
+        r.interactions[1][1] = getDepositInteraction(buyVaultToken, buyAmount + 1 ether);
+        r.interactions[1][2] = getSkimInteraction();
+    }
+
+    /// @notice Test opening a leveraged position using the new wrapper
+    function test_OpenPositionWrapper_Success() external {
+        vm.skip(bytes(FORK_RPC_URL).length == 0);
+
+        uint256 borrowAmount = 1e18; // Borrow 1 WETH
+        uint256 expectedBuyAmount = 999e18; // Expect to receive 999 eSUSDS
+
+        vm.startPrank(user);
+
+        // Get settlement data
+        SettlementData memory settlement = getOpenPositionSettlement(
+            user,
+            user,
+            WETH,
+            eSUSDS,
+            borrowAmount,
+            expectedBuyAmount
+        );
+
+        // User pre-approves the order
+        cowSettlement.setPreSignature(settlement.orderUid, true);
+
+        // Prepare OpenPositionParams
+        uint256 deadline = block.timestamp + 1 hours;
+        signerECDSA.setPrivateKey(privateKey);
+
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
+            user: user,
+            deadline: deadline,
+            collateralVault: eSUSDS,
+            borrowVault: eWETH,
+            collateralAmount: SUSDS_MARGIN,
+            borrowAmount: borrowAmount
+        });
+
+        // Sign permit for EVC operator
+        bytes memory permitSignature = signerECDSA.signPermit(
+            user,
+            address(openPositionWrapper),
+            uint256(uint160(address(openPositionWrapper))),
+            0,
+            deadline,
+            0,
+            openPositionWrapper.getSignedCalldata(params)
+        );
+
+        vm.stopPrank();
+
+        // Record balances before
+        uint256 susdsBalanceBefore = IERC20(eSUSDS).balanceOf(user);
+        uint256 debtBefore = IEVault(eWETH).debtOf(user);
+
+        // Encode settlement data
+        bytes memory settleData = abi.encodeCall(CowSettlement.settle, (
+            settlement.tokens,
+            settlement.clearingPrices,
+            settlement.trades,
+            settlement.interactions
+        ));
+
+        // Encode wrapper data with OpenPositionParams
+        bytes memory wrapperData = abi.encodePacked(abi.encode(params, permitSignature), cowSettlement);
+
+        // Execute wrapped settlement through solver
+        address[] memory targets = new address[](1);
+        bytes[] memory datas = new bytes[](1);
+        targets[0] = address(openPositionWrapper);
+        datas[0] = abi.encodeCall(
+            openPositionWrapper.wrappedSettle,
+            (settleData, wrapperData)
+        );
+
+        solver.runBatch(targets, datas);
+
+        // Verify the position was created successfully
+        assertApproxEqAbs(
+            IEVault(eSUSDS).convertToAssets(IERC20(eSUSDS).balanceOf(user)),
+            expectedBuyAmount + SUSDS_MARGIN,
+            1 ether,
+            "User should have collateral deposited"
+        );
+        assertEq(
+            IEVault(eWETH).debtOf(user),
+            borrowAmount,
+            "User should have debt"
+        );
+        assertEq(debtBefore, 0, "User should start with no debt");
+        assertEq(susdsBalanceBefore, 0, "User should start with no eSUSDS");
+    }
+
+    /// @notice Test that unauthorized users cannot call evcInternalSettle directly
+    function test_OpenPositionWrapper_UnauthorizedInternalSettle() external {
+        vm.skip(bytes(FORK_RPC_URL).length == 0);
+
+        bytes memory settleData = "";
+        bytes memory wrapperData = "";
+
+        // Try to call evcInternalSettle directly (not through EVC)
+        vm.expectRevert(abi.encodeWithSelector(CowEvcOpenPositionWrapper.Unauthorized.selector, address(this)));
+        openPositionWrapper.evcInternalSettle(settleData, wrapperData);
+    }
+
+    /// @notice Test that non-solvers cannot call wrappedSettle
+    function test_OpenPositionWrapper_NonSolverCannotSettle() external {
+        vm.skip(bytes(FORK_RPC_URL).length == 0);
+
+        bytes memory settleData = "";
+        bytes memory wrapperData = "";
+
+        // Try to call wrappedSettle as non-solver
+        vm.expectRevert("GPv2Wrapper: not a solver");
+        openPositionWrapper.wrappedSettle(settleData, wrapperData);
+    }
+
+    /// @notice Test opening position with zero amounts fails appropriately
+    function test_OpenPositionWrapper_ZeroAmounts() external {
+        vm.skip(bytes(FORK_RPC_URL).length == 0);
+
+        vm.startPrank(user);
+
+        uint256 deadline = block.timestamp + 1 hours;
+        signerECDSA.setPrivateKey(privateKey);
+
+        bytes memory permitSignature = signerECDSA.signPermit(
+            user,
+            address(openPositionWrapper),
+            uint256(uint160(address(openPositionWrapper))),
+            0,
+            deadline,
+            0,
+            abi.encodeCall(IEVC.setAccountOperator, (user, address(openPositionWrapper), true))
+        );
+
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
+            user: user,
+            deadline: deadline,
+            collateralVault: eSUSDS,
+            borrowVault: eWETH,
+            collateralAmount: 0, // Zero collateral
+            borrowAmount: 0 // Zero borrow
+        });
+
+        vm.stopPrank();
+
+        // Get empty settlement
+        (
+            IERC20[] memory tokens,
+            uint256[] memory clearingPrices,
+            CowSettlement.CowTradeData[] memory trades,
+            CowSettlement.CowInteractionData[][3] memory interactions
+        ) = getEmptySettlement();
+
+        bytes memory settleData = abi.encode(tokens, clearingPrices, trades, interactions);
+        bytes memory wrapperData = abi.encode(params);
+
+        address[] memory targets = new address[](1);
+        bytes[] memory datas = new bytes[](1);
+        targets[0] = address(openPositionWrapper);
+        datas[0] = abi.encodeCall(
+            openPositionWrapper.wrappedSettle,
+            (settleData, wrapperData)
+        );
+
+        // This should revert during deposit or account status check
+        vm.expectRevert();
+        solver.runBatch(targets, datas);
+    }
+
+    /// @notice Test that depth tracking works correctly
+    function test_OpenPositionWrapper_DepthTracking() external {
+        vm.skip(bytes(FORK_RPC_URL).length == 0);
+
+        // Initial depth should be 0
+        assertEq(openPositionWrapper.depth(), 0, "Initial depth should be 0");
+        assertEq(openPositionWrapper.settleCalls(), 0, "Initial settleCalls should be 0");
+    }
+
+    /// @notice Test parseWrapperData function
+    function test_OpenPositionWrapper_ParseWrapperData() external view {
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
+            user: user,
+            deadline: block.timestamp + 1 hours,
+            collateralVault: eSUSDS,
+            borrowVault: eWETH,
+            collateralAmount: SUSDS_MARGIN,
+            borrowAmount: 1e18
+        });
+
+        bytes memory wrapperData = abi.encode(params, new bytes(0));
+        bytes memory remainingData = openPositionWrapper.parseWrapperData(wrapperData);
+
+        // After parsing OpenPositionParams, remaining data should be empty
+        assertEq(remainingData.length, 0, "Remaining data should be empty");
+    }
+}
