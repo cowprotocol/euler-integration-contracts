@@ -3,8 +3,8 @@ pragma solidity >=0.7.6 <0.9.0;
 pragma abicoder v2;
 
 /// @title Gnosis Protocol v2 Authentication Interface
-/// @author Gnosis Developers
-interface GPv2Authentication {
+/// @author CoW DAO developers
+interface CowProtocolAuthentication {
     /// @dev determines whether the provided address is an authenticated solver.
     /// @param prospectiveSolver the address of prospective solver.
     /// @return true when prospectiveSolver is an authenticated solver, otherwise false.
