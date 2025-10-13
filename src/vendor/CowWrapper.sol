@@ -134,7 +134,6 @@ abstract contract CowWrapper {
     /// @param wrapperData Remaining wrapper data starting with the next target address (20 bytes)
     function _internalSettle(bytes calldata settleData, bytes calldata wrapperData) internal {
         // Extract the next settlement address from the first 20 bytes of wrapperData
-        // Assembly is used to efficiently read the address from calldata
         address nextSettlement = address(bytes20(wrapperData[:20]));
 
         // Skip past the address we just read
