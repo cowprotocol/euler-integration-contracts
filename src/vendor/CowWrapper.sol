@@ -139,12 +139,7 @@ abstract contract CowWrapper {
     function _internalSettle(bytes calldata settleData, bytes calldata wrapperData) internal {
         // Extract the next settlement address from the first 20 bytes of wrapperData
         // Assembly is used to efficiently read the address from calldata
-        address nextSettlement;
-        assembly {
-            // Load 32 bytes starting 12 bytes before wrapperData offset to get the address
-            // (addresses are 20 bytes, right-padded in 32-byte words)
-            nextSettlement := calldataload(sub(wrapperData.offset, 12))
-        }
+        address nextSettlement = address(bytes20(wrapperData[:20]));
 
         // Skip past the address we just read
         wrapperData = wrapperData[20:];
