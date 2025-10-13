@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity ^0.8;
 
-import {IERC20, GPv2Trade, GPv2Interaction, GPv2Authentication} from "cow/GPv2Settlement.sol";
-
-import {CowSettlement, ICowWrapper} from "src/vendor/CowWrapper.sol";
+import {CowSettlement, ICowWrapper, CowAuthentication} from "src/vendor/CowWrapper.sol";
 
 library CowWrapperHelpers {
     struct SettleCall {
-        IERC20[] tokens;
+        address[] tokens;
         uint256[] clearingPrices;
-        GPv2Trade.Data[] trades;
-        GPv2Interaction.Data[][3] interactions;
+        CowSettlement.CowTradeData[] trades;
+        CowSettlement.CowInteractionData[][3] interactions;
     }
 
     /**

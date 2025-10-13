@@ -2,7 +2,7 @@
 pragma solidity ^0.8;
 
 import {Test} from "forge-std/Test.sol";
-import {CowWrapper, CowSettlement, GPv2Authentication} from "../src/vendor/CowWrapper.sol";
+import {CowWrapper, CowSettlement, CowAuthentication} from "../src/vendor/CowWrapper.sol";
 import {IERC20, GPv2Trade, GPv2Interaction} from "cow/GPv2Settlement.sol";
 import {EmptyWrapper} from "./EmptyWrapper.sol";
 
@@ -97,7 +97,7 @@ contract CowWrapperTest is Test, CowWrapper {
 
     uint256 private skipWrappedData;
 
-    constructor() CowWrapper(GPv2Authentication(address(0))) {
+    constructor() CowWrapper(CowAuthentication(address(0))) {
         // Constructor will be called in setUp with proper authenticator
     }
 
@@ -113,9 +113,9 @@ contract CowWrapperTest is Test, CowWrapper {
         mockSettlement = new MockSettlement();
 
         // Create three EmptyWrapper instances
-        wrapper1 = new EmptyWrapper(GPv2Authentication(address(0)));
-        wrapper2 = new EmptyWrapper(GPv2Authentication(address(0)));
-        wrapper3 = new EmptyWrapper(GPv2Authentication(address(0)));
+        wrapper1 = new EmptyWrapper(CowAuthentication(address(0)));
+        wrapper2 = new EmptyWrapper(CowAuthentication(address(0)));
+        wrapper3 = new EmptyWrapper(CowAuthentication(address(0)));
 
         // Add all wrappers as solvers
         MockAuthentication(address(0)).addSolver(address(wrapper1));
@@ -232,16 +232,16 @@ contract CowWrapperTest is Test, CowWrapper {
     function test_integration_ThreeWrappersChained() public {
         CowWrapperHelpers.SettleCall memory settlement;
 
-        settlement.tokens = new IERC20[](2);
-        settlement.tokens[0] = IERC20(address(0x1));
-        settlement.tokens[1] = IERC20(address(0x2));
+        settlement.tokens = new address[](2);
+        settlement.tokens[0] = address(0x1);
+        settlement.tokens[1] = address(0x2);
 
         settlement.clearingPrices = new uint256[](2);
         settlement.clearingPrices[0] = 100;
         settlement.clearingPrices[1] = 200;
 
-        settlement.trades = new GPv2Trade.Data[](1);
-        settlement.trades[0] = GPv2Trade.Data({
+        settlement.trades = new CowSettlement.CowTradeData[](1);
+        settlement.trades[0] = CowSettlement.CowTradeData({
             sellTokenIndex: 0,
             buyTokenIndex: 1,
             receiver: address(0x123),
@@ -256,7 +256,7 @@ contract CowWrapperTest is Test, CowWrapper {
         });
 
         settlement.interactions =
-            [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0)];
+            [new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0)];
 
         // Build the chained wrapper data:
         // solver -> wrapper1 -> wrapper2 -> wrapper3 -> mockSettlement
