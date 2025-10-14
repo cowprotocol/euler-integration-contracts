@@ -40,6 +40,7 @@ contract CowEvcClosePositionWrapper is CowWrapper {
 
     struct ClosePositionParams {
         address user;
+        bytes1  subaccount;
         uint256 deadline;
         address borrowVault;
         address collateralVault;
@@ -53,11 +54,11 @@ contract CowEvcClosePositionWrapper is CowWrapper {
         // Structure:
         // - 32 bytes: offset to params (0x40)
         // - 32 bytes: offset to signature
-        // - 160 bytes: params data (5 fields × 32 bytes)
+        // - 192 bytes: params data (6 fields × 32 bytes)
         // - 32 bytes: signature length
         // - N bytes: signature data (padded to 32-byte boundary)
         // We can just math this out
-        uint256 consumed = 160 + 64 + ((signature.length + 31) / 32 ) * 32;
+        uint256 consumed = 192 + 64 + ((signature.length + 31) / 32 ) * 32;
 
         remainingWrapperData = wrapperData[consumed:];
     }
@@ -71,8 +72,10 @@ contract CowEvcClosePositionWrapper is CowWrapper {
     }
 
     function _getSignedCalldata(ClosePositionParams memory params) internal view returns (bytes memory) {
+        address subaccount = address(uint160(params.user) ^ uint8(params.subaccount));
+
         // get current user debt, and find out if we are repaying all
-        uint256 debtAmount = IBorrowing(params.borrowVault).debtOf(params.user);
+        uint256 debtAmount = IBorrowing(params.borrowVault).debtOf(subaccount);
         bool repayAll = params.maxRepayAmount >= debtAmount;
 
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](repayAll ? 4 : 3);
@@ -82,15 +85,15 @@ contract CowEvcClosePositionWrapper is CowWrapper {
             onBehalfOfAccount: address(0),
             targetContract: address(EVC),
             value: 0,
-            data: abi.encodeCall(IEVC.setAccountOperator, (params.user, address(this), true))
+            data: abi.encodeCall(IEVC.setAccountOperator, (subaccount, address(this), true))
         });
 
         // 2. Repay debt and return remaining assets
         items[1] = IEVC.BatchItem({
-            onBehalfOfAccount: params.user,
+            onBehalfOfAccount: subaccount,
             targetContract: address(this),
             value: 0,
-            data: abi.encodeCall(this.helperRepayAndReturn, (params.borrowVault, params.user, params.maxRepayAmount, repayAll))
+            data: abi.encodeCall(this.helperRepayAndReturn, (params.borrowVault, subaccount, params.maxRepayAmount, repayAll))
         });
 
         // 3. If we are repaying all, we should disable the collateral from the user's account
@@ -99,7 +102,7 @@ contract CowEvcClosePositionWrapper is CowWrapper {
                 onBehalfOfAccount: address(0),
                 targetContract: address(EVC),
                 value: 0,
-                data: abi.encodeCall(IEVC.disableCollateral, (params.user, params.collateralVault))
+                data: abi.encodeCall(IEVC.disableCollateral, (subaccount, params.collateralVault))
             });
         }
 
@@ -108,7 +111,7 @@ contract CowEvcClosePositionWrapper is CowWrapper {
             onBehalfOfAccount: address(0),
             targetContract: address(EVC),
             value: 0,
-            data: abi.encodeCall(IEVC.setAccountOperator, (params.user, address(this), false))
+            data: abi.encodeCall(IEVC.setAccountOperator, (subaccount, address(this), false))
         });
 
         return abi.encodeCall(IEVC.batch, (items));
@@ -143,12 +146,34 @@ contract CowEvcClosePositionWrapper is CowWrapper {
         ClosePositionParams memory params;
         bytes memory signature;
         (params, signature, wrapperData) = _parseClosePositionParams(wrapperData);
+        address subaccount = address(uint160(params.user) ^ uint8(params.subaccount));
+
+        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](subaccount == params.user ? 2 : 4);
+        
+        // if its a subaccount, we have to transfer the required tokens to the user's account first
+        if (subaccount != params.user) {
+            (uint256 collateralVaultPrice, uint256 borrowPrice) = _findRatePrices(settleData, params.collateralVault, params.borrowVault);
+
+            uint256 transferAmount = params.maxRepayAmount * borrowPrice / collateralVaultPrice;
+            items[0] = IEVC.BatchItem({
+                onBehalfOfAccount: subaccount,
+                targetContract: params.collateralVault,
+                value: 0,
+                data: abi.encodeCall(IERC20(params.collateralVault).transfer, (params.user, transferAmount))
+            });
+
+            // once we transfer the tokens, we have to revoke ourselves access to the vault to run the permit later...
+            items[1] = IEVC.BatchItem({
+                onBehalfOfAccount: address(0),
+                targetContract: address(EVC),
+                value: 0,
+                data: abi.encodeCall(EVC.setAccountOperator, (subaccount, address(this), false))
+            });
+        }
 
         // Build the EVC batch items for closing a position
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](2);
-
         // 1. Settlement call
-        items[0] = IEVC.BatchItem({
+        items[subaccount == params.user ? 0 : 2] = IEVC.BatchItem({
             onBehalfOfAccount: address(this),
             targetContract: address(this),
             value: 0,
@@ -156,7 +181,7 @@ contract CowEvcClosePositionWrapper is CowWrapper {
         });
 
         // 2. Acquire operator permissions and execute signed actions (repay, disable collateral if needed, revoke operator)
-        items[1] = IEVC.BatchItem({
+        items[subaccount == params.user ? 1 : 3] = IEVC.BatchItem({
             onBehalfOfAccount: address(0),
             targetContract: address(EVC),
             value: 0,
@@ -177,6 +202,19 @@ contract CowEvcClosePositionWrapper is CowWrapper {
 
         // Execute all items in a single batch
         EVC.batch(items);
+    }
+
+    function _findRatePrices(bytes calldata settleData, address collateralVault, address borrowVault) internal view returns (uint256 collateralVaultPrice, uint256 borrowPrice) {
+        address borrowAsset = IERC4626(borrowVault).asset();
+        (address[] memory tokens, uint256[] memory clearingPrices,,) = abi.decode(settleData[4:], (address[], uint256[], CowSettlement.CowTradeData[], CowSettlement.CowInteractionData[][3]));
+        for (uint256 i = 0;i < tokens.length;i++) {
+            if (tokens[i] == collateralVault) {
+                collateralVaultPrice = clearingPrices[i];
+            }
+            else if (tokens[i] == borrowAsset) {
+                borrowPrice = clearingPrices[i];
+            }
+        }
     }
 
     /// @notice Internal settlement function called by EVC

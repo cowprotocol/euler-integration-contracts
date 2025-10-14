@@ -39,6 +39,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper {
 
     struct OpenPositionParams {
         address user;
+        bytes1  subaccount;
         uint256 deadline;
         address collateralVault;
         address borrowVault;
@@ -53,11 +54,11 @@ contract CowEvcOpenPositionWrapper is CowWrapper {
         // Structure:
         // - 32 bytes: offset to params (0x40)
         // - 32 bytes: offset to signature
-        // - 192 bytes: params data (6 fields × 32 bytes)
+        // - 224 bytes: params data (7 fields × 32 bytes)
         // - 32 bytes: signature length
         // - N bytes: signature data (padded to 32-byte boundary)
         // We can just math this out
-        uint256 consumed = 192 + 64 + ((signature.length + 31) / 32 ) * 32;
+        uint256 consumed = 224 + 64 + ((signature.length + 31) / 32 ) * 32;
 
         remainingWrapperData = wrapperData[consumed:];
     }
@@ -119,12 +120,14 @@ contract CowEvcOpenPositionWrapper is CowWrapper {
     function _getSignedCalldata(OpenPositionParams memory params) internal view returns (bytes memory) {
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](4);
 
+        address subaccount = address(uint160(params.user) ^ uint8(params.subaccount));
+
         // 1. Enable collateral
         items[0] = IEVC.BatchItem({
             onBehalfOfAccount: address(0),
             targetContract: address(EVC),
             value: 0,
-            data: abi.encodeCall(IEVC.enableCollateral, (params.user, params.collateralVault))
+            data: abi.encodeCall(IEVC.enableCollateral, (subaccount, params.collateralVault))
         });
 
         // 2. Enable controller (borrow vault)
@@ -132,7 +135,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper {
             onBehalfOfAccount: address(0),
             targetContract: address(EVC),
             value: 0,
-            data: abi.encodeCall(IEVC.enableController, (params.user, params.borrowVault))
+            data: abi.encodeCall(IEVC.enableController, (subaccount, params.borrowVault))
         });
 
         // 3. Deposit collateral
@@ -140,12 +143,12 @@ contract CowEvcOpenPositionWrapper is CowWrapper {
             onBehalfOfAccount: params.user,
             targetContract: params.collateralVault,
             value: 0,
-            data: abi.encodeCall(IERC4626.deposit, (params.collateralAmount, params.user))
+            data: abi.encodeCall(IERC4626.deposit, (params.collateralAmount, subaccount))
         });
 
         // 4. Borrow assets
         items[3] = IEVC.BatchItem({
-            onBehalfOfAccount: params.user,
+            onBehalfOfAccount: subaccount,
             targetContract: params.borrowVault,
             value: 0,
             data: abi.encodeCall(IBorrowing.borrow, (params.borrowAmount, params.user))
