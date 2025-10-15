@@ -115,12 +115,12 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         vm.startPrank(user);
 
-        address subaccount = address(uint160(user) ^ 1);
+        address account = address(uint160(user) ^ 1);
 
         // Get settlement data
         SettlementData memory settlement = getOpenPositionSettlement(
             user,
-            subaccount,
+            account,
             WETH,
             eSUSDS,
             borrowAmount,
@@ -135,8 +135,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         signerECDSA.setPrivateKey(privateKey);
 
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            user: user,
-            subaccount: bytes1(uint8(1)),
+            owner: user,
+            account: account,
             deadline: deadline,
             collateralVault: eSUSDS,
             borrowVault: eWETH,
@@ -185,13 +185,13 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Verify the position was created successfully
         assertApproxEqAbs(
-            IEVault(eSUSDS).convertToAssets(IERC20(eSUSDS).balanceOf(subaccount)),
+            IEVault(eSUSDS).convertToAssets(IERC20(eSUSDS).balanceOf(account)),
             expectedBuyAmount + SUSDS_MARGIN,
             1 ether,
             "User should have collateral deposited"
         );
         assertEq(
-            IEVault(eWETH).debtOf(subaccount),
+            IEVault(eWETH).debtOf(account),
             borrowAmount,
             "User should have debt"
         );
@@ -243,8 +243,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         );
 
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            user: user,
-            subaccount: bytes1(uint8(1)),
+            owner: user,
+            account: address(uint160(user) ^ 1),
             deadline: deadline,
             collateralVault: eSUSDS,
             borrowVault: eWETH,
@@ -290,8 +290,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     /// @notice Test parseWrapperData function
     function test_OpenPositionWrapper_ParseWrapperData() external view {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            user: user,
-            subaccount: bytes1(uint8(1)),
+            owner: user,
+            account: address(uint160(user) ^ 1),
             deadline: block.timestamp + 1 hours,
             collateralVault: eSUSDS,
             borrowVault: eWETH,

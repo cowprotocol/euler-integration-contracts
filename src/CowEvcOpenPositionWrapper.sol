@@ -16,8 +16,8 @@ import "forge-std/console.sol";
 ///      3. Deposit collateral
 ///      4. Borrow assets
 /// @dev The settle call by this order should be performing the necessary swap
-/// from IERC20(borrowVault.asset()) -> collateralVault. The recipient of the 
-/// swap should be the `user` (not this contract). Furthermore, the buyAmountIn should
+/// from IERC20(borrowVault.asset()) -> collateralVault. The recipient of the
+/// swap should be the `owner` (not this contract). Furthermore, the buyAmountIn should
 /// be the same as `maxRepayAmount`.
 contract CowEvcOpenPositionWrapper is CowWrapper {
     IEVC public immutable EVC;
@@ -38,8 +38,8 @@ contract CowEvcOpenPositionWrapper is CowWrapper {
     }
 
     struct OpenPositionParams {
-        address user;
-        bytes1  subaccount;
+        address owner;
+        address account;
         uint256 deadline;
         address collateralVault;
         address borrowVault;
@@ -87,10 +87,10 @@ contract CowEvcOpenPositionWrapper is CowWrapper {
             targetContract: address(EVC),
             value: 0,
             data: abi.encodeCall(IEVC.permit, (
-                params.user,
+                params.owner,
                 address(this),
                 uint256(nonceNamespace),
-                EVC.getNonce(bytes19(bytes20(params.user)), nonceNamespace),
+                EVC.getNonce(bytes19(bytes20(params.owner)), nonceNamespace),
                 params.deadline,
                 0,
                 _getSignedCalldata(params),
@@ -120,14 +120,12 @@ contract CowEvcOpenPositionWrapper is CowWrapper {
     function _getSignedCalldata(OpenPositionParams memory params) internal view returns (bytes memory) {
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](4);
 
-        address subaccount = address(uint160(params.user) ^ uint8(params.subaccount));
-
         // 1. Enable collateral
         items[0] = IEVC.BatchItem({
             onBehalfOfAccount: address(0),
             targetContract: address(EVC),
             value: 0,
-            data: abi.encodeCall(IEVC.enableCollateral, (subaccount, params.collateralVault))
+            data: abi.encodeCall(IEVC.enableCollateral, (params.account, params.collateralVault))
         });
 
         // 2. Enable controller (borrow vault)
@@ -135,23 +133,23 @@ contract CowEvcOpenPositionWrapper is CowWrapper {
             onBehalfOfAccount: address(0),
             targetContract: address(EVC),
             value: 0,
-            data: abi.encodeCall(IEVC.enableController, (subaccount, params.borrowVault))
+            data: abi.encodeCall(IEVC.enableController, (params.account, params.borrowVault))
         });
 
         // 3. Deposit collateral
         items[2] = IEVC.BatchItem({
-            onBehalfOfAccount: params.user,
+            onBehalfOfAccount: params.owner,
             targetContract: params.collateralVault,
             value: 0,
-            data: abi.encodeCall(IERC4626.deposit, (params.collateralAmount, subaccount))
+            data: abi.encodeCall(IERC4626.deposit, (params.collateralAmount, params.account))
         });
 
         // 4. Borrow assets
         items[3] = IEVC.BatchItem({
-            onBehalfOfAccount: subaccount,
+            onBehalfOfAccount: params.account,
             targetContract: params.borrowVault,
             value: 0,
-            data: abi.encodeCall(IBorrowing.borrow, (params.borrowAmount, params.user))
+            data: abi.encodeCall(IBorrowing.borrow, (params.borrowAmount, params.owner))
         });
 
         return abi.encodeCall(IEVC.batch, (items));

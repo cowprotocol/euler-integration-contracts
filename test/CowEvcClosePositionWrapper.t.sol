@@ -60,26 +60,26 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
     /// @notice Helper to set up an initial leveraged position
     /// @dev This creates a position that can then be closed in the tests
     function _setupLeveragedPosition(uint256 borrowAmount, uint256 collateralAmount) internal {
-        address subaccount = address(uint160(user) ^ uint8(0x01));
+        address account = address(uint160(user) ^ uint8(0x01));
 
         vm.startPrank(user);
 
         // User approves SUSDS vault for deposit
         IERC20(SUSDS).approve(eSUSDS, type(uint256).max);
 
-        // Enable collateral and controller on the subaccount
-        evc.enableCollateral(subaccount, eSUSDS);
-        evc.enableController(subaccount, eWETH);
+        // Enable collateral and controller on the account
+        evc.enableCollateral(account, eSUSDS);
+        evc.enableController(account, eWETH);
 
-        evc.setAccountOperator(subaccount, address(closePositionWrapper), true);
+        evc.setAccountOperator(account, address(closePositionWrapper), true);
 
-        // Deposit collateral to the subaccount
-        IERC4626(eSUSDS).deposit(collateralAmount, subaccount);
+        // Deposit collateral to the account
+        IERC4626(eSUSDS).deposit(collateralAmount, account);
 
         vm.stopPrank();
 
-        // Borrow assets from the subaccount (needs to be called with subaccount as onBehalfOf)
-        vm.startPrank(subaccount);
+        // Borrow assets from the account (needs to be called with account as onBehalfOf)
+        vm.startPrank(account);
         IBorrowing(eWETH).borrow(borrowAmount, user);
 
         vm.stopPrank();
@@ -150,8 +150,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         _setupLeveragedPosition(borrowAmount, collateralAmount);
 
         // Verify position exists
-        address subaccount = address(uint160(user) ^ uint8(0x01));
-        uint256 debtBefore = IEVault(eWETH).debtOf(subaccount);
+        address account = address(uint160(user) ^ uint8(0x01));
+        uint256 debtBefore = IEVault(eWETH).debtOf(account);
         assertEq(debtBefore, borrowAmount, "Position should have debt");
 
         vm.startPrank(user);
@@ -181,8 +181,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         signerECDSA.setPrivateKey(privateKey);
 
         CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            user: user,
-            subaccount: 0x01,
+            owner: user,
+            account: account,
             deadline: deadline,
             borrowVault: eWETH,
             collateralVault: eSUSDS,
@@ -204,7 +204,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Record balances before closing
         uint256 collateralBefore = IERC20(eSUSDS).balanceOf(user);
-        uint256 collateralBeforeSubaccount = IERC20(eSUSDS).balanceOf(subaccount);
+        uint256 collateralBeforeAccount = IERC20(eSUSDS).balanceOf(account);
 
         // Encode settlement data
         bytes memory settleData = abi.encodeCall(CowSettlement.settle,
@@ -232,17 +232,17 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Verify the position was closed successfully
         assertEq(
-            IEVault(eWETH).debtOf(subaccount),
+            IEVault(eWETH).debtOf(account),
             0,
             "User should have no debt after closing"
         );
         assertLt(
-            IERC20(eSUSDS).balanceOf(subaccount),
-            collateralBeforeSubaccount,
+            IERC20(eSUSDS).balanceOf(account),
+            collateralBeforeAccount,
             "User should have less collateral after closing"
         );
         assertGt(
-            IERC20(eSUSDS).balanceOf(subaccount),
+            IERC20(eSUSDS).balanceOf(account),
             0,
             "User should have some collateral remaining"
         );
@@ -312,9 +312,11 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 deadline = block.timestamp + 1 hours;
         signerECDSA.setPrivateKey(privateKey);
 
+        address account = address(uint160(user) ^ uint8(0x01));
+
         CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            user: user,
-            subaccount: 0x01,
+            owner: user,
+            account: account,
             deadline: deadline,
             borrowVault: eWETH,
             collateralVault: eSUSDS,
@@ -352,8 +354,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         solver.runBatch(targets, datas);
 
         // Verify partial repayment
-        address subaccount = address(uint160(user) ^ uint8(0x01));
-        uint256 debtAfter = IEVault(eWETH).debtOf(subaccount);
+        uint256 debtAfter = IEVault(eWETH).debtOf(account);
         assertApproxEqAbs(
             debtAfter,
             borrowAmount - buyAmount,
@@ -374,8 +375,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
     /// @notice Test parseWrapperData function
     function test_ClosePositionWrapper_ParseWrapperData() external {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            user: user,
-            subaccount: 0x01,
+            owner: user,
+            account: address(uint160(user) ^ uint8(0x01)),
             deadline: block.timestamp + 1 hours,
             borrowVault: eWETH,
             collateralVault: eSUSDS,
@@ -402,26 +403,26 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Give the wrapper some WETH to repay with
         deal(WETH, address(closePositionWrapper), 2e18);
 
-        address subaccount = address(uint160(user) ^ uint8(0x01));
-        uint256 debtBefore = IEVault(eWETH).debtOf(subaccount);
+        address account = address(uint160(user) ^ uint8(0x01));
+        uint256 debtBefore = IEVault(eWETH).debtOf(account);
 
-        // Call helperRepayAndReturn through EVC on behalf of subaccount
+        // Call helperRepayAndReturn through EVC on behalf of account
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
         items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: subaccount,
+            onBehalfOfAccount: account,
             targetContract: address(closePositionWrapper),
             value: 0,
             data: abi.encodeCall(
                 closePositionWrapper.helperRepayAndReturn,
-                (eWETH, subaccount, type(uint256).max, true)
+                (eWETH, account, type(uint256).max, true)
             )
         });
 
-        vm.prank(subaccount);
+        vm.prank(account);
         evc.batch(items);
 
         // Verify debt was repaid
-        assertEq(IEVault(eWETH).debtOf(subaccount), 0, "Debt should be fully repaid");
+        assertEq(IEVault(eWETH).debtOf(account), 0, "Debt should be fully repaid");
 
         // Verify remaining WETH was sent to user
         assertGt(IERC20(WETH).balanceOf(user), 0, "User should receive remaining WETH");
@@ -458,9 +459,11 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 deadline = block.timestamp + 1 hours;
         signerECDSA.setPrivateKey(privateKey);
 
+        address account = address(uint160(user) ^ uint8(0x01));
+
         CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            user: user,
-            subaccount: 0x01,
+            owner: user,
+            account: account,
             deadline: deadline,
             borrowVault: eWETH,
             collateralVault: eSUSDS,
