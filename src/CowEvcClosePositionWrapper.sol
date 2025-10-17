@@ -23,6 +23,8 @@ import "forge-std/console.sol";
 contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     IEVC public immutable EVC;
 
+    string constant public name = "Euler EVC - Close Position";
+
     /// @notice Tracks the number of times this wrapper has been called
     uint256 public transient depth;
     /// @notice Tracks the number of times `evcInternalSettle` has been called
@@ -34,7 +36,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     error NotEVCSettlement();
     error InsufficientRepaymentAsset(address vault, uint256 balanceAmount, uint256 repayAmount);
 
-    constructor(address _evc, CowAuthentication _authentication) CowWrapper(_authentication) {
+    constructor(address _evc, CowSettlement _settlement) CowWrapper(_settlement) {
         EVC = IEVC(_evc);
         nonceNamespace = uint256(uint160(address(this)));
     }

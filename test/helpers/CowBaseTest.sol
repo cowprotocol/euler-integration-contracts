@@ -8,8 +8,7 @@ import {EVaultTestBase} from "lib/euler-vault-kit/test/unit/evault/EVaultTestBas
 import {IEVault, IVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
-import {IGPv2Settlement} from "../../src/vendor/interfaces/IGPv2Settlement.sol";
-import {CowSettlement} from "../../src/vendor/CowWrapper.sol";
+import {CowSettlement, CowAuthentication} from "../../src/vendor/CowWrapper.sol";
 
 import {MilkSwap} from "./MilkSwap.sol";
 
@@ -40,7 +39,7 @@ contract CowBaseTest is EVaultTestBase {
     address payable constant realEVC = payable(0x0C9a3dd6b8F28529d72d7f9cE918D493519EE383);
     address internal swapVerifier = 0xae26485ACDDeFd486Fe9ad7C2b34169d360737c7;
 
-    IGPv2Settlement constant cowSettlement = IGPv2Settlement(payable(0x9008D19f58AAbD9eD0D60971565AA8510560ab41));
+    CowSettlement constant cowSettlement = CowSettlement(payable(0x9008D19f58AAbD9eD0D60971565AA8510560ab41));
 
     MilkSwap public milkSwap;
     address user;
@@ -64,7 +63,7 @@ contract CowBaseTest is EVaultTestBase {
         user = vm.addr(privateKey);
 
         // Add wrapper and our fake solver as solver
-        GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(cowSettlement.authenticator());
+        GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(cowSettlement.authenticator()));
         address manager = allowList.manager();
         // vm.deal(address(manager), 1e18);
         vm.startPrank(manager);

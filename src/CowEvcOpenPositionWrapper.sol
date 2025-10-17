@@ -3,7 +3,7 @@ pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 
-import {CowWrapper, CowAuthentication} from "./vendor/CowWrapper.sol";
+import {CowWrapper, CowSettlement, CowAuthentication} from "./vendor/CowWrapper.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {PreApprovedHashes} from "./PreApprovedHashes.sol";
 
@@ -23,6 +23,8 @@ import "forge-std/console.sol";
 contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     IEVC public immutable EVC;
 
+    string constant public name = "Euler EVC - Close Position";
+
     /// @notice Tracks the number of times this wrapper has been called
     uint256 public transient depth;
     /// @notice Tracks the number of times `evcInternalSettle` has been called
@@ -33,7 +35,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     error Unauthorized(address msgSender);
     error NotEVCSettlement();
 
-    constructor(address _evc, CowAuthentication _authentication) CowWrapper(_authentication) {
+    constructor(address _evc, CowSettlement _settlement) CowWrapper(_settlement) {
         EVC = IEVC(_evc);
         nonceNamespace = uint256(uint160(address(this)));
     }

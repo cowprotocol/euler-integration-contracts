@@ -28,11 +28,11 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         // Deploy the new open position wrapper
         openPositionWrapper = new CowEvcOpenPositionWrapper(
             address(evc),
-            CowAuthentication(cowSettlement.authenticator())
+            cowSettlement
         );
 
         // Add wrapper as a solver
-        GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(cowSettlement.authenticator());
+        GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(cowSettlement.authenticator()));
         address manager = allowList.manager();
         vm.startPrank(manager);
         allowList.addSolver(address(openPositionWrapper));
@@ -171,7 +171,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         ));
 
         // Encode wrapper data with OpenPositionParams
-        bytes memory wrapperData = abi.encodePacked(abi.encode(params, permitSignature), cowSettlement);
+        bytes memory wrapperData = abi.encode(params, permitSignature);
 
         // Execute wrapped settlement through solver
         address[] memory targets = new address[](1);
@@ -399,7 +399,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         ));
 
         // Encode wrapper data with OpenPositionParams (empty signature since pre-approved)
-        bytes memory wrapperData = abi.encodePacked(abi.encode(params, new bytes(0)), cowSettlement);
+        bytes memory wrapperData = abi.encode(params, new bytes(0));
 
         // Execute wrapped settlement through solver
         address[] memory targets = new address[](1);
