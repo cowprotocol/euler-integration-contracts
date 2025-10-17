@@ -3,7 +3,7 @@ pragma solidity ^0.8;
 
 import {Test} from "forge-std/Test.sol";
 import {CowWrapperHelpers} from "../src/vendor/CowWrapperHelpers.sol";
-import {CowWrapper, CowAuthentication, ICowWrapper} from "../src/vendor/CowWrapper.sol";
+import {CowWrapper, CowAuthentication, CowSettlement} from "../src/vendor/CowWrapper.sol";
 
 contract MockAuthenticator {
     mapping(address => bool) public solvers;
@@ -17,10 +17,22 @@ contract MockAuthenticator {
     }
 }
 
+contract MockSettlement {
+    CowAuthentication private immutable AUTHENTICATOR;
+
+    constructor(CowAuthentication authenticator_) {
+        AUTHENTICATOR = authenticator_;
+    }
+
+    function authenticator() external view returns (CowAuthentication) {
+        return AUTHENTICATOR;
+    }
+}
+
 contract MockWrapper is CowWrapper {
     uint256 public consumeBytes;
 
-    constructor(CowAuthentication authenticator_, uint256 consumeBytes_) CowWrapper(authenticator_) {
+    constructor(CowSettlement settlement_, uint256 consumeBytes_) CowWrapper(settlement_) {
         consumeBytes = consumeBytes_;
     }
 
@@ -34,7 +46,7 @@ contract MockWrapper is CowWrapper {
 }
 
 contract BrokenWrapper is CowWrapper {
-    constructor(CowAuthentication authenticator_) CowWrapper(authenticator_) {}
+    constructor(CowSettlement settlement_) CowWrapper(settlement_) {}
 
     function _wrap(bytes calldata, bytes calldata) internal override {
         // Not used in these tests
@@ -49,7 +61,7 @@ contract CowWrapperHelpersTest is Test {
     CowWrapperHelpers helpers;
     MockAuthenticator wrapperAuth;
     MockAuthenticator solverAuth;
-    address settlement;
+    MockSettlement mockSettlement;
 
     MockWrapper wrapper1;
     MockWrapper wrapper2;
@@ -61,13 +73,13 @@ contract CowWrapperHelpersTest is Test {
         solverAuth = new MockAuthenticator();
         helpers = new CowWrapperHelpers(CowAuthentication(address(wrapperAuth)), CowAuthentication(address(solverAuth)));
 
-        settlement = makeAddr("settlement");
+        mockSettlement = new MockSettlement(CowAuthentication(address(wrapperAuth)));
 
         // Create mock wrappers
-        wrapper1 = new MockWrapper(CowAuthentication(address(wrapperAuth)), 4);
-        wrapper2 = new MockWrapper(CowAuthentication(address(wrapperAuth)), 8);
-        wrapper3 = new MockWrapper(CowAuthentication(address(wrapperAuth)), 0);
-        brokenWrapper = new BrokenWrapper(CowAuthentication(address(wrapperAuth)));
+        wrapper1 = new MockWrapper(CowSettlement(address(mockSettlement)), 4);
+        wrapper2 = new MockWrapper(CowSettlement(address(mockSettlement)), 8);
+        wrapper3 = new MockWrapper(CowSettlement(address(mockSettlement)), 0);
+        brokenWrapper = new BrokenWrapper(CowSettlement(address(mockSettlement)));
 
         // Add wrappers as solvers
         wrapperAuth.addSolver(address(wrapper1));
@@ -79,10 +91,10 @@ contract CowWrapperHelpersTest is Test {
     function test_verifyAndBuildWrapperData_EmptyArrays() public view {
         CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](0);
 
-        bytes memory result = helpers.verifyAndBuildWrapperData(wrapperCalls, settlement);
+        bytes memory result = helpers.verifyAndBuildWrapperData(wrapperCalls);
 
-        // Should only contain the settlement address
-        assertEq(result, abi.encodePacked(settlement));
+        // Should be empty
+        assertEq(result, hex"");
     }
 
     function test_verifyAndBuildWrapperData_SingleWrapper() public view {
@@ -92,10 +104,10 @@ contract CowWrapperHelpersTest is Test {
             data: hex"deadbeef"
         });
 
-        bytes memory result = helpers.verifyAndBuildWrapperData(wrapperCalls, settlement);
+        bytes memory result = helpers.verifyAndBuildWrapperData(wrapperCalls);
 
-        // Should contain: data[0] + settlement
-        bytes memory expected = abi.encodePacked(hex"deadbeef", settlement);
+        // Should contain: data[0] only (no settlement appended)
+        bytes memory expected = abi.encodePacked(hex"deadbeef");
         assertEq(result, expected);
     }
 
@@ -114,16 +126,15 @@ contract CowWrapperHelpersTest is Test {
             data: hex""
         });
 
-        bytes memory result = helpers.verifyAndBuildWrapperData(wrapperCalls, settlement);
+        bytes memory result = helpers.verifyAndBuildWrapperData(wrapperCalls);
 
-        // Should contain: data[0] + target[1] + data[1] + target[2] + data[2] + settlement
+        // Should contain: data[0] + target[1] + data[1] + target[2] + data[2] (no settlement)
         bytes memory expected = abi.encodePacked(
             hex"deadbeef",
             address(wrapper2),
             hex"cafebabe12345678",
             address(wrapper3),
-            hex"",
-            settlement
+            hex""
         );
         assertEq(result, expected);
     }
@@ -138,7 +149,7 @@ contract CowWrapperHelpersTest is Test {
         });
 
         vm.expectRevert(abi.encodeWithSelector(CowWrapperHelpers.NotAWrapper.selector, 0, notAWrapper, address(wrapperAuth)));
-        helpers.verifyAndBuildWrapperData(wrapperCalls, settlement);
+        helpers.verifyAndBuildWrapperData(wrapperCalls);
     }
 
     function test_verifyAndBuildWrapperData_RevertsOnNotAWrapper_SecondWrapper() public {
@@ -155,7 +166,7 @@ contract CowWrapperHelpersTest is Test {
         });
 
         vm.expectRevert(abi.encodeWithSelector(CowWrapperHelpers.NotAWrapper.selector, 1, notAWrapper, address(wrapperAuth)));
-        helpers.verifyAndBuildWrapperData(wrapperCalls, settlement);
+        helpers.verifyAndBuildWrapperData(wrapperCalls);
     }
 
     function test_verifyAndBuildWrapperData_RevertsOnWrapperDataNotFullyConsumed() public {
@@ -166,7 +177,7 @@ contract CowWrapperHelpersTest is Test {
         });
 
         vm.expectRevert(abi.encodeWithSelector(CowWrapperHelpers.WrapperDataNotFullyConsumed.selector, 0, hex"cafe"));
-        helpers.verifyAndBuildWrapperData(wrapperCalls, settlement);
+        helpers.verifyAndBuildWrapperData(wrapperCalls);
     }
 
     function test_verifyAndBuildWrapperData_RevertsOnWrapperDataMalformed() public {
@@ -177,12 +188,12 @@ contract CowWrapperHelpersTest is Test {
         });
 
         vm.expectRevert();
-        helpers.verifyAndBuildWrapperData(wrapperCalls, settlement);
+        helpers.verifyAndBuildWrapperData(wrapperCalls);
     }
 
     function test_verifyAndBuildWrapperData_RevertsOnSettlementContractShouldNotBeSolver() public {
         // Add settlement as a solver (which should not be allowed)
-        solverAuth.addSolver(settlement);
+        solverAuth.addSolver(address(mockSettlement));
 
         CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](1);
         wrapperCalls[0] = CowWrapperHelpers.WrapperCall({
@@ -193,11 +204,11 @@ contract CowWrapperHelpersTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(
                 CowWrapperHelpers.SettlementContractShouldNotBeSolver.selector,
-                settlement,
+                address(mockSettlement),
                 address(solverAuth)
             )
         );
-        helpers.verifyAndBuildWrapperData(wrapperCalls, settlement);
+        helpers.verifyAndBuildWrapperData(wrapperCalls);
     }
 
     function test_verifyAndBuildWrapperData_EmptyWrapperData() public view {
@@ -211,10 +222,10 @@ contract CowWrapperHelpersTest is Test {
             data: hex""
         });
 
-        bytes memory result = helpers.verifyAndBuildWrapperData(wrapperCalls, settlement);
+        bytes memory result = helpers.verifyAndBuildWrapperData(wrapperCalls);
 
-        // Should contain: data[0] + target[1] + data[1] + settlement
-        bytes memory expected = abi.encodePacked(hex"", address(wrapper3), hex"", settlement);
+        // Should contain: data[0] + target[1] + data[1] (no settlement)
+        bytes memory expected = abi.encodePacked(hex"", address(wrapper3), hex"");
         assertEq(result, expected);
     }
 
@@ -233,15 +244,14 @@ contract CowWrapperHelpersTest is Test {
             data: hex"cafebabe12345678"
         });
 
-        bytes memory result = helpers.verifyAndBuildWrapperData(wrapperCalls, settlement);
+        bytes memory result = helpers.verifyAndBuildWrapperData(wrapperCalls);
 
         bytes memory expected = abi.encodePacked(
             hex"",
             address(wrapper1),
             hex"deadbeef",
             address(wrapper2),
-            hex"cafebabe12345678",
-            settlement
+            hex"cafebabe12345678"
         );
         assertEq(result, expected);
     }
