@@ -13,6 +13,10 @@ library CowWrapperHelpers {
 
     /**
      * @dev This function is intended for testing purposes and is not memory efficient.
+     * @param wrappers Array of wrapper addresses to chain together
+     * @param wrapperDatas Array of wrapper-specific data for each wrapper
+     * @param cowSettlement The settlement contract address (unused, kept for backwards compatibility)
+     * @param settlement The settlement call parameters
      */
     function encodeWrapperCall(
         address[] calldata wrappers,
@@ -25,9 +29,13 @@ library CowWrapperHelpers {
         for (uint256 i = 0; i < wrappers.length; i++) {
             wrapperData = abi.encodePacked(
                 wrapperData,
-                wrapperDatas[i],
-                (wrappers.length > i + 1 ? wrappers[i + 1] : cowSettlement)
+                wrapperDatas[i]
             );
+            // Include the next wrapper address if there is one
+            if (wrappers.length > i + 1) {
+                wrapperData = abi.encodePacked(wrapperData, wrappers[i + 1]);
+            }
+            // For the last wrapper, don't add anything - the static SETTLEMENT will be called automatically
         }
 
         // Build the settle calldata

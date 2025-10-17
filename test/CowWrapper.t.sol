@@ -31,6 +31,15 @@ contract MockSettlement {
     }
 
     SettleCall[] public settleCalls;
+    CowAuthentication private immutable _authenticator;
+
+    constructor(CowAuthentication authenticator_) {
+        _authenticator = authenticator_;
+    }
+
+    function authenticator() external view returns (CowAuthentication) {
+        return _authenticator;
+    }
 
     function settle(
         IERC20[] calldata tokens,
@@ -78,15 +87,8 @@ contract MockSettlement {
     }
 }
 
-contract CowWrapperTest is Test, CowWrapper {
-    MockAuthentication public authenticator;
-    MockSettlement public mockSettlement;
-    address public solver;
-
-    EmptyWrapper private wrapper1;
-    EmptyWrapper private wrapper2;
-    EmptyWrapper private wrapper3;
-
+// Test wrapper that exposes internal functions
+contract TestWrapper is CowWrapper {
     // Track _wrap calls
     struct WrapCall {
         bytes settleData;
@@ -95,33 +97,9 @@ contract CowWrapperTest is Test, CowWrapper {
 
     WrapCall[] public wrapCalls;
 
-    uint256 private skipWrappedData;
+    uint256 public skipWrappedData;
 
-    constructor() CowWrapper(CowAuthentication(address(0))) {
-        // Constructor will be called in setUp with proper authenticator
-    }
-
-    function setUp() public {
-        // Deploy MockAuthentication and etch it to address(0) so the immutable AUTHENTICATOR works
-        authenticator = new MockAuthentication();
-        vm.etch(address(0), address(authenticator).code);
-
-        solver = makeAddr("solver");
-        // Add solver via address(0) which now has the MockAuthentication code
-        MockAuthentication(address(0)).addSolver(solver);
-
-        mockSettlement = new MockSettlement();
-
-        // Create three EmptyWrapper instances
-        wrapper1 = new EmptyWrapper(CowAuthentication(address(0)));
-        wrapper2 = new EmptyWrapper(CowAuthentication(address(0)));
-        wrapper3 = new EmptyWrapper(CowAuthentication(address(0)));
-
-        // Add all wrappers as solvers
-        MockAuthentication(address(0)).addSolver(address(wrapper1));
-        MockAuthentication(address(0)).addSolver(address(wrapper2));
-        MockAuthentication(address(0)).addSolver(address(wrapper3));
-    }
+    constructor(CowSettlement settlement_) CowWrapper(settlement_) {}
 
     function _wrap(bytes calldata settleData, bytes calldata wrapperData) internal override {
         // Record the wrap call
@@ -137,6 +115,51 @@ contract CowWrapperTest is Test, CowWrapper {
         _internalSettle(settleData, wrapperData);
     }
 
+    function getWrapCallCount() external view returns (uint256) {
+        return wrapCalls.length;
+    }
+
+    function getWrapCall(uint256 index) external view returns (bytes memory settleData, bytes memory wrapperData) {
+        return (wrapCalls[index].settleData, wrapCalls[index].wrapperData);
+    }
+
+    function setSkipWrappedData(uint256 value) external {
+        skipWrappedData = value;
+    }
+}
+
+contract CowWrapperTest is Test {
+    MockAuthentication public authenticator;
+    MockSettlement public mockSettlement;
+    address public solver;
+
+    TestWrapper public testWrapper;
+    EmptyWrapper private wrapper1;
+    EmptyWrapper private wrapper2;
+    EmptyWrapper private wrapper3;
+
+    function setUp() public {
+        // Deploy mock contracts
+        authenticator = new MockAuthentication();
+        mockSettlement = new MockSettlement(CowAuthentication(address(authenticator)));
+
+        solver = makeAddr("solver");
+        // Add solver to the authenticator
+        authenticator.addSolver(solver);
+
+        // Create test wrapper and three EmptyWrapper instances with the settlement contract
+        testWrapper = new TestWrapper(CowSettlement(address(mockSettlement)));
+        wrapper1 = new EmptyWrapper(CowSettlement(address(mockSettlement)));
+        wrapper2 = new EmptyWrapper(CowSettlement(address(mockSettlement)));
+        wrapper3 = new EmptyWrapper(CowSettlement(address(mockSettlement)));
+
+        // Add all wrappers as solvers
+        authenticator.addSolver(address(testWrapper));
+        authenticator.addSolver(address(wrapper1));
+        authenticator.addSolver(address(wrapper2));
+        authenticator.addSolver(address(wrapper3));
+    }
+
     function test_wrap_ReceivesCorrectParameters() public {
         IERC20[] memory tokens = new IERC20[](1);
         tokens[0] = IERC20(address(0x1));
@@ -149,21 +172,22 @@ contract CowWrapperTest is Test, CowWrapper {
             [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0)];
 
         bytes memory customWrapperData = hex"deadbeef";
-        address nextSettlement = address(mockSettlement);
 
         bytes memory settleData =
             abi.encodeWithSelector(CowSettlement.settle.selector, tokens, clearingPrices, trades, interactions);
-        bytes memory wrapperData = abi.encodePacked(customWrapperData, nextSettlement);
+        // wrapperData is just custom data - no settlement address needed
+        bytes memory wrapperData = customWrapperData;
 
-        skipWrappedData = customWrapperData.length;
+        testWrapper.setSkipWrappedData(customWrapperData.length);
 
         vm.prank(solver);
-        this.wrappedSettle(settleData, wrapperData);
-        skipWrappedData = 0;
+        testWrapper.wrappedSettle(settleData, wrapperData);
+        testWrapper.setSkipWrappedData(0);
 
-        assertEq(wrapCalls.length, 1);
-        assertGt(wrapCalls[0].settleData.length, 0);
-        assertEq(wrapCalls[0].wrapperData, customWrapperData);
+        assertEq(testWrapper.getWrapCallCount(), 1);
+        (bytes memory recordedSettleData, bytes memory recordedWrapperData) = testWrapper.getWrapCall(0);
+        assertGt(recordedSettleData.length, 0);
+        assertEq(recordedWrapperData, customWrapperData);
     }
 
     function test_internalSettle_CallsNextSettlement() public {
@@ -177,37 +201,19 @@ contract CowWrapperTest is Test, CowWrapper {
         GPv2Interaction.Data[][3] memory interactions =
             [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0)];
 
-        address nextSettlement = address(mockSettlement);
-
         bytes memory settleData =
             abi.encodeWithSelector(CowSettlement.settle.selector, tokens, clearingPrices, trades, interactions);
-        bytes memory wrapperData = abi.encodePacked(nextSettlement);
+        // Empty wrapperData means call the static SETTLEMENT contract
+        bytes memory wrapperData = hex"";
 
         vm.prank(solver);
-        this.wrappedSettle(settleData, wrapperData);
+        testWrapper.wrappedSettle(settleData, wrapperData);
 
         assertEq(mockSettlement.getSettleCallCount(), 1);
         (uint256 tokenCount, uint256 priceCount, uint256 tradeCount,) = mockSettlement.getLastSettleCall();
         assertEq(tokenCount, 1);
         assertEq(priceCount, 1);
         assertEq(tradeCount, 0);
-    }
-
-    function test_wrappedSettle_RevertsWithWrapperHasNoSettleTarget() public {
-        IERC20[] memory tokens = new IERC20[](0);
-        uint256[] memory clearingPrices = new uint256[](0);
-        GPv2Trade.Data[] memory trades = new GPv2Trade.Data[](0);
-        GPv2Interaction.Data[][3] memory interactions =
-            [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0)];
-
-        bytes memory settleData =
-            abi.encodeWithSelector(CowSettlement.settle.selector, tokens, clearingPrices, trades, interactions);
-        bytes memory wrapperData = hex""; // Empty wrapper data (less than 20 bytes)
-
-        // Should revert when called without sufficient wrapper data
-        vm.prank(solver);
-        vm.expectRevert(abi.encodeWithSelector(CowWrapper.WrapperHasNoSettleTarget.selector, 0, 20));
-        this.wrappedSettle(settleData, wrapperData);
     }
 
     function test_wrappedSettle_RevertsWithNotASolver() public {
@@ -219,14 +225,14 @@ contract CowWrapperTest is Test, CowWrapper {
 
         bytes memory settleData =
             abi.encodeWithSelector(CowSettlement.settle.selector, tokens, clearingPrices, trades, interactions);
-        bytes memory wrapperData = abi.encodePacked(address(mockSettlement)); // Packed encoding of settlement address
+        bytes memory wrapperData = hex"";
 
         address notASolver = makeAddr("notASolver");
 
         // Should revert when called by non-solver
         vm.prank(notASolver);
         vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, notASolver));
-        this.wrappedSettle(settleData, wrapperData);
+        testWrapper.wrappedSettle(settleData, wrapperData);
     }
 
     function test_integration_ThreeWrappersChained() public {
