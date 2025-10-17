@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 pragma abicoder v2;
 
@@ -14,5 +14,10 @@ contract EmptyWrapper is CowWrapper {
         bytes calldata wrappedData
     ) internal override {
         _internalSettle(settleData, wrappedData);
+    }
+
+    function parseWrapperData(bytes calldata wrapperData) external pure override returns (bytes calldata remainingWrapperData) {
+        // EmptyWrapper doesn't consume any wrapper data
+        return wrapperData;
     }
 }

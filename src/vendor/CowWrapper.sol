@@ -2,7 +2,7 @@
 pragma solidity >=0.7.6 <0.9.0;
 pragma abicoder v2;
 
-/// @title CoW Protocol v2 Authentication Interface
+/// @title CoW Protocol Authentication Interface
 /// @author CoW DAO developers
 interface CowAuthentication {
     /// @dev determines whether the provided address is an authenticated solver.
@@ -60,12 +60,23 @@ interface ICowWrapper {
     /// @notice A human readable label for this wrapper. Used for display in explorer/analysis UIs
     function name() external view returns (string memory);
 
+    /// @notice The settlement contract used by this wrapper
+    /// @return The CowSettlement contract address
+    function SETTLEMENT() external view returns (CowSettlement);
+
     /// @notice Initiates a wrapped settlement call
     /// @dev This is the entry point for wrapped settlements. The wrapper will execute custom logic
     ///      before calling the next wrapper or settlement contract in the chain.
     /// @param settleData ABI-encoded call to CowSettlement.settle()
     /// @param wrapperData Encoded chain of wrapper-specific data followed by addresses of next wrappers/settlement
     function wrappedSettle(bytes calldata settleData, bytes calldata wrapperData) external;
+
+    /// @notice Parses and validates wrapper-specific data
+    /// @dev Used by CowWrapperHelpers to validate wrapper data before execution.
+    ///      Implementations should consume their portion of wrapperData and return the rest.
+    /// @param wrapperData The wrapper-specific data to parse
+    /// @return remainingWrapperData Any wrapper data that was not consumed by this wrapper
+    function parseWrapperData(bytes calldata wrapperData) external view returns (bytes calldata remainingWrapperData);
 }
 
 /// @title CoW Protocol Wrapper Base Contract
@@ -114,6 +125,13 @@ abstract contract CowWrapper is ICowWrapper {
         // Delegate to the wrapper's custom logic
         _wrap(settleData, wrapperData);
     }
+
+    /// @notice Parses and validates wrapper-specific data
+    /// @dev Must be implemented by concrete wrapper contracts. Used for pre-execution validation.
+    ///      The implementation should consume its wrapper-specific data and return the remainder.
+    /// @param wrapperData The full wrapper data to parse
+    /// @return remainingWrapperData The portion of wrapper data not consumed by this wrapper
+    function parseWrapperData(bytes calldata wrapperData) external virtual view returns (bytes calldata remainingWrapperData);
 
     /// @notice Internal function containing the wrapper's custom logic
     /// @dev Must be implemented by concrete wrapper contracts. Should execute custom logic
