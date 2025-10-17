@@ -74,7 +74,7 @@ interface ICowWrapper {
 ///      - Eventually call settle() on the approved CowSettlement contract
 ///      - Implement _wrap() for custom logic
 ///      - Implement parseWrapperData() for validation of implementation-specific wrapperData
-abstract contract CowWrapper {
+abstract contract CowWrapper is ICowWrapper {
     /// @notice Thrown when the caller is not an authenticated solver
     /// @param unauthorized The address that attempted to call wrappedSettle
     error NotASolver(address unauthorized);
