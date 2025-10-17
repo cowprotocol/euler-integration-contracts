@@ -5,6 +5,7 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 
 import {CowWrapper, CowAuthentication} from "./vendor/CowWrapper.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {PreApprovedHashes} from "./PreApprovedHashes.sol";
 
 import "forge-std/console.sol";
 
@@ -19,7 +20,7 @@ import "forge-std/console.sol";
 /// from IERC20(borrowVault.asset()) -> collateralVault. The recipient of the
 /// swap should be the `owner` (not this contract). Furthermore, the buyAmountIn should
 /// be the same as `maxRepayAmount`.
-contract CowEvcOpenPositionWrapper is CowWrapper {
+contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     IEVC public immutable EVC;
 
     /// @notice Tracks the number of times this wrapper has been called
@@ -35,6 +36,13 @@ contract CowEvcOpenPositionWrapper is CowWrapper {
     constructor(address _evc, CowAuthentication _authentication) CowWrapper(_authentication) {
         EVC = IEVC(_evc);
         nonceNamespace = uint256(uint160(address(this)));
+    }
+
+    /// @notice Helper function to compute the hash that would be approved
+    /// @param params The OpenPositionParams to hash
+    /// @return The hash of the signed calldata for these params
+    function getApprovalHash(OpenPositionParams memory params) external view returns (bytes32) {
+        return keccak256(_getSignedCalldata(params));
     }
 
     struct OpenPositionParams {
@@ -78,28 +86,37 @@ contract CowEvcOpenPositionWrapper is CowWrapper {
         bytes memory signature;
         (params, signature, wrapperData) = _parseOpenPositionParams(wrapperData);
 
-        // Build the EVC batch items for opening a position
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](2);
+        // Check if the signed calldata hash is pre-approved
+        bytes memory signedCalldata = _getSignedCalldata(params);
+        bytes32 hash = keccak256(signedCalldata);
+        bool isPreApproved = isHashPreApproved(params.owner, hash);
 
-        // 1. Acquire operator permissions
-        items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: address(0),
-            targetContract: address(EVC),
-            value: 0,
-            data: abi.encodeCall(IEVC.permit, (
-                params.owner,
-                address(this),
-                uint256(nonceNamespace),
-                EVC.getNonce(bytes19(bytes20(params.owner)), nonceNamespace),
-                params.deadline,
-                0,
-                _getSignedCalldata(params),
-                signature
-            ))
-        });
+        // Build the EVC batch items for opening a position
+        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](isPreApproved ? 1 : 2);
+
+        uint256 itemIndex = 0;
+
+        // 1. Acquire operator permissions (skip if pre-approved)
+        if (!isPreApproved) {
+            items[itemIndex++] = IEVC.BatchItem({
+                onBehalfOfAccount: address(0),
+                targetContract: address(EVC),
+                value: 0,
+                data: abi.encodeCall(IEVC.permit, (
+                    params.owner,
+                    address(this),
+                    uint256(nonceNamespace),
+                    EVC.getNonce(bytes19(bytes20(params.owner)), nonceNamespace),
+                    params.deadline,
+                    0,
+                    signedCalldata,
+                    signature
+                ))
+            });
+        }
 
         // 2. Settlement call
-        items[1] = IEVC.BatchItem({
+        items[itemIndex] = IEVC.BatchItem({
             onBehalfOfAccount: address(this),
             targetContract: address(this),
             value: 0,

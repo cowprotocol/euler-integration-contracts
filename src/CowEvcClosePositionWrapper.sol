@@ -5,6 +5,7 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 
 import {CowWrapper, CowAuthentication, CowSettlement} from "./vendor/CowWrapper.sol";
 import {IERC4626, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {PreApprovedHashes} from "./PreApprovedHashes.sol";
 
 import "forge-std/console.sol";
 
@@ -19,7 +20,7 @@ import "forge-std/console.sol";
 /// the order should be of type GPv2Order.KIND_BUY to prevent excess from being sent to the contract.
 /// If a full close is being performed, leave a small buffer for intrest accumultation, and the dust will
 /// be returned to the owner's wallet.
-contract CowEvcClosePositionWrapper is CowWrapper {
+contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     IEVC public immutable EVC;
 
     /// @notice Tracks the number of times this wrapper has been called
@@ -36,6 +37,13 @@ contract CowEvcClosePositionWrapper is CowWrapper {
     constructor(address _evc, CowAuthentication _authentication) CowWrapper(_authentication) {
         EVC = IEVC(_evc);
         nonceNamespace = uint256(uint160(address(this)));
+    }
+
+    /// @notice Helper function to compute the hash that would be approved
+    /// @param params The ClosePositionParams to hash
+    /// @return The hash of the signed calldata for these params
+    function getApprovalHash(ClosePositionParams memory params) external view returns (bytes32) {
+        return keccak256(_getSignedCalldata(params));
     }
 
     struct ClosePositionParams {
@@ -145,14 +153,25 @@ contract CowEvcClosePositionWrapper is CowWrapper {
         bytes memory signature;
         (params, signature, wrapperData) = _parseClosePositionParams(wrapperData);
 
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](params.account == params.owner ? 2 : 4);
+        // Check if the signed calldata hash is pre-approved
+        bytes memory signedCalldata = _getSignedCalldata(params);
+        bytes32 hash = keccak256(signedCalldata);
+        bool isPreApproved = isHashPreApproved(params.owner, hash);
+
+        uint256 itemCount = params.account == params.owner ? 2 : 4;
+        if (isPreApproved) {
+            itemCount -= 1; // Skip permit if pre-approved
+        }
+
+        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](itemCount);
+        uint256 itemIndex = 0;
 
         // if its a subaccount, we have to transfer the required tokens to the owner's account first
         if (params.account != params.owner) {
             (uint256 collateralVaultPrice, uint256 borrowPrice) = _findRatePrices(settleData, params.collateralVault, params.borrowVault);
 
             uint256 transferAmount = params.maxRepayAmount * borrowPrice / collateralVaultPrice;
-            items[0] = IEVC.BatchItem({
+            items[itemIndex++] = IEVC.BatchItem({
                 onBehalfOfAccount: params.account,
                 targetContract: params.collateralVault,
                 value: 0,
@@ -160,7 +179,7 @@ contract CowEvcClosePositionWrapper is CowWrapper {
             });
 
             // once we transfer the tokens, we have to revoke ourselves access to the vault to run the permit later...
-            items[1] = IEVC.BatchItem({
+            items[itemIndex++] = IEVC.BatchItem({
                 onBehalfOfAccount: address(0),
                 targetContract: address(EVC),
                 value: 0,
@@ -170,7 +189,7 @@ contract CowEvcClosePositionWrapper is CowWrapper {
 
         // Build the EVC batch items for closing a position
         // 1. Settlement call
-        items[params.account == params.owner ? 0 : 2] = IEVC.BatchItem({
+        items[itemIndex++] = IEVC.BatchItem({
             onBehalfOfAccount: address(this),
             targetContract: address(this),
             value: 0,
@@ -178,21 +197,24 @@ contract CowEvcClosePositionWrapper is CowWrapper {
         });
 
         // 2. Acquire operator permissions and execute signed actions (repay, disable collateral if needed, revoke operator)
-        items[params.account == params.owner ? 1 : 3] = IEVC.BatchItem({
-            onBehalfOfAccount: address(0),
-            targetContract: address(EVC),
-            value: 0,
-            data: abi.encodeCall(IEVC.permit, (
-                params.owner,
-                address(this),
-                uint256(nonceNamespace),
-                EVC.getNonce(bytes19(bytes20(params.owner)), nonceNamespace),
-                params.deadline,
-                0,
-                _getSignedCalldata(params),
-                signature
-            ))
-        });
+        // Skip if pre-approved
+        if (!isPreApproved) {
+            items[itemIndex] = IEVC.BatchItem({
+                onBehalfOfAccount: address(0),
+                targetContract: address(EVC),
+                value: 0,
+                data: abi.encodeCall(IEVC.permit, (
+                    params.owner,
+                    address(this),
+                    uint256(nonceNamespace),
+                    EVC.getNonce(bytes19(bytes20(params.owner)), nonceNamespace),
+                    params.deadline,
+                    0,
+                    signedCalldata,
+                    signature
+                ))
+            });
+        }
 
         // 3. Account status check (automatically done by EVC at end of batch)
         // No explicit item needed - EVC handles this

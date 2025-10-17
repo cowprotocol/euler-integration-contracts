@@ -9,6 +9,7 @@ import {IEVault, IERC4626, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/
 import {CowEvcOpenPositionWrapper} from "../src/CowEvcOpenPositionWrapper.sol";
 import {CowAuthentication, CowSettlement} from "../src/vendor/CowWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
+import {PreApprovedHashes} from "../src/PreApprovedHashes.sol";
 
 import {CowBaseTest} from "./helpers/CowBaseTest.sol";
 import {SignerECDSA} from "./helpers/SignerECDSA.sol";
@@ -304,5 +305,125 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // After parsing OpenPositionParams, remaining data should be empty
         assertEq(remainingData.length, 0, "Remaining data should be empty");
+    }
+
+    /// @notice Test setting pre-approved hash
+    function test_OpenPositionWrapper_SetPreApprovedHash() external {
+        vm.skip(bytes(FORK_RPC_URL).length == 0);
+
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
+            owner: user,
+            account: address(uint160(user) ^ 1),
+            deadline: block.timestamp + 1 hours,
+            collateralVault: eSUSDS,
+            borrowVault: eWETH,
+            collateralAmount: SUSDS_MARGIN,
+            borrowAmount: 1e18
+        });
+
+        bytes32 hash = openPositionWrapper.getApprovalHash(params);
+
+        // Initially hash should not be approved
+        assertEq(openPositionWrapper.preApprovedHashes(user, hash), 0, "Hash should not be approved initially");
+
+        // User pre-approves the hash
+        vm.prank(user);
+        vm.expectEmit(true, true, false, true);
+        emit PreApprovedHashes.PreApprovedHash(user, hash, true);
+        openPositionWrapper.setPreApprovedHash(hash, true);
+
+        // Hash should now be approved
+        assertGt(openPositionWrapper.preApprovedHashes(user, hash), 0, "Hash should be approved");
+
+        // User revokes the approval
+        vm.prank(user);
+        vm.expectEmit(true, true, false, true);
+        emit PreApprovedHashes.PreApprovedHash(user, hash, false);
+        openPositionWrapper.setPreApprovedHash(hash, false);
+
+        // Hash should no longer be approved
+        assertEq(openPositionWrapper.preApprovedHashes(user, hash), 0, "Hash should not be approved after revocation");
+    }
+
+    /// @notice Test opening a position with pre-approved hash (no signature needed)
+    function test_OpenPositionWrapper_WithPreApprovedHash() external {
+        vm.skip(bytes(FORK_RPC_URL).length == 0);
+
+        uint256 borrowAmount = 1e18; // Borrow 1 WETH
+        uint256 expectedBuyAmount = 999e18; // Expect to receive 999 eSUSDS
+
+        address account = address(uint160(user) ^ 1);
+
+        // Prepare OpenPositionParams
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
+            owner: user,
+            account: account,
+            deadline: block.timestamp + 1 hours,
+            collateralVault: eSUSDS,
+            borrowVault: eWETH,
+            collateralAmount: SUSDS_MARGIN,
+            borrowAmount: borrowAmount
+        });
+
+        // User pre-approves the hash
+        bytes32 hash = openPositionWrapper.getApprovalHash(params);
+        vm.prank(user);
+        openPositionWrapper.setPreApprovedHash(hash, true);
+
+        vm.startPrank(user);
+
+        // Get settlement data
+        SettlementData memory settlement = getOpenPositionSettlement(
+            user,
+            account,
+            WETH,
+            eSUSDS,
+            borrowAmount,
+            expectedBuyAmount
+        );
+
+        // User pre-approves the order
+        cowSettlement.setPreSignature(settlement.orderUid, true);
+
+        vm.stopPrank();
+
+        // Record balances before
+        uint256 debtBefore = IEVault(eWETH).debtOf(account);
+
+        // Encode settlement data
+        bytes memory settleData = abi.encodeCall(CowSettlement.settle, (
+            settlement.tokens,
+            settlement.clearingPrices,
+            settlement.trades,
+            settlement.interactions
+        ));
+
+        // Encode wrapper data with OpenPositionParams (empty signature since pre-approved)
+        bytes memory wrapperData = abi.encodePacked(abi.encode(params, new bytes(0)), cowSettlement);
+
+        // Execute wrapped settlement through solver
+        address[] memory targets = new address[](1);
+        bytes[] memory datas = new bytes[](1);
+        targets[0] = address(openPositionWrapper);
+        datas[0] = abi.encodeCall(
+            openPositionWrapper.wrappedSettle,
+            (settleData, wrapperData)
+        );
+
+        solver.runBatch(targets, datas);
+
+        // Verify the position was created successfully
+        assertApproxEqAbs(
+            IEVault(eSUSDS).convertToAssets(IERC20(eSUSDS).balanceOf(account)),
+            expectedBuyAmount + SUSDS_MARGIN,
+            1 ether,
+            "User should have collateral deposited"
+        );
+        assertEq(
+            IEVault(eWETH).debtOf(account),
+            borrowAmount,
+            "User should have debt"
+        );
+        assertEq(debtBefore, 0, "User should start with no debt");
     }
 }
