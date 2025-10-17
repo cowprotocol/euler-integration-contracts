@@ -89,6 +89,9 @@ contract MockSettlement {
 
 // Test wrapper that exposes internal functions
 contract TestWrapper is CowWrapper {
+
+    string constant public name = "Test Wrapper";
+
     // Track _wrap calls
     struct WrapCall {
         bytes settleData;

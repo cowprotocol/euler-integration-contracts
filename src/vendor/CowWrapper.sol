@@ -57,6 +57,9 @@ interface CowSettlement {
 /// @notice Interface for wrapper contracts that add custom logic around CoW settlements
 /// @dev Wrappers can be chained together to compose multiple settlement operations
 interface ICowWrapper {
+    /// @notice A human readable label for this wrapper. Used for display in explorer/analysis UIs
+    function name() external view returns (string memory);
+
     /// @notice Initiates a wrapped settlement call
     /// @dev This is the entry point for wrapped settlements. The wrapper will execute custom logic
     ///      before calling the next wrapper or settlement contract in the chain.
