@@ -30,6 +30,7 @@ contract MockSettlement {
 }
 
 contract MockWrapper is CowWrapper {
+    string constant public name = "Mock Wrapper";
     uint256 public consumeBytes;
 
     constructor(CowSettlement settlement_, uint256 consumeBytes_) CowWrapper(settlement_) {
@@ -46,6 +47,7 @@ contract MockWrapper is CowWrapper {
 }
 
 contract BrokenWrapper is CowWrapper {
+    string public constant name = "Broken Wrapper";
     constructor(CowSettlement settlement_) CowWrapper(settlement_) {}
 
     function _wrap(bytes calldata, bytes calldata) internal override {
