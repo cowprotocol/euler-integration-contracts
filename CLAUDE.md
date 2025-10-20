@@ -17,6 +17,7 @@ This repository contains **Euler-CoW Protocol integration contracts** that enabl
   - Wrappers can be chained: Wrapper1 → Wrapper2 → Settlement
 
 - `CowWrapperHelpers.sol`: Helper utilities for wrapper data parsing and validation
+- The CowWrapper is designed to support reentrancy. Additionally, the CowWrapper is designed with gas efficiency in mind, so we only check if the previous contract was part of the trusted wrapper chain. Furthermore, any wrappers that will ever be approved exist will use `CowWrapper.sol` as a base, so its not possible to inject a unauthorized wrapper into the chain without it getting ultimately rejected by the time the settlement contract is reached.
 
 **Specialized Wrappers**: Two production wrappers implement specific EVC + CoW Protocol workflows:
 
@@ -153,3 +154,4 @@ Key import remappings:
 - `evc/` → Ethereum Vault Connector (`lib/euler-vault-kit/lib/ethereum-vault-connector/src/`)
 - `euler-vault-kit/` → Euler vault implementation
 - `openzeppelin/` → OpenZeppelin contracts (via EVC dependency)
+
