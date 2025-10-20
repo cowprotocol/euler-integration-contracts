@@ -7,7 +7,7 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IEVault, IERC4626, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcClosePositionWrapper} from "../src/CowEvcClosePositionWrapper.sol";
-import {CowAuthentication, CowSettlement} from "../src/vendor/CowWrapper.sol";
+import {CowAuthentication, CowSettlement, CowWrapper} from "../src/vendor/CowWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 import {PreApprovedHashes} from "../src/PreApprovedHashes.sol";
 
@@ -72,7 +72,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         evc.enableCollateral(account, eSUSDS);
         evc.enableController(account, eWETH);
 
-        evc.setAccountOperator(account, address(closePositionWrapper), true);
+        //evc.setAccountOperator(account, address(closePositionWrapper), true);
 
         // Deposit collateral to the account
         IERC4626(eSUSDS).deposit(collateralAmount, account);
@@ -173,6 +173,18 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // User pre-approves the order
         cowSettlement.setPreSignature(settlement.orderUid, true);
+
+        // For subaccount, user approves transfer of vault shares from the account
+        {
+            IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
+            items[0] = IEVC.BatchItem({
+                onBehalfOfAccount: account,
+                targetContract: eSUSDS,
+                value: 0,
+                data: abi.encodeCall(IERC20.approve, (address(closePositionWrapper), type(uint256).max))
+            });
+            evc.batch(items);
+        }
 
         // User approves vault shares for settlement
         IEVault(eSUSDS).approve(cowSettlement.vaultRelayer(), type(uint256).max);
@@ -275,7 +287,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         bytes memory wrapperData = "";
 
         // Try to call wrappedSettle as non-solver
-        vm.expectRevert("GPv2Wrapper: not a solver");
+        vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, address(this)));
         closePositionWrapper.wrappedSettle(settleData, wrapperData);
     }
 
@@ -563,12 +575,14 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             maxRepayAmount: 1.001 ether
         });
 
+        vm.startPrank(user);
+        // User approves the wrapper to be operator (both of the main account and the subaccount)
+        evc.setAccountOperator(user, address(closePositionWrapper), true);
+        evc.setAccountOperator(account, address(closePositionWrapper), true);
+
         // User pre-approves the hash
         bytes32 hash = closePositionWrapper.getApprovalHash(params);
-        vm.prank(user);
         closePositionWrapper.setPreApprovedHash(hash, true);
-
-        vm.startPrank(user);
 
         // Now close the position
         uint256 sellAmount = 1002 ether;
@@ -586,6 +600,18 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // User pre-approves the order
         cowSettlement.setPreSignature(settlement.orderUid, true);
+
+        // For subaccount, user approves transfer of vault shares from the account
+        {
+            IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
+            items[0] = IEVC.BatchItem({
+                onBehalfOfAccount: account,
+                targetContract: eSUSDS,
+                value: 0,
+                data: abi.encodeCall(IERC20.approve, (address(closePositionWrapper), type(uint256).max))
+            });
+            evc.batch(items);
+        }
 
         // User approves vault shares for settlement
         IEVault(eSUSDS).approve(cowSettlement.vaultRelayer(), type(uint256).max);
