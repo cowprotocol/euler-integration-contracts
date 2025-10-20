@@ -21,7 +21,27 @@ import {PreApprovedHashes} from "./PreApprovedHashes.sol";
 contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     IEVC public immutable EVC;
 
-    string constant public name = "Euler EVC - Open Position";
+    /// @dev The EIP-712 domain type hash used for computing the domain
+    /// separator.
+    bytes32 private constant DOMAIN_TYPE_HASH =
+        keccak256(
+            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+        );
+
+    /// @dev The EIP-712 domain name used for computing the domain separator.
+    bytes32 private constant DOMAIN_NAME = keccak256("CowEvcOpenPositionWrapper");
+
+    /// @dev The EIP-712 domain version used for computing the domain separator.
+    bytes32 private constant DOMAIN_VERSION = keccak256("1");
+
+    /// @dev The domain separator used for signing orders that gets mixed in
+    /// making signatures for different domains incompatible. This domain
+    /// separator is computed following the EIP-712 standard and has replay
+    /// protection mixed in so that signed orders are only valid for specific
+    /// this contract.
+    bytes32 public immutable domainSeparator;
+
+    string public constant name = "Euler EVC - Open Position";
 
     /// @notice Tracks the number of times this wrapper has been called
     uint256 public transient depth;
@@ -31,30 +51,70 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     uint256 public immutable nonceNamespace;
 
     error Unauthorized(address msgSender);
+    error OperationDeadlineExceeded(uint256 validToTimestamp, uint256 currentTimestamp);
 
     constructor(address _evc, CowSettlement _settlement) CowWrapper(_settlement) {
         EVC = IEVC(_evc);
         nonceNamespace = uint256(uint160(address(this)));
+
+        domainSeparator = keccak256(
+            abi.encode(
+                DOMAIN_TYPE_HASH,
+                DOMAIN_NAME,
+                DOMAIN_VERSION,
+                block.chainid,
+                address(this)
+            )
+        );
     }
 
-    /// @notice Helper function to compute the hash that would be approved
-    /// @param params The OpenPositionParams to hash
-    /// @return The hash of the signed calldata for these params
-    function getApprovalHash(OpenPositionParams memory params) external view returns (bytes32) {
-        return keccak256(_getSignedCalldata(params));
-    }
-
+    /**
+     * @notice A command to open a debt position against an euler vault using collateral as backing.
+     * @dev This structure is used, combined with domain separator, to indicate a pre-approved hash.
+     * the `deadline` is used for deduplication checking, so be careful to ensure this value is unique.
+     */
     struct OpenPositionParams {
+        /**
+         * @dev The ethereum address that has permission to operate upon the account
+         */
         address owner;
+        
+        /**
+         * @dev The subaccount to open the position on. Learn more about Euler subaccounts https://evc.wtf/docs/concepts/internals/sub-accounts
+         */
         address account;
+
+        /**
+         * @dev A date by which this operation must be completed
+         */
         uint256 deadline;
+
+        /**
+         * @dev The Euler vault to use as collateral
+         */
         address collateralVault;
+
+        /**
+         * @dev The Euler vault to use as leverage
+         */
         address borrowVault;
+
+        /**
+         * @dev The amount of collateral to import as margin. Set this to `0` if the vault already has margin collateral.
+         */
         uint256 collateralAmount;
+
+        /**
+         * @dev The amount of debt to take out. The borrowed tokens will be converted to `collateralVault` tokens and deposited into the account.
+         */
         uint256 borrowAmount;
     }
 
-    function _parseOpenPositionParams(bytes calldata wrapperData) internal pure returns (OpenPositionParams memory params, bytes memory signature, bytes calldata remainingWrapperData) {
+    function _parseOpenPositionParams(bytes calldata wrapperData)
+        internal
+        pure
+        returns (OpenPositionParams memory params, bytes memory signature, bytes calldata remainingWrapperData)
+    {
         (params, signature) = abi.decode(wrapperData, (OpenPositionParams, bytes));
 
         // Calculate consumed bytes for abi.encode(OpenPositionParams, bytes)
@@ -65,13 +125,29 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
         // - 32 bytes: signature length
         // - N bytes: signature data (padded to 32-byte boundary)
         // We can just math this out
-        uint256 consumed = 224 + 64 + ((signature.length + 31) / 32 ) * 32;
+        uint256 consumed = 224 + 64 + ((signature.length + 31) / 32) * 32;
 
         remainingWrapperData = wrapperData[consumed:];
     }
 
-    function parseWrapperData(bytes calldata wrapperData) external pure override returns (bytes calldata remainingWrapperData) {
-        (, , remainingWrapperData) = _parseOpenPositionParams(wrapperData);
+    /// @notice Helper function to compute the hash that would be approved
+    /// @param params The OpenPositionParams to hash
+    /// @return The hash of the signed calldata for these params
+    function getApprovalHash(OpenPositionParams memory params) external view returns (bytes32) {
+        return _getApprovalHash(params);
+    }
+
+    function _getApprovalHash(OpenPositionParams memory params) internal view returns (bytes32) {
+        return keccak256(abi.encodePacked("\x19\x01", domainSeparator, keccak256(abi.encode(params))));
+    }
+
+    function parseWrapperData(bytes calldata wrapperData)
+        external
+        pure
+        override
+        returns (bytes calldata remainingWrapperData)
+    {
+        (,, remainingWrapperData) = _parseOpenPositionParams(wrapperData);
     }
 
     /// @notice Implementation of GPv2Wrapper._wrap - executes EVC operations to open a position
@@ -86,32 +162,42 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
         (params, signature, wrapperData) = _parseOpenPositionParams(wrapperData);
 
         // Check if the signed calldata hash is pre-approved
-        bytes memory signedCalldata = _getSignedCalldata(params);
-        bytes32 hash = keccak256(signedCalldata);
-        bool isPreApproved = isHashPreApproved(params.owner, hash);
+        IEVC.BatchItem[] memory signedItems = _getSignedCalldata(params);
+        bool isPreApproved = _consumePreApprovedHash(params.owner, _getApprovalHash(params));
 
         // Build the EVC batch items for opening a position
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](isPreApproved ? 1 : 2);
+        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](isPreApproved ? signedItems.length + 1 : 2);
 
         uint256 itemIndex = 0;
 
-        // 1. Acquire operator permissions (skip if pre-approved)
+        // 1. There are two ways this contract can be executed: either the user approves this contract as
+        // and operator and supplies apre-approved hash for the operation to take, or they submit a permit hash
+        // for this specific instance
         if (!isPreApproved) {
             items[itemIndex++] = IEVC.BatchItem({
                 onBehalfOfAccount: address(0),
                 targetContract: address(EVC),
                 value: 0,
-                data: abi.encodeCall(IEVC.permit, (
-                    params.owner,
-                    address(this),
-                    uint256(nonceNamespace),
-                    EVC.getNonce(bytes19(bytes20(params.owner)), nonceNamespace),
-                    params.deadline,
-                    0,
-                    signedCalldata,
-                    signature
-                ))
+                data: abi.encodeCall(
+                    IEVC.permit,
+                    (
+                        params.owner,
+                        address(this),
+                        uint256(nonceNamespace),
+                        EVC.getNonce(bytes19(bytes20(params.owner)), nonceNamespace),
+                        params.deadline,
+                        0,
+                        abi.encodeCall(EVC.batch, signedItems),
+                        signature
+                    )
+                )
             });
+        } else {
+            require(params.deadline >= block.timestamp, OperationDeadlineExceeded(params.deadline, block.timestamp));
+            // copy the operations to execute. we can operate on behalf of the user directly
+            for (; itemIndex < signedItems.length; itemIndex++) {
+                items[itemIndex] = signedItems[itemIndex];
+            }
         }
 
         // 2. Settlement call
@@ -130,11 +216,15 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     }
 
     function getSignedCalldata(OpenPositionParams memory params) external view returns (bytes memory) {
-        return _getSignedCalldata(params);
+        return abi.encodeCall(IEVC.batch, _getSignedCalldata(params));
     }
 
-    function _getSignedCalldata(OpenPositionParams memory params) internal view returns (bytes memory) {
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](4);
+    function _getSignedCalldata(OpenPositionParams memory params)
+        internal
+        view
+        returns (IEVC.BatchItem[] memory items)
+    {
+        items = new IEVC.BatchItem[](4);
 
         // 1. Enable collateral
         items[0] = IEVC.BatchItem({
@@ -167,8 +257,6 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
             value: 0,
             data: abi.encodeCall(IBorrowing.borrow, (params.borrowAmount, params.owner))
         });
-
-        return abi.encodeCall(IEVC.batch, (items));
     }
 
     /// @notice Internal settlement function called by EVC

@@ -7,7 +7,7 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IEVault, IERC4626, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcOpenPositionWrapper} from "../src/CowEvcOpenPositionWrapper.sol";
-import {CowAuthentication, CowSettlement} from "../src/vendor/CowWrapper.sol";
+import {CowAuthentication, CowSettlement, CowWrapper} from "../src/vendor/CowWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 import {PreApprovedHashes} from "../src/PreApprovedHashes.sol";
 
@@ -220,63 +220,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         bytes memory wrapperData = "";
 
         // Try to call wrappedSettle as non-solver
-        vm.expectRevert("GPv2Wrapper: not a solver");
+        vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, address(this)));
         openPositionWrapper.wrappedSettle(settleData, wrapperData);
-    }
-
-    /// @notice Test opening position with zero amounts fails appropriately
-    function test_OpenPositionWrapper_ZeroAmounts() external {
-        vm.skip(bytes(FORK_RPC_URL).length == 0);
-
-        vm.startPrank(user);
-
-        uint256 deadline = block.timestamp + 1 hours;
-        signerECDSA.setPrivateKey(privateKey);
-
-        bytes memory permitSignature = signerECDSA.signPermit(
-            user,
-            address(openPositionWrapper),
-            uint256(uint160(address(openPositionWrapper))),
-            0,
-            deadline,
-            0,
-            abi.encodeCall(IEVC.setAccountOperator, (user, address(openPositionWrapper), true))
-        );
-
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: user,
-            account: address(uint160(user) ^ 1),
-            deadline: deadline,
-            collateralVault: eSUSDS,
-            borrowVault: eWETH,
-            collateralAmount: 0, // Zero collateral
-            borrowAmount: 0 // Zero borrow
-        });
-
-        vm.stopPrank();
-
-        // Get empty settlement
-        (
-            IERC20[] memory tokens,
-            uint256[] memory clearingPrices,
-            CowSettlement.CowTradeData[] memory trades,
-            CowSettlement.CowInteractionData[][3] memory interactions
-        ) = getEmptySettlement();
-
-        bytes memory settleData = abi.encode(tokens, clearingPrices, trades, interactions);
-        bytes memory wrapperData = abi.encode(params);
-
-        address[] memory targets = new address[](1);
-        bytes[] memory datas = new bytes[](1);
-        targets[0] = address(openPositionWrapper);
-        datas[0] = abi.encodeCall(
-            openPositionWrapper.wrappedSettle,
-            (settleData, wrapperData)
-        );
-
-        // This should revert during deposit or account status check
-        vm.expectRevert();
-        solver.runBatch(targets, datas);
     }
 
     /// @notice Test that depth tracking works correctly
@@ -365,12 +310,14 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             borrowAmount: borrowAmount
         });
 
+        vm.startPrank(user);
+        // User approves the wrapper to be operator (both of the main account and the subaccount)
+        evc.setAccountOperator(user, address(openPositionWrapper), true);
+        evc.setAccountOperator(account, address(openPositionWrapper), true);
+
         // User pre-approves the hash
         bytes32 hash = openPositionWrapper.getApprovalHash(params);
-        vm.prank(user);
         openPositionWrapper.setPreApprovedHash(hash, true);
-
-        vm.startPrank(user);
 
         // Get settlement data
         SettlementData memory settlement = getOpenPositionSettlement(

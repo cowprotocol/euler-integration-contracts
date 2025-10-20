@@ -166,7 +166,7 @@ abstract contract CowWrapper is ICowWrapper {
 
             if (!success) {
                 // Bubble up the revert reason from the settlement contract
-                assembly {
+                assembly ("memory-safe") {
                     revert(add(returnData, 0x20), mload(returnData))
                 }
             }
