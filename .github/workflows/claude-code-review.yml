@@ -1,3 +1,5 @@
+# Mostly copied from https://github.com/anthropics/claude-code-action/blob/main/examples/pr-review-comprehensive.yml
+
 name: Claude Code Review
 
 # This example demonstrates how to use the track_progress feature to get
