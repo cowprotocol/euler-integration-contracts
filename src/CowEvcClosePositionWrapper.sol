@@ -7,8 +7,6 @@ import {CowWrapper, CowAuthentication, CowSettlement} from "./vendor/CowWrapper.
 import {IERC4626, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {PreApprovedHashes} from "./PreApprovedHashes.sol";
 
-import "forge-std/console.sol";
-
 /// @title CowEvcClosePositionWrapper
 /// @notice A specialized wrapper for closing leveraged positions with EVC
 /// @dev This wrapper hardcodes the EVC operations needed to close a position:
@@ -33,8 +31,8 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     uint256 public immutable nonceNamespace;
 
     error Unauthorized(address msgSender);
-    error NotEVCSettlement();
     error InsufficientRepaymentAsset(address vault, uint256 balanceAmount, uint256 repayAmount);
+    error PricesNotFoundInSettlement();
 
     constructor(address _evc, CowSettlement _settlement) CowWrapper(_settlement) {
         EVC = IEVC(_evc);
@@ -236,18 +234,15 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
                 borrowPrice = clearingPrices[i];
             }
         }
+        require(collateralVaultPrice != 0 && borrowPrice != 0, PricesNotFoundInSettlement());
     }
 
     /// @notice Internal settlement function called by EVC
     function evcInternalSettle(bytes calldata settleData, bytes calldata wrapperData) external payable {
-        if (msg.sender != address(EVC)) {
-            revert Unauthorized(msg.sender);
-        }
+        require(msg.sender == address(EVC), Unauthorized(msg.sender));
 
         // depth should be > 0 (actively wrapping a settle call) and no settle call should have been performed yet
-        if (depth == 0 || settleCalls != 0) {
-            revert Unauthorized(address(0));
-        }
+        require(depth > 0 && settleCalls == 0, Unauthorized(address(0)));
 
         settleCalls = settleCalls + 1;
 
