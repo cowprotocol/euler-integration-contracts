@@ -89,8 +89,7 @@ contract MockSettlement {
 
 // Test wrapper that exposes internal functions
 contract TestWrapper is CowWrapper {
-
-    string constant public name = "Test Wrapper";
+    string public constant name = "Test Wrapper";
 
     // Track _wrap calls
     struct WrapCall {
@@ -264,8 +263,11 @@ contract CowWrapperTest is Test {
             signature: hex"aabbccddee"
         });
 
-        settlement.interactions =
-            [new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0)];
+        settlement.interactions = [
+            new CowSettlement.CowInteractionData[](0),
+            new CowSettlement.CowInteractionData[](0),
+            new CowSettlement.CowInteractionData[](0)
+        ];
 
         // Build the chained wrapper data:
         // solver -> wrapper1 -> wrapper2 -> wrapper3 -> mockSettlement

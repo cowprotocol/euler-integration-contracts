@@ -5,14 +5,11 @@ pragma abicoder v2;
 import "../src/vendor/CowWrapper.sol";
 
 contract EmptyWrapper is CowWrapper {
-    string constant public name = "Empty Wrapper";
+    string public constant name = "Empty Wrapper";
 
     constructor(CowSettlement settlement_) CowWrapper(settlement_) {}
 
-    function _wrap(
-        bytes calldata settleData,
-        bytes calldata wrappedData
-    ) internal override {
+    function _wrap(bytes calldata settleData, bytes calldata wrappedData) internal override {
         _internalSettle(settleData, wrappedData);
     }
 }
