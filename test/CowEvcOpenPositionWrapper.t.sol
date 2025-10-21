@@ -47,10 +47,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Setup user with SUSDS
         deal(SUSDS, user, 10000e18);
-
-        // User approves SUSDS vault for deposit
-        vm.prank(user);
-        IERC20(SUSDS).approve(eSUSDS, type(uint256).max);
     }
 
     struct SettlementData {
@@ -114,8 +110,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         uint256 borrowAmount = 1e18; // Borrow 1 WETH
         uint256 expectedBuyAmount = 999e18; // Expect to receive 999 eSUSDS
 
-        vm.startPrank(user);
-
         address account = address(uint160(user) ^ 1);
 
         // Get settlement data
@@ -127,9 +121,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             borrowAmount,
             expectedBuyAmount
         );
-
-        // User pre-approves the order
-        cowSettlement.setPreSignature(settlement.orderUid, true);
 
         // Prepare OpenPositionParams
         uint256 deadline = block.timestamp + 1 hours;
@@ -144,6 +135,14 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             collateralAmount: SUSDS_MARGIN,
             borrowAmount: borrowAmount
         });
+
+        vm.startPrank(user);
+
+        // User approves SUSDS vault for deposit of the margin. Only required if there is margin to deposit and the user hasn't already approved
+        IERC20(SUSDS).approve(eSUSDS, type(uint256).max);
+
+        // User signs (in this case we use setPreSignature. this is just for local testing purposes. Real flow would be a off-chain signature)
+        cowSettlement.setPreSignature(settlement.orderUid, true);
 
         // Sign permit for EVC operator
         bytes memory permitSignature = signerECDSA.signPermit(
@@ -310,15 +309,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             borrowAmount: borrowAmount
         });
 
-        vm.startPrank(user);
-        // User approves the wrapper to be operator (both of the main account and the subaccount)
-        evc.setAccountOperator(user, address(openPositionWrapper), true);
-        evc.setAccountOperator(account, address(openPositionWrapper), true);
-
-        // User pre-approves the hash
-        bytes32 hash = openPositionWrapper.getApprovalHash(params);
-        openPositionWrapper.setPreApprovedHash(hash, true);
-
         // Get settlement data
         SettlementData memory settlement = getOpenPositionSettlement(
             user,
@@ -329,7 +319,25 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             expectedBuyAmount
         );
 
-        // User pre-approves the order
+        vm.startPrank(user);
+
+        // User approves SUSDS vault for deposit of the margin
+        // This is only needed if the user is depositing new margin
+        IERC20(SUSDS).approve(eSUSDS, type(uint256).max);
+
+        // User approves the wrapper to be operator (both of the main account and the subaccount)
+        // This is only needed if its the first time the user/account is using this wrapper
+        evc.setAccountOperator(user, address(openPositionWrapper), true);
+        evc.setAccountOperator(account, address(openPositionWrapper), true);
+
+        // User pre-approves the hash for the wrapper operation (absolutely required every order)
+        bytes32 hash = openPositionWrapper.getApprovalHash(params);
+        openPositionWrapper.setPreApprovedHash(hash, true);
+
+        // User pre-approves the order on CowSwap
+        // NOTE: this could technically be exchanged for a Permit2 approve on the wrapper contract and EIP-1271 authentication,
+        // and that would leave the user with only 1 off-chain Permit2 call
+        // but combined with the approval txns that are needed above, this flow doesn't seem very viable.
         cowSettlement.setPreSignature(settlement.orderUid, true);
 
         vm.stopPrank();

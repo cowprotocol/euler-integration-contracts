@@ -72,8 +72,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         evc.enableCollateral(account, eSUSDS);
         evc.enableController(account, eWETH);
 
-        //evc.setAccountOperator(account, address(closePositionWrapper), true);
-
         // Deposit collateral to the account
         IERC4626(eSUSDS).deposit(collateralAmount, account);
 
@@ -155,9 +153,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 debtBefore = IEVault(eWETH).debtOf(account);
         assertEq(debtBefore, borrowAmount, "Position should have debt");
 
-        vm.startPrank(user);
-
-        // Now close the position
         uint256 sellAmount = 1002 ether; // Sell up to 1002 eSUSDS (buffer)
         uint256 buyAmount = 1.001 ether; // Buy exactly 1.001 WETH to repay debt (a small amount will be returned to user)
 
@@ -170,24 +165,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             sellAmount,
             buyAmount
         );
-
-        // User pre-approves the order
-        cowSettlement.setPreSignature(settlement.orderUid, true);
-
-        // For subaccount, user approves transfer of vault shares from the account
-        {
-            IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
-            items[0] = IEVC.BatchItem({
-                onBehalfOfAccount: account,
-                targetContract: eSUSDS,
-                value: 0,
-                data: abi.encodeCall(IERC20.approve, (address(closePositionWrapper), type(uint256).max))
-            });
-            evc.batch(items);
-        }
-
-        // User approves vault shares for settlement
-        IEVault(eSUSDS).approve(cowSettlement.vaultRelayer(), type(uint256).max);
 
         // Prepare ClosePositionParams
         uint256 deadline = block.timestamp + 1 hours;
@@ -202,7 +179,31 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             maxRepayAmount: 1.001 ether // A bit extra to repay full debt
         });
 
-        // Sign permit for EVC operator
+        // Now close the position
+        vm.startPrank(user);
+
+        // User signs the order on cowswap
+        // Possibly skippable with Permit2 flow
+        cowSettlement.setPreSignature(settlement.orderUid, true);
+
+        // For subaccount, user approves transfer of vault shares from the account
+        // only required if the approve has not already been granted
+        {
+            IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
+            items[0] = IEVC.BatchItem({
+                onBehalfOfAccount: account,
+                targetContract: eSUSDS,
+                value: 0,
+                data: abi.encodeCall(IERC20.approve, (address(closePositionWrapper), type(uint256).max))
+            });
+            evc.batch(items);
+        }
+
+        // User approves vault shares for settlement
+        // only required if the approve has not already been granted. Could be skipped with a Permit2 flow
+        IEVault(eSUSDS).approve(cowSettlement.vaultRelayer(), type(uint256).max);
+
+        // Sign permit for EVC operator (absolutely required in some form or another)
         bytes memory permitSignature = signerECDSA.signPermit(
             user,
             address(closePositionWrapper),
@@ -518,16 +519,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             maxRepayAmount: 1.001 ether
         });
 
-        vm.startPrank(user);
-        // User approves the wrapper to be operator (both of the main account and the subaccount)
-        evc.setAccountOperator(user, address(closePositionWrapper), true);
-        evc.setAccountOperator(account, address(closePositionWrapper), true);
-
-        // User pre-approves the hash
-        bytes32 hash = closePositionWrapper.getApprovalHash(params);
-        closePositionWrapper.setPreApprovedHash(hash, true);
-
-        // Now close the position
         uint256 sellAmount = 1002 ether;
         uint256 buyAmount = 1.001 ether;
 
@@ -541,7 +532,18 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             buyAmount
         );
 
-        // User pre-approves the order
+        // Now close the position
+        vm.startPrank(user);
+        // User approves the wrapper to be operator (both of the main account and the subaccount)
+        // only required if the operator permission was not previously granted to the close wrapper
+        evc.setAccountOperator(user, address(closePositionWrapper), true);
+        evc.setAccountOperator(account, address(closePositionWrapper), true);
+
+        // User pre-approves the hash on the closePositionWrapper (absolutely required in some form)
+        bytes32 hash = closePositionWrapper.getApprovalHash(params);
+        closePositionWrapper.setPreApprovedHash(hash, true);
+
+        // User pre-approves the order on CoW
         cowSettlement.setPreSignature(settlement.orderUid, true);
 
         // For subaccount, user approves transfer of vault shares from the account
