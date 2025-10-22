@@ -37,7 +37,7 @@ contract MockWrapper is CowWrapper {
         consumeBytes = consumeBytes_;
     }
 
-    function _wrap(bytes calldata, bytes calldata) internal override {
+    function _wrap(bytes calldata, bytes calldata, bytes calldata) internal override {
         // Not used in these tests
     }
 
@@ -50,7 +50,7 @@ contract BrokenWrapper is CowWrapper {
     string public constant name = "Broken Wrapper";
     constructor(CowSettlement settlement_) CowWrapper(settlement_) {}
 
-    function _wrap(bytes calldata, bytes calldata) internal override {
+    function _wrap(bytes calldata, bytes calldata, bytes calldata) internal override {
         // Not used in these tests
     }
 
@@ -109,7 +109,7 @@ contract CowWrapperHelpersTest is Test {
         bytes memory result = helpers.verifyAndBuildWrapperData(wrapperCalls);
 
         // Should contain: data[0] only (no settlement appended)
-        bytes memory expected = abi.encodePacked(hex"deadbeef");
+        bytes memory expected = abi.encodePacked(uint16(4), hex"deadbeef");
         assertEq(result, expected);
     }
 
@@ -132,10 +132,13 @@ contract CowWrapperHelpersTest is Test {
 
         // Should contain: data[0] + target[1] + data[1] + target[2] + data[2] (no settlement)
         bytes memory expected = abi.encodePacked(
+            uint16(4),
             hex"deadbeef",
             address(wrapper2),
+            uint16(8),
             hex"cafebabe12345678",
             address(wrapper3),
+            uint16(0),
             hex""
         );
         assertEq(result, expected);
@@ -227,7 +230,7 @@ contract CowWrapperHelpersTest is Test {
         bytes memory result = helpers.verifyAndBuildWrapperData(wrapperCalls);
 
         // Should contain: data[0] + target[1] + data[1] (no settlement)
-        bytes memory expected = abi.encodePacked(hex"", address(wrapper3), hex"");
+        bytes memory expected = abi.encodePacked(uint16(0), hex"", address(wrapper3), uint16(0), hex"");
         assertEq(result, expected);
     }
 
@@ -249,10 +252,13 @@ contract CowWrapperHelpersTest is Test {
         bytes memory result = helpers.verifyAndBuildWrapperData(wrapperCalls);
 
         bytes memory expected = abi.encodePacked(
+            uint16(0),
             hex"",
             address(wrapper1),
+            uint16(4),
             hex"deadbeef",
             address(wrapper2),
+            uint16(8),
             hex"cafebabe12345678"
         );
         assertEq(result, expected);

@@ -110,10 +110,10 @@ contract CowWrapperHelpers {
         }
 
         // Build wrapper data without settlement address at the end
-        wrapperData = abi.encodePacked(wrapperCalls[0].data);
+        wrapperData = abi.encodePacked(uint16(wrapperCalls[0].data.length), wrapperCalls[0].data);
 
         for (uint256 i = 1;i < wrapperCalls.length;i++) {
-            wrapperData = abi.encodePacked(wrapperData, wrapperCalls[i].target, wrapperCalls[i].data);
+            wrapperData = abi.encodePacked(wrapperData, wrapperCalls[i].target, uint16(wrapperCalls[i].data.length), wrapperCalls[i].data);
         }
 
         return wrapperData;
