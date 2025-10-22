@@ -9,7 +9,7 @@ contract EmptyWrapper is CowWrapper {
 
     constructor(CowSettlement settlement_) CowWrapper(settlement_) {}
 
-    function _wrap(bytes calldata settleData, bytes calldata wrappedData) internal override {
-        _internalSettle(settleData, wrappedData);
+    function _wrap(bytes calldata settleData, bytes calldata, bytes calldata remainingWrapperData) internal override {
+        _internalSettle(settleData, remainingWrapperData);
     }
 }

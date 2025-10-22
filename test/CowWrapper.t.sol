@@ -99,18 +99,16 @@ contract TestWrapper is CowWrapper {
 
     WrapCall[] public wrapCalls;
 
-    uint256 public skipWrappedData;
-
     constructor(CowSettlement settlement_) CowWrapper(settlement_) {}
 
-    function _wrap(bytes calldata settleData, bytes calldata wrapperData) internal override {
+    function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData) internal override {
         // Record the wrap call
         WrapCall storage call_ = wrapCalls.push();
         call_.settleData = settleData;
-        call_.wrapperData = wrapperData[0:skipWrappedData];
+        call_.wrapperData = wrapperData;
 
         // Call internal settle
-        _internalSettle(settleData, wrapperData[skipWrappedData:]);
+        _internalSettle(settleData, remainingWrapperData);
     }
 
     function exposed_internalSettle(bytes calldata settleData, bytes calldata wrapperData) external {
@@ -123,10 +121,6 @@ contract TestWrapper is CowWrapper {
 
     function getWrapCall(uint256 index) external view returns (bytes memory settleData, bytes memory wrapperData) {
         return (wrapCalls[index].settleData, wrapCalls[index].wrapperData);
-    }
-
-    function setSkipWrappedData(uint256 value) external {
-        skipWrappedData = value;
     }
 }
 
@@ -178,13 +172,10 @@ contract CowWrapperTest is Test {
         bytes memory settleData =
             abi.encodeWithSelector(CowSettlement.settle.selector, tokens, clearingPrices, trades, interactions);
         // wrapperData is just custom data - no settlement address needed
-        bytes memory wrapperData = customWrapperData;
-
-        testWrapper.setSkipWrappedData(customWrapperData.length);
+        bytes memory wrapperData = abi.encodePacked(uint16(customWrapperData.length), customWrapperData);
 
         vm.prank(solver);
         testWrapper.wrappedSettle(settleData, wrapperData);
-        testWrapper.setSkipWrappedData(0);
 
         assertEq(testWrapper.getWrapCallCount(), 1);
         (bytes memory recordedSettleData, bytes memory recordedWrapperData) = testWrapper.getWrapCall(0);
@@ -206,7 +197,7 @@ contract CowWrapperTest is Test {
         bytes memory settleData =
             abi.encodeWithSelector(CowSettlement.settle.selector, tokens, clearingPrices, trades, interactions);
         // Empty wrapperData means call the static SETTLEMENT contract
-        bytes memory wrapperData = hex"";
+        bytes memory wrapperData = hex"0000";
 
         vm.prank(solver);
         testWrapper.wrappedSettle(settleData, wrapperData);

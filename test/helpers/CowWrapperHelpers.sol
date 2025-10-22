@@ -29,6 +29,7 @@ library CowWrapperHelpers {
         for (uint256 i = 0; i < wrappers.length; i++) {
             wrapperData = abi.encodePacked(
                 wrapperData,
+                uint16(wrapperDatas[i].length),
                 wrapperDatas[i]
             );
             // Include the next wrapper address if there is one
