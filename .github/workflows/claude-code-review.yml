@@ -30,6 +30,9 @@ jobs:
           # Enable progress tracking
           track_progress: true
 
+          # Claude only posts its review once and updates it
+          use_sticky_comment: true
+
           # Your custom review instructions
           prompt: |
             REPO: ${{ github.repository }}
@@ -63,7 +66,7 @@ jobs:
                - Check API documentation accuracy
 
             Provide detailed feedback using inline comments for specific issues.
-            Use top-level comments for general observations or praise.
+            The top level comment should be kept short with minimal repeating or verbosity. To avoid creating unnecessary comments repetedly, use `gh pr comment --edit-last`.
 
           # Tools for comprehensive PR review
           claude_args: |
