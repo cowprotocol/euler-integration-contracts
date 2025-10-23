@@ -44,11 +44,6 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
 
     string public constant name = "Euler EVC - Close Position";
 
-    /// @notice Tracks the number of times this wrapper has been called
-    uint256 public transient depth;
-    /// @notice Tracks the number of times `evcInternalSettle` has been called
-    uint256 public transient settleCalls;
-
     uint256 public immutable nonceNamespace;
 
     error Unauthorized(address msgSender);
@@ -177,7 +172,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
             onBehalfOfAccount: params.account,
             targetContract: address(this),
             value: 0,
-            data: abi.encodeCall(this.helperRepayAndReturn, (params.borrowVault, params.owner, params.maxRepayAmount, repayAll))
+            data: abi.encodeCall(this.helperRepayAndReturn, (params.borrowVault, params.owner, params.account, params.maxRepayAmount, repayAll))
         });
 
         // 2. If we are repaying all, we should disable the collateral from the account
@@ -196,10 +191,11 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     /// @dev If this function is called outside of the normal EVC flow set about by this function, the whole transaction
     /// will revert due to insufficient funds in the CowEvcClosePositionWrapper, so it is acceptable for this function to be unguarded.
     /// @param vault The Euler vault in which the repayment should be made
-    /// @param beneficiary The account that should be receiving the repayment
+    /// @param owner The address that should be receiving any surplus dust that may exist after the repayment is complete
+    /// @param account The subaccount that should be receiving the repayment of debt
     /// @param maxRepay The amount to repay. This should be the same as the `amountOut` from the CoW Settlement, to ensure no funds are left over.
     /// @param repayAll Use this to ensure that all debt is repaid for the user, or revert.
-    function helperRepayAndReturn(address vault, address beneficiary, uint256 maxRepay, bool repayAll) external {
+    function helperRepayAndReturn(address vault, address owner, address account, uint256 maxRepay, bool repayAll) external {
         IERC20 asset = IERC20(IERC4626(vault).asset());
 
         // the settlement contract should have sent us `maxRepay` money
@@ -213,11 +209,11 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         // Infinite approve to save gas on repeated invocations against a borrow vault
         // If a malicious vault takes more funds than it should, or records an actualRepay less than it actually took, the transaction will revert.
         asset.approve(vault, type(uint256).max);
-        uint256 actualRepay = IBorrowing(vault).repay(repayAll ? type(uint256).max : maxRepay, beneficiary);
+        uint256 actualRepay = IBorrowing(vault).repay(repayAll ? type(uint256).max : maxRepay, account);
 
         // transfer any remaining dust back to the owner
         if (actualRepay < maxRepay) {
-            SafeERC20Lib.safeTransfer(asset, beneficiary, maxRepay - actualRepay);
+            SafeERC20Lib.safeTransfer(asset, owner, maxRepay - actualRepay);
         }
     }
 
@@ -225,8 +221,6 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     /// @param settleData Data which will be used for the parameters in a call to `CowSettlement.settle`
     /// @param wrapperData Additional data containing ClosePositionParams
     function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData) internal override {
-        depth = depth + 1;
-
         // Decode wrapper data into ClosePositionParams
         ClosePositionParams memory params;
         bytes memory signature;
@@ -312,11 +306,6 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     function evcInternalSettle(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData) external payable {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
 
-        // depth should be > 0 (actively wrapping a settle call) and no settle call should have been performed yet
-        require(depth > 0 && settleCalls == 0, Unauthorized(address(0)));
-
-        settleCalls = settleCalls + 1;
-
         ClosePositionParams memory params;
         (params, , ) = _parseClosePositionParams(wrapperData);
         _evcInternalSettle(settleData, remainingWrapperData, params);
@@ -324,6 +313,12 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
 
     function _evcInternalSettle(bytes calldata settleData, bytes calldata remainingWrapperData, ClosePositionParams memory params) internal {
 
+        // If a subaccount is being used, we need to transfer the required amount of collateral for the trade into the owner's wallet.
+        // This is required becuase the settlement contract can only pull funds from the wallet that signed the transaction.
+        // Since its not possible for a subaccount to sign a transaction due to the private key not existing and their being no
+        // contract deployed to the subaccount address, transferring to the owner's account is the only option.
+        // Additionally, we don't transfer this collateral directly to the settlement contract because the settlement contract
+        // requires receiving of funds from the user's wallet, and cannot be put in the contract in advance.
         if (params.owner != params.account) {
             (uint256 collateralVaultPrice, uint256 borrowPrice) =
                 _findRatePrices(settleData, params.collateralVault, params.borrowVault);

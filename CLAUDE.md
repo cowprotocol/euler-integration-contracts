@@ -97,6 +97,10 @@ forge snapshot
 
 ## Important Implementation Details
 
+### Security Considerations
+
+- It is generally assumed that the `solvers` (aka, an address for which `CowAuthentication.isSolver()` returns true) is a trusted actor within the system, and . Only in the case that a solver could steal an entire user's deposit or funds, or steal funds beyond what the user specified as their minimum out/minimum buy amount, assume there is incentive for a solver to provide the best rate possible.
+
 ### Wrapper Data Format
 Wrapper data is passed as a calldata slice with format:
 ```

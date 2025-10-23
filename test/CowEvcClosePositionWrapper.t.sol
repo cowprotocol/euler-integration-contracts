@@ -391,15 +391,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         );
     }
 
-    /// @notice Test that depth tracking works correctly
-    function test_ClosePositionWrapper_DepthTracking() external {
-        vm.skip(bytes(FORK_RPC_URL).length == 0);
-
-        // Initial depth should be 0
-        assertEq(closePositionWrapper.depth(), 0, "Initial depth should be 0");
-        assertEq(closePositionWrapper.settleCalls(), 0, "Initial settleCalls should be 0");
-    }
-
     /// @notice Test parseWrapperData function
     function test_ClosePositionWrapper_ParseWrapperData() external {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
@@ -447,7 +438,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             value: 0,
             data: abi.encodeCall(
                 closePositionWrapper.helperRepayAndReturn,
-                (eWETH, account, wethAmount, true) // Use actual amount, not type(uint256).max
+                (eWETH, account, account, wethAmount, true) // Use actual amount, not type(uint256).max
             )
         });
 
