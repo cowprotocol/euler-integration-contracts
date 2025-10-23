@@ -172,23 +172,15 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
 
         items = new IEVC.BatchItem[](repayAll ? 2 : 1);
 
-        // 1. Set account operator to allow this contract to act on behalf of owner
-        /*items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: address(0),
-            targetContract: address(EVC),
-            value: 0,
-            data: abi.encodeCall(IEVC.setAccountOperator, (params.account, address(this), true))
-        });*/
-
-        // 2. Repay debt and return remaining assets
+        // 1. Repay debt and return remaining assets
         items[0] = IEVC.BatchItem({
             onBehalfOfAccount: params.account,
             targetContract: address(this),
             value: 0,
-            data: abi.encodeCall(this.helperRepayAndReturn, (params.borrowVault, params.account, params.maxRepayAmount, repayAll))
+            data: abi.encodeCall(this.helperRepayAndReturn, (params.borrowVault, params.owner, params.maxRepayAmount, repayAll))
         });
 
-        // 3. If we are repaying all, we should disable the collateral from the account
+        // 2. If we are repaying all, we should disable the collateral from the account
         if (repayAll) {
             items[1] = IEVC.BatchItem({
                 onBehalfOfAccount: address(0),
@@ -197,17 +189,16 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
                 data: abi.encodeCall(IEVC.disableCollateral, (params.account, params.collateralVault))
             });
         }
-
-        // 4. Revoke operator permission
-        /*items[repayAll ? 3 : 2] = IEVC.BatchItem({
-            onBehalfOfAccount: address(0),
-            targetContract: address(EVC),
-            value: 0,
-            data: abi.encodeCall(IEVC.setAccountOperator, (params.account, address(this), false))
-        });*/
     }
 
-    // helper function to execute repay
+    /// @notice Called by the EVC after a CoW swap is completed to repay the user's debt (and if for whatever reason
+    /// funds are leftover, send them to the user).
+    /// @dev If this function is called outside of the normal EVC flow set about by this function, the whole transaction
+    /// will revert due to insufficient funds in the CowEvcClosePositionWrapper, so it is acceptable for this function to be unguarded.
+    /// @param vault The Euler vault in which the repayment should be made
+    /// @param beneficiary The account that should be receiving the repayment
+    /// @param maxRepay The amount to repay. This should be the same as the `amountOut` from the CoW Settlement, to ensure no funds are left over.
+    /// @param repayAll Use this to ensure that all debt is repaid for the user, or revert.
     function helperRepayAndReturn(address vault, address beneficiary, uint256 maxRepay, bool repayAll) external {
         IERC20 asset = IERC20(IERC4626(vault).asset());
 
@@ -215,8 +206,12 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         // if we dont have enough money, then either:
         // 1. the CowOrder was not configured to correctly give us enough money
         // 2. Somebody else using this wrapper (nesting the wrappers) did #1 (and the solver borked up)
+        // 3. Someone called this function outside of the normal flow and now there isn't enough funds left over
+        // In any of these cases, we want to revert
         require(asset.balanceOf(address(this)) >= maxRepay, InsufficientRepaymentAsset(vault, asset.balanceOf(address(this)), maxRepay));
 
+        // Infinite approve to save gas on repeated invocations against a borrow vault
+        // If a malicious vault takes more funds than it should, or records an actualRepay less than it actually took, the transaction will revert.
         asset.approve(vault, type(uint256).max);
         uint256 actualRepay = IBorrowing(vault).repay(repayAll ? type(uint256).max : maxRepay, beneficiary);
 
@@ -247,20 +242,6 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
 
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](itemCount);
         uint256 itemIndex = 0;
-
-        // if its a subaccount, we have to transfer the required tokens to the owner's account first
-        /*if (params.account != params.owner) {
-            (uint256 collateralVaultPrice, uint256 borrowPrice) =
-                _findRatePrices(settleData, params.collateralVault, params.borrowVault);
-
-            uint256 transferAmount = params.maxRepayAmount * borrowPrice / collateralVaultPrice;
-            items[itemIndex++] = IEVC.BatchItem({
-                onBehalfOfAccount: params.account,
-                targetContract: params.collateralVault,
-                value: 0,
-                data: abi.encodeCall(IERC20(params.collateralVault).transfer, (params.owner, transferAmount))
-            });
-        }*/
 
         // Build the EVC batch items for closing a position
         // 1. Settlement call
@@ -306,6 +287,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         }
 
         // 3. Account status check (automatically done by EVC at end of batch)
+        // For more info, see: https://evc.wtf/docs/concepts/internals/account-status-checks
         // No explicit item needed - EVC handles this
 
         // Execute all items in a single batch

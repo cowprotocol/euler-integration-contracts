@@ -179,7 +179,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
         uint256 itemIndex = 0;
 
         // 1. There are two ways this contract can be executed: either the user approves this contract as
-        // and operator and supplies apre-approved hash for the operation to take, or they submit a permit hash
+        // and operator and supplies a pre-approved hash for the operation to take, or they submit a permit hash
         // for this specific instance
         if (!isPreApproved) {
             items[itemIndex++] = IEVC.BatchItem({
@@ -217,6 +217,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
         });
 
         // 3. Account status check (automatically done by EVC at end of batch)
+        // For more info, see: https://evc.wtf/docs/concepts/internals/account-status-checks
         // No explicit item needed - EVC handles this
 
         // Execute all items in a single batch

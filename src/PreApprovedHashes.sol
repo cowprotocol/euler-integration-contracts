@@ -17,6 +17,7 @@ abstract contract PreApprovedHashes {
     event PreApprovedHash(address indexed owner, bytes32 indexed hash, bool approved);
 
     /// @notice Pre-approve a hash of signed calldata for future execution
+    /// @dev Once a hash is pre-approved, it can only be consumed once. This prevents replay attacks.
     /// @param hash The keccak256 hash of the signed calldata
     /// @param approved True to approve the hash, false to revoke approval
     function setPreApprovedHash(bytes32 hash, bool approved) external {
@@ -32,10 +33,14 @@ abstract contract PreApprovedHashes {
     /// @param owner The owner address
     /// @param hash The hash to check
     /// @return True if the hash is pre-approved, false otherwise
-    function isHashPreApproved(address owner, bytes32 hash) internal view returns (bool) {
+    function isHashPreApproved(address owner, bytes32 hash) external view returns (bool) {
         return preApprovedHashes[owner][hash] == PRE_APPROVED;
     }
 
+    /// @notice Check if a hash is pre-approved for an owner. If it is, changes it to be consumed, and returns true.
+    /// @param owner The owner address
+    /// @param hash The hash to check
+    /// @return True if the hash was pre-approved and marked as consumed, false otherwise
     function _consumePreApprovedHash(address owner, bytes32 hash) internal returns (bool) {
         if (preApprovedHashes[owner][hash] == PRE_APPROVED) {
             preApprovedHashes[owner][hash] = CONSUMED_PRE_APPROVED;
