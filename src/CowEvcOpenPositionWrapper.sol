@@ -153,13 +153,13 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     /// @notice Implementation of GPv2Wrapper._wrap - executes EVC operations to open a position
     /// @param settleData Data which will be used for the parameters in a call to `CowSettlement.settle`
     /// @param wrapperData Additional data containing OpenPositionParams
-    function _wrap(bytes calldata settleData, bytes calldata wrapperData) internal override {
+    function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData) internal override {
         depth = depth + 1;
 
         // Decode wrapper data into OpenPositionParams
         OpenPositionParams memory params;
         bytes memory signature;
-        (params, signature, wrapperData) = _parseOpenPositionParams(wrapperData);
+        (params, signature, ) = _parseOpenPositionParams(wrapperData);
 
         // Check if the signed calldata hash is pre-approved
         IEVC.BatchItem[] memory signedItems = _getSignedCalldata(params);
@@ -205,7 +205,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
             onBehalfOfAccount: address(this),
             targetContract: address(this),
             value: 0,
-            data: abi.encodeCall(this.evcInternalSettle, (settleData, wrapperData))
+            data: abi.encodeCall(this.evcInternalSettle, (settleData, remainingWrapperData))
         });
 
         // 3. Account status check (automatically done by EVC at end of batch)
@@ -260,7 +260,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     }
 
     /// @notice Internal settlement function called by EVC
-    function evcInternalSettle(bytes calldata settleData, bytes calldata wrapperData) external payable {
+    function evcInternalSettle(bytes calldata settleData, bytes calldata remainingWrapperData) external payable {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
 
         // depth should be > 0 (actively wrapping a settle call) and no settle call should have been performed yet
@@ -270,6 +270,6 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
 
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
-        _internalSettle(settleData, wrapperData);
+        _internalSettle(settleData, remainingWrapperData);
     }
 }

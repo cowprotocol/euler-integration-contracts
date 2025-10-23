@@ -277,7 +277,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Try to call evcInternalSettle directly (not through EVC)
         vm.expectRevert(abi.encodeWithSelector(CowEvcClosePositionWrapper.Unauthorized.selector, address(this)));
-        closePositionWrapper.evcInternalSettle(settleData, wrapperData);
+        closePositionWrapper.evcInternalSettle(settleData, wrapperData, wrapperData);
     }
 
     /// @notice Test that non-solvers cannot call wrappedSettle

@@ -220,7 +220,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     /// @notice Implementation of GPv2Wrapper._wrap - executes EVC operations to close a position
     /// @param settleData Data which will be used for the parameters in a call to `CowSettlement.settle`
     /// @param wrapperData Additional data containing ClosePositionParams
-    function _wrap(bytes calldata settleData, bytes calldata wrapperData) internal override {
+    function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData) internal override {
         depth = depth + 1;
 
         // Decode wrapper data into ClosePositionParams
@@ -259,7 +259,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
             onBehalfOfAccount: address(0),
             targetContract: address(this),
             value: 0,
-            data: abi.encodeCall(this.evcInternalSettle, (settleData, wrapperData))
+            data: abi.encodeCall(this.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
         });
 
         // 2. There are two ways this contract can be executed: either the user approves this contract as
@@ -318,7 +318,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     }
 
     /// @notice Internal settlement function called by EVC
-    function evcInternalSettle(bytes calldata settleData, bytes calldata wrapperData) external payable {
+    function evcInternalSettle(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData) external payable {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
 
         // depth should be > 0 (actively wrapping a settle call) and no settle call should have been performed yet
@@ -327,7 +327,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         settleCalls = settleCalls + 1;
 
         ClosePositionParams memory params;
-        (params, , wrapperData) = _parseClosePositionParams(wrapperData);
+        (params, , ) = _parseClosePositionParams(wrapperData);
 
         if (params.owner != params.account) {
             (uint256 collateralVaultPrice, uint256 borrowPrice) =
@@ -338,6 +338,6 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
 
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
-        _internalSettle(settleData, wrapperData);
+        _internalSettle(settleData, remainingWrapperData);
     }
 }
