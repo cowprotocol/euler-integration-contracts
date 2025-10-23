@@ -224,15 +224,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         openPositionWrapper.wrappedSettle(settleData, wrapperData);
     }
 
-    /// @notice Test that depth tracking works correctly
-    function test_OpenPositionWrapper_DepthTracking() external {
-        vm.skip(bytes(FORK_RPC_URL).length == 0);
-
-        // Initial depth should be 0
-        assertEq(openPositionWrapper.depth(), 0, "Initial depth should be 0");
-        assertEq(openPositionWrapper.settleCalls(), 0, "Initial settleCalls should be 0");
-    }
-
     /// @notice Test parseWrapperData function
     function test_OpenPositionWrapper_ParseWrapperData() external view {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({

@@ -43,11 +43,6 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
 
     string public constant name = "Euler EVC - Open Position";
 
-    /// @notice Tracks the number of times this wrapper has been called
-    uint256 public transient depth;
-    /// @notice Tracks the number of times `evcInternalSettle` has been called
-    uint256 public transient settleCalls;
-
     uint256 public immutable nonceNamespace;
 
     error Unauthorized(address msgSender);
@@ -162,8 +157,6 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     /// @param settleData Data which will be used for the parameters in a call to `CowSettlement.settle`
     /// @param wrapperData Additional data containing OpenPositionParams
     function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData) internal override {
-        depth = depth + 1;
-
         // Decode wrapper data into OpenPositionParams
         OpenPositionParams memory params;
         bytes memory signature;
@@ -271,11 +264,6 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     /// @notice Internal settlement function called by EVC
     function evcInternalSettle(bytes calldata settleData, bytes calldata remainingWrapperData) external payable {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
-
-        // depth should be > 0 (actively wrapping a settle call) and no settle call should have been performed yet
-        require(depth > 0 && settleCalls == 0, Unauthorized(address(0)));
-
-        settleCalls = settleCalls + 1;
 
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
