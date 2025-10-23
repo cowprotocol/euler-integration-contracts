@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8;
 
-import "forge-std/Test.sol";
-import "ethereum-vault-connector/EthereumVaultConnector.sol";
+import {Test} from "forge-std/Test.sol";
+import {EthereumVaultConnector} from "ethereum-vault-connector/EthereumVaultConnector.sol";
 
-import "openzeppelin/utils/cryptography/ECDSA.sol";
+import {ECDSA} from "openzeppelin/utils/cryptography/ECDSA.sol";
 
 // Vendored and minimized from Euler's Ethereum Vault Connector repo with minor modifications:
 // - Only used SignerECDSA (don't need any other other permit logic)

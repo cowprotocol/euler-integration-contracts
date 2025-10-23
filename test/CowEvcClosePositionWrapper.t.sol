@@ -7,7 +7,7 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IEVault, IERC4626, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcClosePositionWrapper} from "../src/CowEvcClosePositionWrapper.sol";
-import {CowAuthentication, CowSettlement, CowWrapper} from "../src/vendor/CowWrapper.sol";
+import {CowSettlement, CowWrapper} from "../src/vendor/CowWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 import {PreApprovedHashes} from "../src/PreApprovedHashes.sol";
 
@@ -232,6 +232,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Encode wrapper data with ClosePositionParams
         bytes memory wrapperData = abi.encode(params, permitSignature);
+        wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
         // Execute wrapped settlement through solver
         address[] memory targets = new address[](1);
@@ -285,7 +286,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         vm.skip(bytes(FORK_RPC_URL).length == 0);
 
         bytes memory settleData = "";
-        bytes memory wrapperData = "";
+        bytes memory wrapperData = hex"0000";
 
         // Try to call wrappedSettle as non-solver
         vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, address(this)));
@@ -368,6 +369,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             settlement.interactions
         ));
         bytes memory wrapperData = abi.encode(params, permitSignature);
+        wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
         address[] memory targets = new address[](1);
         bytes[] memory datas = new bytes[](1);
@@ -578,6 +580,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Encode wrapper data with ClosePositionParams (empty signature since pre-approved)
         bytes memory wrapperData = abi.encode(params, new bytes(0));
+        wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
         // Execute wrapped settlement through solver
         address[] memory targets = new address[](1);

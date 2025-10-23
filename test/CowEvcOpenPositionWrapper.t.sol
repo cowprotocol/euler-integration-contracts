@@ -7,7 +7,7 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IEVault, IERC4626, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcOpenPositionWrapper} from "../src/CowEvcOpenPositionWrapper.sol";
-import {CowAuthentication, CowSettlement, CowWrapper} from "../src/vendor/CowWrapper.sol";
+import {CowSettlement, CowWrapper} from "../src/vendor/CowWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 import {PreApprovedHashes} from "../src/PreApprovedHashes.sol";
 
@@ -171,6 +171,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Encode wrapper data with OpenPositionParams
         bytes memory wrapperData = abi.encode(params, permitSignature);
+        wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
         // Execute wrapped settlement through solver
         address[] memory targets = new address[](1);
@@ -355,6 +356,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Encode wrapper data with OpenPositionParams (empty signature since pre-approved)
         bytes memory wrapperData = abi.encode(params, new bytes(0));
+        wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
         // Execute wrapped settlement through solver
         address[] memory targets = new address[](1);

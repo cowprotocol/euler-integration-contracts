@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8;
 
-import {GPv2Order, IERC20 as CowERC20 } from "cow/libraries/GPv2Order.sol";
+import {GPv2Order} from "cow/libraries/GPv2Order.sol";
 
 import {EthereumVaultConnector} from "evc/EthereumVaultConnector.sol";
 import {EVaultTestBase} from "lib/euler-vault-kit/test/unit/evault/EVaultTestBase.t.sol";
 import {IEVault, IVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
-import {CowSettlement, CowAuthentication} from "../../src/vendor/CowWrapper.sol";
+import {CowSettlement} from "../../src/vendor/CowWrapper.sol";
 
 import {MilkSwap} from "./MilkSwap.sol";
 
@@ -16,7 +16,8 @@ import {MilkSwap} from "./MilkSwap.sol";
 contract Solver {
     function runBatch(address[] memory targets, bytes[] memory datas) external {
         for (uint256 i = 0; i < targets.length; i++) {
-            targets[i].call(datas[i]);
+            (bool success, ) = targets[i].call(datas[i]);
+            require(success, "Solver: call failed");
         }
     }
 }

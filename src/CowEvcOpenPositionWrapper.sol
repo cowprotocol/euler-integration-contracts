@@ -3,7 +3,7 @@ pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 
-import {CowWrapper, CowSettlement, CowAuthentication} from "./vendor/CowWrapper.sol";
+import {CowWrapper, CowSettlement} from "./vendor/CowWrapper.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {PreApprovedHashes} from "./PreApprovedHashes.sol";
 
@@ -125,7 +125,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
         // - 32 bytes: signature length
         // - N bytes: signature data (padded to 32-byte boundary)
         // We can just math this out
-        uint256 consumed = 224 + 64 + ((signature.length + 31) / 32) * 32;
+        uint256 consumed = 224 + 64 + ((signature.length + 31) & ~uint256(31));
 
         remainingWrapperData = wrapperData[consumed:];
     }
@@ -137,8 +137,16 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
         return _getApprovalHash(params);
     }
 
-    function _getApprovalHash(OpenPositionParams memory params) internal view returns (bytes32) {
-        return keccak256(abi.encodePacked("\x19\x01", domainSeparator, keccak256(abi.encode(params))));
+    function _getApprovalHash(OpenPositionParams memory params) internal view returns (bytes32 digest) {
+        bytes32 structHash = keccak256(abi.encode(params));
+        bytes32 separator = domainSeparator;
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, "\x19\x01")
+            mstore(add(ptr, 0x02), separator)
+            mstore(add(ptr, 0x22), structHash)
+            digest := keccak256(ptr, 0x42)
+        }
     }
 
     function parseWrapperData(bytes calldata wrapperData)

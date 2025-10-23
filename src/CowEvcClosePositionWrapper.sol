@@ -3,8 +3,9 @@ pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 
-import {CowWrapper, CowAuthentication, CowSettlement} from "./vendor/CowWrapper.sol";
+import {CowWrapper, CowSettlement} from "./vendor/CowWrapper.sol";
 import {IERC4626, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {SafeERC20Lib} from "euler-vault-kit/src/EVault/shared/lib/SafeERC20Lib.sol";
 import {PreApprovedHashes} from "./PreApprovedHashes.sol";
 
 /// @title CowEvcClosePositionWrapper
@@ -123,7 +124,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         // - 32 bytes: signature length
         // - N bytes: signature data (padded to 32-byte boundary)
         // We can just math this out
-        uint256 consumed = 192 + 64 + ((signature.length + 31) / 32) * 32;
+        uint256 consumed = 192 + 64 + ((signature.length + 31) & ~uint256(31));
 
         remainingWrapperData = wrapperData[consumed:];
     }
@@ -135,8 +136,16 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         return _getApprovalHash(params);
     }
 
-    function _getApprovalHash(ClosePositionParams memory params) internal view returns (bytes32) {
-        return keccak256(abi.encodePacked("\x19\x01", domainSeparator, keccak256(abi.encode(params))));
+    function _getApprovalHash(ClosePositionParams memory params) internal view returns (bytes32 digest) {
+        bytes32 structHash = keccak256(abi.encode(params));
+        bytes32 separator = domainSeparator;
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, "\x19\x01")
+            mstore(add(ptr, 0x02), separator)
+            mstore(add(ptr, 0x22), structHash)
+            digest := keccak256(ptr, 0x42)
+        }
     }
 
     function parseWrapperData(bytes calldata wrapperData)
@@ -213,7 +222,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
 
         // transfer any remaining dust back to the owner
         if (actualRepay < maxRepay) {
-            asset.transfer(beneficiary, maxRepay - actualRepay);
+            SafeERC20Lib.safeTransfer(asset, beneficiary, maxRepay - actualRepay);
         }
     }
 
@@ -328,12 +337,16 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
 
         ClosePositionParams memory params;
         (params, , ) = _parseClosePositionParams(wrapperData);
+        _evcInternalSettle(settleData, remainingWrapperData, params);
+    }
+
+    function _evcInternalSettle(bytes calldata settleData, bytes calldata remainingWrapperData, ClosePositionParams memory params) internal {
 
         if (params.owner != params.account) {
             (uint256 collateralVaultPrice, uint256 borrowPrice) =
                 _findRatePrices(settleData, params.collateralVault, params.borrowVault);
             uint256 transferAmount = params.maxRepayAmount * borrowPrice / collateralVaultPrice;
-            IERC20(params.collateralVault).transferFrom(params.account, params.owner, transferAmount);
+            SafeERC20Lib.safeTransferFrom(IERC20(params.collateralVault), params.account, params.owner, transferAmount, address(0));
         }
 
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
