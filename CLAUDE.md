@@ -99,7 +99,7 @@ forge snapshot
 
 ### Security Considerations
 
-- It is generally assumed that the `solvers` (aka, an address for which `CowAuthentication.isSolver()` returns true) is a trusted actor within the system. Only in the case that a solver could steal an entire user's deposit or funds, or steal funds beyond what the user specified as their minimum out/minimum buy amount, assume there is incentive for a solver to provide the best rate/user outcome possible.
+- It is generally assumed that the `solvers` (aka, an address for which `CowAuthentication.isSolver()` returns true) is a trusted actor within the system. Only in the case that a solver could steal an entire user's deposit or funds, or steal funds beyond what the user specified as their minimum out/minimum buy amount, assume there is incentive for a solver to provide the best rate/user outcome possible. To be clear, a solver cannot steal funds simply by setting arbitrary `clearingPrices` (as documented a bit later).
 - If a user takes on debt, that debt position must be sufficiently collateralized above a set collateralization ratio higher than liquidation ratio before the EVC batch transaction concludes. If it is not, the transaction reverts and nothing can happen. Therefore, there is no risk of undercollateralization to the system due to a user opening a position because the transaction would revert.
 - anyone can call the `EVC.batch()` function to initialize a batched call through the EVC. This call is allowed to be reentrant. Therefore, simply checking that a caller is the `address(EVC)` doesn't really offer any added security benefit.
 - The parameters supplied by a solver to the settlement contract are all indirectly bounded from within the settlement contract by ceratin restrictions:
