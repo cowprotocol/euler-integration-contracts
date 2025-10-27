@@ -24,7 +24,8 @@ import {console} from "forge-std/Test.sol";
 contract Solver {
     function runBatch(address[] memory targets, bytes[] memory datas) external {
         for (uint256 i = 0; i < targets.length; i++) {
-            targets[i].call(datas[i]);
+            (bool success,) = targets[i].call(datas[i]);
+            require(success, "Solver: call failed");
         }
     }
 }
