@@ -75,8 +75,7 @@ contract CowEvcWrapperTest is CowBaseTest {
 
         // Get settlement, that sells WETH for SUSDS
         (
-            bytes memory orderUid,
-            ,
+            bytes memory orderUid,,
             IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
@@ -125,8 +124,7 @@ contract CowEvcWrapperTest is CowBaseTest {
         // Get settlement, that sells WETH for SUSDS
         // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
         (
-            bytes memory orderUid,
-            ,
+            bytes memory orderUid,,
             IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
@@ -186,7 +184,9 @@ contract CowEvcWrapperTest is CowBaseTest {
             onBehalfOfAccount: address(0),
             targetContract: address(evc),
             value: 0,
-            data: abi.encodeCall(IEVC.permit, (user, address(wrapper), 0, 0, block.timestamp, 0, batchData, batchSignature))
+            data: abi.encodeCall(
+                IEVC.permit, (user, address(wrapper), 0, 0, block.timestamp, 0, batchData, batchSignature)
+            )
         });
 
         // post-settlement will check slippage and skim the free cash on the destination vault for the user
@@ -236,8 +236,7 @@ contract CowEvcWrapperTest is CowBaseTest {
         // Get settlement, that sells WETH for buying SUSDS
         // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
         (
-            bytes memory orderUid,
-            ,
+            bytes memory orderUid,,
             IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
@@ -297,7 +296,9 @@ contract CowEvcWrapperTest is CowBaseTest {
             onBehalfOfAccount: address(0),
             targetContract: address(evc),
             value: 0,
-            data: abi.encodeCall(IEVC.permit, (user, address(wrapper), 0, 0, block.timestamp, 0, batchData, batchSignature))
+            data: abi.encodeCall(
+                IEVC.permit, (user, address(wrapper), 0, 0, block.timestamp, 0, batchData, batchSignature)
+            )
         });
 
         // post-settlement, first lets assume we don't call the swap verifier
@@ -349,8 +350,7 @@ contract CowEvcWrapperTest is CowBaseTest {
         // Get settlement, that sells WETH for SUSDS
         // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
         (
-            bytes memory orderUid,
-            ,
+            bytes memory orderUid,,
             IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
@@ -397,8 +397,7 @@ contract CowEvcWrapperTest is CowBaseTest {
         // Get settlement, that sells WETH for SUSDS
         // NOTE the receiver is the SUSDS vault, because we'll skim the output for the user in post-settlement
         (
-            bytes memory orderUid,
-            ,
+            bytes memory orderUid,,
             IERC20[] memory tokens,
             uint256[] memory clearingPrices,
             GPv2Trade.Data[] memory trades,
@@ -458,7 +457,9 @@ contract CowEvcWrapperTest is CowBaseTest {
             onBehalfOfAccount: address(0),
             targetContract: address(evc),
             value: 0,
-            data: abi.encodeCall(IEVC.permit, (user, address(wrapper), 0, 0, block.timestamp, 0, batchData, batchSignature))
+            data: abi.encodeCall(
+                IEVC.permit, (user, address(wrapper), 0, 0, block.timestamp, 0, batchData, batchSignature)
+            )
         });
 
         // post-settlement does not need to do anything because the settlement contract will automatically verify the amount of remaining funds
