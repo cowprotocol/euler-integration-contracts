@@ -137,17 +137,13 @@ contract CowBaseTest is EVaultTestBase {
 
     function getSwapInteraction(uint256 sellAmount) public view returns (GPv2Interaction.Data memory) {
         return GPv2Interaction.Data({
-            target: address(milkSwap),
-            value: 0,
-            callData: abi.encodeCall(MilkSwap.swap, (WETH, SUSDS, sellAmount))
+            target: address(milkSwap), value: 0, callData: abi.encodeCall(MilkSwap.swap, (WETH, SUSDS, sellAmount))
         });
     }
 
     function getDepositInteraction(uint256 buyAmount) public view returns (GPv2Interaction.Data memory) {
         return GPv2Interaction.Data({
-            target: address(SUSDS),
-            value: 0,
-            callData: abi.encodeCall(IERC20.transfer, (eSUSDS, buyAmount))
+            target: address(SUSDS), value: 0, callData: abi.encodeCall(IERC20.transfer, (eSUSDS, buyAmount))
         });
     }
 

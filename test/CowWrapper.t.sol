@@ -99,7 +99,10 @@ contract TestWrapper is CowWrapper {
 
     constructor(CowSettlement settlement_) CowWrapper(settlement_) {}
 
-    function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData) internal override {
+    function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
+        internal
+        override
+    {
         // Record the wrap call
         WrapCall storage call_ = wrapCalls.push();
         call_.settleData = settleData;
@@ -121,7 +124,12 @@ contract TestWrapper is CowWrapper {
         return (wrapCalls[index].settleData, wrapCalls[index].wrapperData);
     }
 
-    function parseWrapperData(bytes calldata wrapperData) external view override returns (bytes calldata remainingWrapperData) {
+    function parseWrapperData(bytes calldata wrapperData)
+        external
+        view
+        override
+        returns (bytes calldata remainingWrapperData)
+    {
         return wrapperData;
     }
 }
@@ -141,7 +149,8 @@ contract CowWrapperTest is Test {
         // Deploy mock contracts
         authenticator = new MockAuthentication();
         mockSettlement = new MockSettlement(CowAuthentication(address(authenticator)));
-        helpers = new CowWrapperHelpers(CowAuthentication(address(authenticator)), CowAuthentication(address(authenticator)));
+        helpers =
+            new CowWrapperHelpers(CowAuthentication(address(authenticator)), CowAuthentication(address(authenticator)));
 
         solver = makeAddr("solver");
         // Add solver to the authenticator
@@ -263,21 +272,13 @@ contract CowWrapperTest is Test {
         // solver -> wrapper1 -> wrapper2 -> wrapper3 -> static SETTLEMENT
 
         CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](3);
-        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({
-            target: address(wrapper1),
-            data: hex""
-        });
-        wrapperCalls[1] = CowWrapperHelpers.WrapperCall({
-            target: address(wrapper2),
-            data: hex""
-        });
-        wrapperCalls[2] = CowWrapperHelpers.WrapperCall({
-            target: address(wrapper3),
-            data: hex""
-        });
+        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({target: address(wrapper1), data: hex""});
+        wrapperCalls[1] = CowWrapperHelpers.WrapperCall({target: address(wrapper2), data: hex""});
+        wrapperCalls[2] = CowWrapperHelpers.WrapperCall({target: address(wrapper3), data: hex""});
 
         bytes memory wrapperData = helpers.verifyAndBuildWrapperData(wrapperCalls);
-        bytes memory settleData = abi.encodeWithSelector(CowSettlement.settle.selector, tokens, clearingPrices, trades, interactions);
+        bytes memory settleData =
+            abi.encodeWithSelector(CowSettlement.settle.selector, tokens, clearingPrices, trades, interactions);
 
         // Call wrapper1 as the solver
         vm.prank(solver);

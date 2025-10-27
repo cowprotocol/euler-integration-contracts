@@ -71,13 +71,17 @@ contract CowWrapperHelpers {
     ///      Note: No settlement address is appended as wrappers now use a static SETTLEMENT.
     /// @param wrapperCalls Array of calls in execution order
     /// @return wrapperData The encoded wrapper data ready to be passed to the first wrapper's wrappedSettle
-    function verifyAndBuildWrapperData(WrapperCall[] memory wrapperCalls) external view returns (bytes memory wrapperData) {
+    function verifyAndBuildWrapperData(WrapperCall[] memory wrapperCalls)
+        external
+        view
+        returns (bytes memory wrapperData)
+    {
         if (wrapperCalls.length == 0) {
             return wrapperData;
         }
 
         // First pass: verify all wrappers are authenticated
-        for (uint256 i = 0;i < wrapperCalls.length;i++) {
+        for (uint256 i = 0; i < wrapperCalls.length; i++) {
             if (!WRAPPER_AUTHENTICATOR.isSolver(wrapperCalls[i].target)) {
                 revert NotAWrapper(i, wrapperCalls[i].target, address(WRAPPER_AUTHENTICATOR));
             }
@@ -86,8 +90,7 @@ contract CowWrapperHelpers {
         // Get the expected settlement from the first wrapper
         address expectedSettlement = address(ICowWrapper(wrapperCalls[0].target).SETTLEMENT());
 
-        for (uint256 i = 0;i < wrapperCalls.length;i++) {
-
+        for (uint256 i = 0; i < wrapperCalls.length; i++) {
             // All wrappers must use the same settlement contract
             address wrapperSettlement = address(ICowWrapper(wrapperCalls[i].target).SETTLEMENT());
             if (wrapperSettlement != expectedSettlement) {
@@ -95,7 +98,9 @@ contract CowWrapperHelpers {
             }
 
             // The wrapper data must be parsable and fully consumed
-            try ICowWrapper(wrapperCalls[i].target).parseWrapperData(wrapperCalls[i].data) returns (bytes memory remainingWrapperData) {
+            try ICowWrapper(wrapperCalls[i].target).parseWrapperData(wrapperCalls[i].data) returns (
+                bytes memory remainingWrapperData
+            ) {
                 if (remainingWrapperData.length > 0) {
                     revert WrapperDataNotFullyConsumed(i, remainingWrapperData);
                 }
@@ -112,8 +117,10 @@ contract CowWrapperHelpers {
         // Build wrapper data without settlement address at the end
         wrapperData = abi.encodePacked(uint16(wrapperCalls[0].data.length), wrapperCalls[0].data);
 
-        for (uint256 i = 1;i < wrapperCalls.length;i++) {
-            wrapperData = abi.encodePacked(wrapperData, wrapperCalls[i].target, uint16(wrapperCalls[i].data.length), wrapperCalls[i].data);
+        for (uint256 i = 1; i < wrapperCalls.length; i++) {
+            wrapperData = abi.encodePacked(
+                wrapperData, wrapperCalls[i].target, uint16(wrapperCalls[i].data.length), wrapperCalls[i].data
+            );
         }
 
         return wrapperData;
