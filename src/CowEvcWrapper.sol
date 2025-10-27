@@ -5,7 +5,7 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IGPv2Authentication} from "./vendor/interfaces/IGPv2Authentication.sol";
 
 import {GPv2Signing, IERC20, GPv2Trade} from "cow/mixins/GPv2Signing.sol";
-import {GPv2Wrapper,GPv2Interaction} from "cow/GPv2Wrapper.sol";
+import {GPv2Wrapper, GPv2Interaction} from "cow/GPv2Wrapper.sol";
 
 /// @title CowEvcWrapper
 /// @notice A wrapper around the EVC that allows for settlement operations
