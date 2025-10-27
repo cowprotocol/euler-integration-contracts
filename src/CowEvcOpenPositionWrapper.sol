@@ -24,9 +24,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     /// @dev The EIP-712 domain type hash used for computing the domain
     /// separator.
     bytes32 private constant DOMAIN_TYPE_HASH =
-        keccak256(
-            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-        );
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
 
     /// @dev The EIP-712 domain name used for computing the domain separator.
     bytes32 private constant DOMAIN_NAME = keccak256("CowEvcOpenPositionWrapper");
@@ -52,15 +50,8 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
         EVC = IEVC(_evc);
         nonceNamespace = uint256(uint160(address(this)));
 
-        domainSeparator = keccak256(
-            abi.encode(
-                DOMAIN_TYPE_HASH,
-                DOMAIN_NAME,
-                DOMAIN_VERSION,
-                block.chainid,
-                address(this)
-            )
-        );
+        domainSeparator =
+            keccak256(abi.encode(DOMAIN_TYPE_HASH, DOMAIN_NAME, DOMAIN_VERSION, block.chainid, address(this)));
     }
 
     /**
@@ -73,7 +64,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
          * @dev The ethereum address that has permission to operate upon the account
          */
         address owner;
-        
+
         /**
          * @dev The subaccount to open the position on. Learn more about Euler subaccounts https://evc.wtf/docs/concepts/internals/sub-accounts
          */
@@ -156,11 +147,14 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     /// @notice Implementation of GPv2Wrapper._wrap - executes EVC operations to open a position
     /// @param settleData Data which will be used for the parameters in a call to `CowSettlement.settle`
     /// @param wrapperData Additional data containing OpenPositionParams
-    function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData) internal override {
+    function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
+        internal
+        override
+    {
         // Decode wrapper data into OpenPositionParams
         OpenPositionParams memory params;
         bytes memory signature;
-        (params, signature, ) = _parseOpenPositionParams(wrapperData);
+        (params, signature,) = _parseOpenPositionParams(wrapperData);
 
         // Check if the signed calldata hash is pre-approved
         IEVC.BatchItem[] memory signedItems = _getSignedCalldata(params);

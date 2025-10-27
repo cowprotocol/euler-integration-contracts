@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8;
 
-import {GPv2Order, IERC20 as CowERC20 } from "cow/libraries/GPv2Order.sol";
+import {GPv2Order, IERC20 as CowERC20} from "cow/libraries/GPv2Order.sol";
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IEVault, IERC4626, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
@@ -26,10 +26,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         super.setUp();
 
         // Deploy the new open position wrapper
-        openPositionWrapper = new CowEvcOpenPositionWrapper(
-            address(evc),
-            cowSettlement
-        );
+        openPositionWrapper = new CowEvcOpenPositionWrapper(address(evc), cowSettlement);
 
         // Add wrapper as a solver
         GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(cowSettlement.authenticator()));
@@ -97,7 +94,11 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         (r.tokens, r.clearingPrices) = getTokensAndPrices();
 
         // Setup interactions - swap WETH to SUSDS, deposit to vault, and skim
-        r.interactions = [new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](3), new CowSettlement.CowInteractionData[](0)];
+        r.interactions = [
+            new CowSettlement.CowInteractionData[](0),
+            new CowSettlement.CowInteractionData[](3),
+            new CowSettlement.CowInteractionData[](0)
+        ];
         r.interactions[1][0] = getSwapInteraction(sellToken, IERC4626(buyVaultToken).asset(), sellAmount);
         r.interactions[1][1] = getDepositInteraction(buyVaultToken, buyAmount + 1 ether);
         r.interactions[1][2] = getSkimInteraction();
@@ -113,14 +114,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         address account = address(uint160(user) ^ 1);
 
         // Get settlement data
-        SettlementData memory settlement = getOpenPositionSettlement(
-            user,
-            account,
-            WETH,
-            eSUSDS,
-            borrowAmount,
-            expectedBuyAmount
-        );
+        SettlementData memory settlement =
+            getOpenPositionSettlement(user, account, WETH, eSUSDS, borrowAmount, expectedBuyAmount);
 
         // Prepare OpenPositionParams
         uint256 deadline = block.timestamp + 1 hours;
@@ -162,12 +157,10 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         uint256 debtBefore = IEVault(eWETH).debtOf(user);
 
         // Encode settlement data
-        bytes memory settleData = abi.encodeCall(CowSettlement.settle, (
-            settlement.tokens,
-            settlement.clearingPrices,
-            settlement.trades,
-            settlement.interactions
-        ));
+        bytes memory settleData = abi.encodeCall(
+            CowSettlement.settle,
+            (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
+        );
 
         // Encode wrapper data with OpenPositionParams
         bytes memory wrapperData = abi.encode(params, permitSignature);
@@ -177,10 +170,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         address[] memory targets = new address[](1);
         bytes[] memory datas = new bytes[](1);
         targets[0] = address(openPositionWrapper);
-        datas[0] = abi.encodeCall(
-            openPositionWrapper.wrappedSettle,
-            (settleData, wrapperData)
-        );
+        datas[0] = abi.encodeCall(openPositionWrapper.wrappedSettle, (settleData, wrapperData));
 
         solver.runBatch(targets, datas);
 
@@ -191,11 +181,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             1 ether,
             "User should have collateral deposited"
         );
-        assertEq(
-            IEVault(eWETH).debtOf(account),
-            borrowAmount,
-            "User should have debt"
-        );
+        assertEq(IEVault(eWETH).debtOf(account), borrowAmount, "User should have debt");
         assertEq(debtBefore, 0, "User should start with no debt");
         assertEq(susdsBalanceBefore, 0, "User should start with no eSUSDS");
     }
@@ -302,14 +288,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         });
 
         // Get settlement data
-        SettlementData memory settlement = getOpenPositionSettlement(
-            user,
-            account,
-            WETH,
-            eSUSDS,
-            borrowAmount,
-            expectedBuyAmount
-        );
+        SettlementData memory settlement =
+            getOpenPositionSettlement(user, account, WETH, eSUSDS, borrowAmount, expectedBuyAmount);
 
         vm.startPrank(user);
 
@@ -338,12 +318,10 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         uint256 debtBefore = IEVault(eWETH).debtOf(account);
 
         // Encode settlement data
-        bytes memory settleData = abi.encodeCall(CowSettlement.settle, (
-            settlement.tokens,
-            settlement.clearingPrices,
-            settlement.trades,
-            settlement.interactions
-        ));
+        bytes memory settleData = abi.encodeCall(
+            CowSettlement.settle,
+            (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
+        );
 
         // Encode wrapper data with OpenPositionParams (empty signature since pre-approved)
         bytes memory wrapperData = abi.encode(params, new bytes(0));
@@ -353,10 +331,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         address[] memory targets = new address[](1);
         bytes[] memory datas = new bytes[](1);
         targets[0] = address(openPositionWrapper);
-        datas[0] = abi.encodeCall(
-            openPositionWrapper.wrappedSettle,
-            (settleData, wrapperData)
-        );
+        datas[0] = abi.encodeCall(openPositionWrapper.wrappedSettle, (settleData, wrapperData));
 
         solver.runBatch(targets, datas);
 
@@ -367,11 +342,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             1 ether,
             "User should have collateral deposited"
         );
-        assertEq(
-            IEVault(eWETH).debtOf(account),
-            borrowAmount,
-            "User should have debt"
-        );
+        assertEq(IEVault(eWETH).debtOf(account), borrowAmount, "User should have debt");
         assertEq(debtBefore, 0, "User should start with no debt");
     }
 }

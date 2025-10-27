@@ -16,7 +16,7 @@ import {MilkSwap} from "./MilkSwap.sol";
 contract Solver {
     function runBatch(address[] memory targets, bytes[] memory datas) external {
         for (uint256 i = 0; i < targets.length; i++) {
-            (bool success, ) = targets[i].call(datas[i]);
+            (bool success,) = targets[i].call(datas[i]);
             require(success, "Solver: call failed");
         }
     }
@@ -75,7 +75,7 @@ contract CowBaseTest is EVaultTestBase {
         milkSwap = new MilkSwap();
         deal(SUSDS, address(milkSwap), 10000e18); // Add SUSDS to MilkSwap
         deal(WETH, address(milkSwap), 10000e18); // Add WETH to MilkSwap
-        milkSwap.setPrice(WETH, 1000e18); // 1 ETH = 1,000 USD 
+        milkSwap.setPrice(WETH, 1000e18); // 1 ETH = 1,000 USD
         milkSwap.setPrice(SUSDS, 1e18); // 1 USDS = 1 USD
 
         // Set the approval for MilkSwap in the settlement as a convenience
@@ -119,7 +119,11 @@ contract CowBaseTest is EVaultTestBase {
             new IERC20[](0),
             new uint256[](0),
             new CowSettlement.CowTradeData[](0),
-            [new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0)]
+            [
+                new CowSettlement.CowInteractionData[](0),
+                new CowSettlement.CowInteractionData[](0),
+                new CowSettlement.CowInteractionData[](0)
+            ]
         );
     }
 
@@ -131,7 +135,11 @@ contract CowBaseTest is EVaultTestBase {
         return abi.encodePacked(orderDigest, address(owner), uint32(orderData.validTo));
     }
 
-    function getSwapInteraction(address sellToken, address buyToken, uint256 sellAmount) public view returns (CowSettlement.CowInteractionData memory) {
+    function getSwapInteraction(address sellToken, address buyToken, uint256 sellAmount)
+        public
+        view
+        returns (CowSettlement.CowInteractionData memory)
+    {
         return CowSettlement.CowInteractionData({
             target: address(milkSwap),
             value: 0,
@@ -140,7 +148,11 @@ contract CowBaseTest is EVaultTestBase {
     }
 
     // NOTE: get skimInteraction has to be called after this
-    function getDepositInteraction(address vault, uint256 sellAmount) public view returns (CowSettlement.CowInteractionData memory) {
+    function getDepositInteraction(address vault, uint256 sellAmount)
+        public
+        view
+        returns (CowSettlement.CowInteractionData memory)
+    {
         return CowSettlement.CowInteractionData({
             target: address(IEVault(vault).asset()),
             value: 0,
@@ -148,7 +160,11 @@ contract CowBaseTest is EVaultTestBase {
         });
     }
 
-    function getWithdrawInteraction(address vault, uint256 sellAmount) public view returns (CowSettlement.CowInteractionData memory) {
+    function getWithdrawInteraction(address vault, uint256 sellAmount)
+        public
+        view
+        returns (CowSettlement.CowInteractionData memory)
+    {
         return CowSettlement.CowInteractionData({
             target: vault,
             value: 0,
@@ -164,11 +180,14 @@ contract CowBaseTest is EVaultTestBase {
         });
     }
 
-    function getTradeData(uint256 sellAmount, uint256 buyAmount, uint32 validTo, address owner, address receiver, bool isBuy)
-        public
-        pure
-        returns (CowSettlement.CowTradeData memory)
-    {
+    function getTradeData(
+        uint256 sellAmount,
+        uint256 buyAmount,
+        uint32 validTo,
+        address owner,
+        address receiver,
+        bool isBuy
+    ) public pure returns (CowSettlement.CowTradeData memory) {
         // Set flags for (pre-sign, FoK sell order)
         // See
         // https://github.com/cowprotocol/contracts/blob/08f8627d8427c8842ae5d29ed8b44519f7674879/src/contracts/libraries/GPv2Trade.sol#L89-L94

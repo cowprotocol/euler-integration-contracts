@@ -25,9 +25,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     /// @dev The EIP-712 domain type hash used for computing the domain
     /// separator.
     bytes32 private constant DOMAIN_TYPE_HASH =
-        keccak256(
-            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-        );
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
 
     /// @dev The EIP-712 domain name used for computing the domain separator.
     bytes32 private constant DOMAIN_NAME = keccak256("CowEvcClosePositionWrapper");
@@ -55,15 +53,8 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         EVC = IEVC(_evc);
         nonceNamespace = uint256(uint160(address(this)));
 
-        domainSeparator = keccak256(
-            abi.encode(
-                DOMAIN_TYPE_HASH,
-                DOMAIN_NAME,
-                DOMAIN_VERSION,
-                block.chainid,
-                address(this)
-            )
-        );
+        domainSeparator =
+            keccak256(abi.encode(DOMAIN_TYPE_HASH, DOMAIN_NAME, DOMAIN_VERSION, block.chainid, address(this)));
     }
 
     /**
@@ -172,7 +163,10 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
             onBehalfOfAccount: params.account,
             targetContract: address(this),
             value: 0,
-            data: abi.encodeCall(this.helperRepayAndReturn, (params.borrowVault, params.owner, params.account, params.maxRepayAmount, repayAll))
+            data: abi.encodeCall(
+                this.helperRepayAndReturn,
+                (params.borrowVault, params.owner, params.account, params.maxRepayAmount, repayAll)
+            )
         });
 
         // 2. If we are repaying all, we should disable the collateral from the account
@@ -195,7 +189,9 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     /// @param account The subaccount that should be receiving the repayment of debt
     /// @param maxRepay The amount to repay. This should be the same as the `amountOut` from the CoW Settlement, to ensure no funds are left over.
     /// @param repayAll Use this to ensure that all debt is repaid for the user, or revert.
-    function helperRepayAndReturn(address vault, address owner, address account, uint256 maxRepay, bool repayAll) external {
+    function helperRepayAndReturn(address vault, address owner, address account, uint256 maxRepay, bool repayAll)
+        external
+    {
         IERC20 asset = IERC20(IERC4626(vault).asset());
 
         // the settlement contract should have sent us `maxRepay` money
@@ -204,7 +200,10 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         // 2. Somebody else using this wrapper (nesting the wrappers) did #1 (and the solver borked up)
         // 3. Someone called this function outside of the normal flow and now there isn't enough funds left over
         // In any of these cases, we want to revert
-        require(asset.balanceOf(address(this)) >= maxRepay, InsufficientRepaymentAsset(vault, asset.balanceOf(address(this)), maxRepay));
+        require(
+            asset.balanceOf(address(this)) >= maxRepay,
+            InsufficientRepaymentAsset(vault, asset.balanceOf(address(this)), maxRepay)
+        );
 
         // Infinite approve to save gas on repeated invocations against a borrow vault
         // If a malicious vault takes more funds than it should, or records an actualRepay less than it actually took, the transaction will revert.
@@ -220,11 +219,14 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     /// @notice Implementation of GPv2Wrapper._wrap - executes EVC operations to close a position
     /// @param settleData Data which will be used for the parameters in a call to `CowSettlement.settle`
     /// @param wrapperData Additional data containing ClosePositionParams
-    function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData) internal override {
+    function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
+        internal
+        override
+    {
         // Decode wrapper data into ClosePositionParams
         ClosePositionParams memory params;
         bytes memory signature;
-        (params, signature, ) = _parseClosePositionParams(wrapperData);
+        (params, signature,) = _parseClosePositionParams(wrapperData);
 
         // Check if the signed calldata hash is pre-approved
         IEVC.BatchItem[] memory signedItems = _getSignedCalldata(params);
@@ -269,10 +271,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
                 )
             });
         } else {
-            require(
-                params.deadline >= block.timestamp,
-                OperationDeadlineExceeded(params.deadline, block.timestamp)
-            );
+            require(params.deadline >= block.timestamp, OperationDeadlineExceeded(params.deadline, block.timestamp));
             // copy the operations to execute. we can operate on behalf of the user directly
             uint256 signedItemIndex = 0;
             for (; itemIndex < itemCount; itemIndex++) {
@@ -288,14 +287,19 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         EVC.batch(items);
     }
 
-    function _findRatePrices(bytes calldata settleData, address collateralVault, address borrowVault) internal view returns (uint256 collateralVaultPrice, uint256 borrowPrice) {
+    function _findRatePrices(bytes calldata settleData, address collateralVault, address borrowVault)
+        internal
+        view
+        returns (uint256 collateralVaultPrice, uint256 borrowPrice)
+    {
         address borrowAsset = IERC4626(borrowVault).asset();
-        (address[] memory tokens, uint256[] memory clearingPrices,,) = abi.decode(settleData[4:], (address[], uint256[], CowSettlement.CowTradeData[], CowSettlement.CowInteractionData[][3]));
-        for (uint256 i = 0;i < tokens.length;i++) {
+        (address[] memory tokens, uint256[] memory clearingPrices,,) = abi.decode(
+            settleData[4:], (address[], uint256[], CowSettlement.CowTradeData[], CowSettlement.CowInteractionData[][3])
+        );
+        for (uint256 i = 0; i < tokens.length; i++) {
             if (tokens[i] == collateralVault) {
                 collateralVaultPrice = clearingPrices[i];
-            }
-            else if (tokens[i] == borrowAsset) {
+            } else if (tokens[i] == borrowAsset) {
                 borrowPrice = clearingPrices[i];
             }
         }
@@ -303,16 +307,23 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     }
 
     /// @notice Internal settlement function called by EVC
-    function evcInternalSettle(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData) external payable {
+    function evcInternalSettle(
+        bytes calldata settleData,
+        bytes calldata wrapperData,
+        bytes calldata remainingWrapperData
+    ) external payable {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
 
         ClosePositionParams memory params;
-        (params, , ) = _parseClosePositionParams(wrapperData);
+        (params,,) = _parseClosePositionParams(wrapperData);
         _evcInternalSettle(settleData, remainingWrapperData, params);
     }
 
-    function _evcInternalSettle(bytes calldata settleData, bytes calldata remainingWrapperData, ClosePositionParams memory params) internal {
-
+    function _evcInternalSettle(
+        bytes calldata settleData,
+        bytes calldata remainingWrapperData,
+        ClosePositionParams memory params
+    ) internal {
         // If a subaccount is being used, we need to transfer the required amount of collateral for the trade into the owner's wallet.
         // This is required becuase the settlement contract can only pull funds from the wallet that signed the transaction.
         // Since its not possible for a subaccount to sign a transaction due to the private key not existing and their being no
@@ -323,7 +334,9 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
             (uint256 collateralVaultPrice, uint256 borrowPrice) =
                 _findRatePrices(settleData, params.collateralVault, params.borrowVault);
             uint256 transferAmount = params.maxRepayAmount * borrowPrice / collateralVaultPrice;
-            SafeERC20Lib.safeTransferFrom(IERC20(params.collateralVault), params.account, params.owner, transferAmount, address(0));
+            SafeERC20Lib.safeTransferFrom(
+                IERC20(params.collateralVault), params.account, params.owner, transferAmount, address(0)
+            );
         }
 
         // Use GPv2Wrapper's _internalSettle to call the settlement contract

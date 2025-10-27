@@ -13,7 +13,6 @@ import {ECDSA} from "openzeppelin/utils/cryptography/ECDSA.sol";
 // <https://github.com/euler-xyz/ethereum-vault-connector/blob/34bb788288a0eb0fbba06bc370cb8ca3dd42614e/test/unit/EthereumVaultConnector/Permit.t.sol#L68>
 
 abstract contract EIP712 {
-
     bytes32 internal constant _TYPE_HASH =
         keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
 
