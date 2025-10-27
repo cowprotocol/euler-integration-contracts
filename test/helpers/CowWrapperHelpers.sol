@@ -27,11 +27,7 @@ library CowWrapperHelpers {
         // Build the wrapper data chain
         bytes memory wrapperData;
         for (uint256 i = 0; i < wrappers.length; i++) {
-            wrapperData = abi.encodePacked(
-                wrapperData,
-                uint16(wrapperDatas[i].length),
-                wrapperDatas[i]
-            );
+            wrapperData = abi.encodePacked(wrapperData, uint16(wrapperDatas[i].length), wrapperDatas[i]);
             // Include the next wrapper address if there is one
             if (wrappers.length > i + 1) {
                 wrapperData = abi.encodePacked(wrapperData, wrappers[i + 1]);
@@ -40,8 +36,13 @@ library CowWrapperHelpers {
         }
 
         // Build the settle calldata
-        bytes memory settleData =
-            abi.encodeWithSelector(CowSettlement.settle.selector, settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions);
+        bytes memory settleData = abi.encodeWithSelector(
+            CowSettlement.settle.selector,
+            settlement.tokens,
+            settlement.clearingPrices,
+            settlement.trades,
+            settlement.interactions
+        );
 
         // Encode the wrappedSettle call
         fullCalldata = abi.encodeWithSelector(ICowWrapper.wrappedSettle.selector, settleData, wrapperData);

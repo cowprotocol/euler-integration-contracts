@@ -101,7 +101,10 @@ contract TestWrapper is CowWrapper {
 
     constructor(CowSettlement settlement_) CowWrapper(settlement_) {}
 
-    function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData) internal override {
+    function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
+        internal
+        override
+    {
         // Record the wrap call
         WrapCall storage call_ = wrapCalls.push();
         call_.settleData = settleData;

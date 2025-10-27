@@ -115,7 +115,7 @@ abstract contract CowWrapper is ICowWrapper {
         uint16 nextWrapperDataLen = uint16(bytes2(wrapperData[0:2]));
 
         // Delegate to the wrapper's custom logic
-        _wrap(settleData, wrapperData[2:2+nextWrapperDataLen], wrapperData[2+nextWrapperDataLen:]);
+        _wrap(settleData, wrapperData[2:2 + nextWrapperDataLen], wrapperData[2 + nextWrapperDataLen:]);
     }
 
     /// @notice Internal function containing the wrapper's custom logic
@@ -124,7 +124,9 @@ abstract contract CowWrapper is ICowWrapper {
     /// @param settleData ABI-encoded call to CowSettlement.settle()
     /// @param wrapperData The wrapper data which should be consumed by this wrapper
     /// @param remainingWrapperData Additional wrapper data needed by future wrappers. This should be passed unaltered to _internalSettle
-    function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData) internal virtual;
+    function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
+        internal
+        virtual;
 
     /// @notice Continues the settlement chain by calling the next wrapper or settlement contract
     /// @dev Extracts the next target address from wrapperData and either:
