@@ -264,6 +264,8 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     /// @notice Internal settlement function called by EVC
     function evcInternalSettle(bytes calldata settleData, bytes calldata remainingWrapperData) external payable {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
+        (address onBehalfOfAccount,) = EVC.getCurrentOnBehalfOfAccount(address(0));
+        require(onBehalfOfAccount == address(this), Unauthorized(onBehalfOfAccount));
 
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap

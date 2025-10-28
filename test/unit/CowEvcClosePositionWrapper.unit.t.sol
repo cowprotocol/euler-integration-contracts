@@ -49,6 +49,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
 
         // Set solver as authenticated
         mockAuth.setSolver(SOLVER, true);
+
+        // Set the correct onBehalfOfAccount for evcInternalSettle calls
+        mockEVC.setOnBehalfOf(address(wrapper));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -439,6 +442,42 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
 
+    function test_EvcInternalSettle_RequiresCorrectOnBehalfOfAccount() public {
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
+            owner: OWNER,
+            account: OWNER,
+            deadline: block.timestamp + 1 hours,
+            borrowVault: address(mockBorrowVault),
+            collateralVault: address(mockCollateralVault),
+            maxRepayAmount: 1000e18
+        });
+
+        bytes memory settleData = abi.encodeCall(
+            CowSettlement.settle,
+            (
+                new address[](0),
+                new uint256[](0),
+                new CowSettlement.CowTradeData[](0),
+                [
+                    new CowSettlement.CowInteractionData[](0),
+                    new CowSettlement.CowInteractionData[](0),
+                    new CowSettlement.CowInteractionData[](0)
+                ]
+            )
+        );
+        bytes memory wrapperData = abi.encode(params, new bytes(0));
+        bytes memory remainingWrapperData = "";
+
+        mockSettlement.setSuccessfulSettle(true);
+
+        // Set incorrect onBehalfOfAccount (not address(wrapper))
+        mockEVC.setOnBehalfOf(address(0x9999));
+
+        vm.prank(address(mockEVC));
+        vm.expectRevert(abi.encodeWithSelector(CowEvcClosePositionWrapper.Unauthorized.selector, address(0x9999)));
+        wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
+    }
+
     function test_EvcInternalSettle_CanBeCalledByEVC() public {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
             owner: OWNER,
@@ -554,8 +593,65 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         bytes memory remainingWrapperData = "";
 
+        vm.expectRevert(abi.encodeWithSelector(CowEvcClosePositionWrapper.PricesNotFoundInSettlement.selector, mockCollateralVault, mockBorrowVault.asset()));
         vm.prank(address(mockEVC));
-        vm.expectRevert(abi.encodeWithSelector(CowEvcClosePositionWrapper.PricesNotFoundInSettlement.selector));
+        wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
+    }
+
+    function test_EvcInternalSettle_SubaccountMustBeControlledByOwner() public {
+        // Create an account that is NOT a valid subaccount of the owner
+        // Valid subaccount would share first 19 bytes, but this one doesn't
+        address invalidSubaccount = address(0x9999999999999999999999999999999999999999);
+
+        // Approve the wrapper to transfer from the subaccount (in case it succeeds)
+        vm.prank(invalidSubaccount);
+        mockCollateralVault.approve(address(wrapper), type(uint256).max);
+
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
+            owner: OWNER,
+            account: invalidSubaccount, // Invalid subaccount
+            deadline: block.timestamp + 1 hours,
+            borrowVault: address(mockBorrowVault),
+            collateralVault: address(mockCollateralVault),
+            maxRepayAmount: 1000e18
+        });
+
+        // Give account some collateral vault tokens
+        mockCollateralVault.mint(invalidSubaccount, 2000e18);
+
+        // Create settle data with tokens and prices
+        address[] memory tokens = new address[](2);
+        tokens[0] = address(mockCollateralVault);
+        tokens[1] = address(mockAsset);
+
+        uint256[] memory prices = new uint256[](2);
+        prices[0] = 1e18;
+        prices[1] = 1e18;
+
+        bytes memory settleData = abi.encodeCall(
+            CowSettlement.settle,
+            (
+                tokens,
+                prices,
+                new CowSettlement.CowTradeData[](0),
+                [
+                    new CowSettlement.CowInteractionData[](0),
+                    new CowSettlement.CowInteractionData[](0),
+                    new CowSettlement.CowInteractionData[](0)
+                ]
+            )
+        );
+        bytes memory wrapperData = abi.encode(params, new bytes(0));
+        bytes memory remainingWrapperData = "";
+
+        mockSettlement.setSuccessfulSettle(true);
+
+        vm.prank(address(mockEVC));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CowEvcClosePositionWrapper.SubaccountMustBeControlledByOwner.selector, invalidSubaccount, OWNER
+            )
+        );
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
 

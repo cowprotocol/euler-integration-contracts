@@ -9,9 +9,14 @@ contract MockEVC {
     mapping(address => mapping(address => bool)) public operators;
     mapping(address => uint256) public nonces;
     bool public shouldSucceed = true;
+    address public onBehalfOf;
 
     function setOperator(address account, address operator, bool authorized) external {
         operators[account][operator] = authorized;
+    }
+
+    function setOnBehalfOf(address shouldBeOnBehalfOf) external {
+        onBehalfOf = shouldBeOnBehalfOf;
     }
 
     function setAccountOperator(address account, address operator, bool authorized) external {
@@ -49,4 +54,8 @@ contract MockEVC {
     }
 
     function permit(address, address, uint256, uint256, uint256, uint256, bytes memory, bytes memory) external pure {}
+
+    function getCurrentOnBehalfOfAccount(address) external view returns (address, bool) {
+        return (onBehalfOf, false);
+    }
 }

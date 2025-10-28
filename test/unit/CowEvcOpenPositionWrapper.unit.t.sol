@@ -44,6 +44,9 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
 
         // Set solver as authenticated
         mockAuth.setSolver(SOLVER, true);
+
+        // Set the correct onBehalfOfAccount for evcInternalSettle calls
+        mockEVC.setOnBehalfOf(address(wrapper));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -336,6 +339,32 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         bytes memory remainingWrapperData = "";
 
         vm.expectRevert(abi.encodeWithSelector(CowEvcOpenPositionWrapper.Unauthorized.selector, address(this)));
+        wrapper.evcInternalSettle(settleData, remainingWrapperData);
+    }
+
+    function test_EvcInternalSettle_RequiresCorrectOnBehalfOfAccount() public {
+        bytes memory settleData = abi.encodeCall(
+            CowSettlement.settle,
+            (
+                new address[](0),
+                new uint256[](0),
+                new CowSettlement.CowTradeData[](0),
+                [
+                    new CowSettlement.CowInteractionData[](0),
+                    new CowSettlement.CowInteractionData[](0),
+                    new CowSettlement.CowInteractionData[](0)
+                ]
+            )
+        );
+        bytes memory remainingWrapperData = "";
+
+        mockSettlement.setSuccessfulSettle(true);
+
+        // Set incorrect onBehalfOfAccount (not address(wrapper))
+        mockEVC.setOnBehalfOf(address(0x9999));
+
+        vm.prank(address(mockEVC));
+        vm.expectRevert(abi.encodeWithSelector(CowEvcOpenPositionWrapper.Unauthorized.selector, address(0x9999)));
         wrapper.evcInternalSettle(settleData, remainingWrapperData);
     }
 

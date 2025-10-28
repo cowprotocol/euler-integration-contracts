@@ -58,6 +58,9 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that the close order cannot be executed becuase the necessary pricing data is not present in the `tokens`/`clearingPrices` variable
     error PricesNotFoundInSettlement(address collateralVaultToken, address borrowToken);
 
+    /// @dev Indicates that a user attempted to interact with an account that is not their own
+    error SubaccountMustBeControlledByOwner(address subaccount, address owner);
+
     constructor(address _evc, CowSettlement _settlement) CowWrapper(_settlement) {
         EVC = IEVC(_evc);
         NONCE_NAMESPACE = uint256(uint160(address(this)));
@@ -252,7 +255,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         // Build the EVC batch items for closing a position
         // 1. Settlement call
         items[itemIndex++] = IEVC.BatchItem({
-            onBehalfOfAccount: address(0),
+            onBehalfOfAccount: address(this),
             targetContract: address(this),
             value: 0,
             data: abi.encodeCall(this.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
@@ -323,6 +326,8 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         bytes calldata remainingWrapperData
     ) external payable {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
+        (address onBehalfOfAccount, ) = EVC.getCurrentOnBehalfOfAccount(address(0));
+        require(onBehalfOfAccount == address(this), Unauthorized(onBehalfOfAccount));
 
         ClosePositionParams memory params;
         (params,,) = _parseClosePositionParams(wrapperData);
@@ -341,6 +346,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         // Additionally, we don't transfer this collateral directly to the settlement contract because the settlement contract
         // requires receiving of funds from the user's wallet, and cannot be put in the contract in advance.
         if (params.owner != params.account) {
+            require(bytes19(bytes20(params.owner)) == bytes19(bytes20(params.account)), SubaccountMustBeControlledByOwner(params.account, params.owner));
             (uint256 collateralVaultPrice, uint256 borrowPrice) =
                 _findRatePrices(settleData, params.collateralVault, params.borrowVault);
             uint256 transferAmount = params.maxRepayAmount * borrowPrice / collateralVaultPrice;
