@@ -87,7 +87,7 @@ contract MockSettlement {
 
 // Test wrapper that exposes internal functions
 contract TestWrapper is CowWrapper {
-    string public constant name = "Test Wrapper";
+    string public override name = "Test Wrapper";
 
     // Track _wrap calls
     struct WrapCall {
@@ -112,7 +112,7 @@ contract TestWrapper is CowWrapper {
         _internalSettle(settleData, remainingWrapperData);
     }
 
-    function exposed_internalSettle(bytes calldata settleData, bytes calldata wrapperData) external {
+    function exposedInternalSettle(bytes calldata settleData, bytes calldata wrapperData) external {
         _internalSettle(settleData, wrapperData);
     }
 
@@ -126,7 +126,7 @@ contract TestWrapper is CowWrapper {
 
     function parseWrapperData(bytes calldata wrapperData)
         external
-        view
+        pure
         override
         returns (bytes calldata remainingWrapperData)
     {

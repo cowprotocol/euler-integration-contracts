@@ -37,20 +37,20 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     /// separator is computed following the EIP-712 standard and has replay
     /// protection mixed in so that signed orders are only valid for specific
     /// this contract.
-    bytes32 public immutable domainSeparator;
+    bytes32 public immutable DOMAIN_SEPARATOR;
 
-    string public constant name = "Euler EVC - Open Position";
+    string public override name = "Euler EVC - Open Position";
 
-    uint256 public immutable nonceNamespace;
+    uint256 public immutable NONCE_NAMESPACE;
 
     error Unauthorized(address msgSender);
     error OperationDeadlineExceeded(uint256 validToTimestamp, uint256 currentTimestamp);
 
     constructor(address _evc, CowSettlement _settlement) CowWrapper(_settlement) {
         EVC = IEVC(_evc);
-        nonceNamespace = uint256(uint160(address(this)));
+        NONCE_NAMESPACE = uint256(uint160(address(this)));
 
-        domainSeparator =
+        DOMAIN_SEPARATOR =
             keccak256(abi.encode(DOMAIN_TYPE_HASH, DOMAIN_NAME, DOMAIN_VERSION, block.chainid, address(this)));
     }
 
@@ -124,9 +124,10 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     }
 
     function _getApprovalHash(OpenPositionParams memory params) internal view returns (bytes32 digest) {
-        bytes32 structHash = keccak256(abi.encode(params));
-        bytes32 separator = domainSeparator;
+        bytes32 structHash;
+        bytes32 separator = DOMAIN_SEPARATOR;
         assembly ("memory-safe") {
+            structHash := keccak256(params, 224)
             let ptr := mload(0x40)
             mstore(ptr, "\x19\x01")
             mstore(add(ptr, 0x02), separator)
@@ -158,7 +159,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
 
         // Check if the signed calldata hash is pre-approved
         IEVC.BatchItem[] memory signedItems = _getSignedCalldata(params);
-        bool isPreApproved = _consumePreApprovedHash(params.owner, _getApprovalHash(params));
+        bool isPreApproved = signature.length == 0 && _consumePreApprovedHash(params.owner, _getApprovalHash(params));
 
         // Build the EVC batch items for opening a position
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](isPreApproved ? signedItems.length + 1 : 2);
@@ -178,8 +179,8 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
                     (
                         params.owner,
                         address(this),
-                        uint256(nonceNamespace),
-                        EVC.getNonce(bytes19(bytes20(params.owner)), nonceNamespace),
+                        uint256(NONCE_NAMESPACE),
+                        EVC.getNonce(bytes19(bytes20(params.owner)), NONCE_NAMESPACE),
                         params.deadline,
                         0,
                         abi.encodeCall(EVC.batch, signedItems),

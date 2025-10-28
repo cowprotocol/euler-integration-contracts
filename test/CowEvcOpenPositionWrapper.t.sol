@@ -3,8 +3,7 @@ pragma solidity ^0.8;
 
 import {GPv2Order, IERC20 as CowERC20} from "cow/libraries/GPv2Order.sol";
 
-import {IEVC} from "evc/EthereumVaultConnector.sol";
-import {IEVault, IERC4626, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcOpenPositionWrapper} from "../src/CowEvcOpenPositionWrapper.sol";
 import {CowSettlement, CowWrapper} from "../src/vendor/CowWrapper.sol";
@@ -18,7 +17,7 @@ import {SignerECDSA} from "./helpers/SignerECDSA.sol";
 /// @notice Tests the full flow of opening a leveraged position using the new wrapper contract
 contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     CowEvcOpenPositionWrapper public openPositionWrapper;
-    SignerECDSA internal signerECDSA;
+    SignerECDSA internal ecdsa;
 
     uint256 constant SUSDS_MARGIN = 2000e18;
 
@@ -26,20 +25,20 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         super.setUp();
 
         // Deploy the new open position wrapper
-        openPositionWrapper = new CowEvcOpenPositionWrapper(address(evc), cowSettlement);
+        openPositionWrapper = new CowEvcOpenPositionWrapper(address(evc), COW_SETTLEMENT);
 
         // Add wrapper as a solver
-        GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(cowSettlement.authenticator()));
+        GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
         address manager = allowList.manager();
         vm.startPrank(manager);
         allowList.addSolver(address(openPositionWrapper));
         vm.stopPrank();
 
-        signerECDSA = new SignerECDSA(evc);
+        ecdsa = new SignerECDSA(evc);
 
         // sUSDS is not currently a collateral for WETH borrow, fix it
-        vm.startPrank(IEVault(eWETH).governorAdmin());
-        IEVault(eWETH).setLTV(eSUSDS, 0.9e4, 0.9e4, 0);
+        vm.startPrank(IEVault(EWETH).governorAdmin());
+        IEVault(EWETH).setLTV(ESUSDS, 0.9e4, 0.9e4, 0);
         vm.stopPrank();
 
         // Setup user with SUSDS
@@ -106,7 +105,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
     /// @notice Test opening a leveraged position using the new wrapper
     function test_OpenPositionWrapper_Success() external {
-        vm.skip(bytes(FORK_RPC_URL).length == 0);
+        vm.skip(bytes(forkRpcUrl).length == 0);
 
         uint256 borrowAmount = 1e18; // Borrow 1 WETH
         uint256 expectedBuyAmount = 999e18; // Expect to receive 999 eSUSDS
@@ -115,18 +114,18 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Get settlement data
         SettlementData memory settlement =
-            getOpenPositionSettlement(user, account, WETH, eSUSDS, borrowAmount, expectedBuyAmount);
+            getOpenPositionSettlement(user, account, WETH, ESUSDS, borrowAmount, expectedBuyAmount);
 
         // Prepare OpenPositionParams
         uint256 deadline = block.timestamp + 1 hours;
-        signerECDSA.setPrivateKey(privateKey);
+        ecdsa.setPrivateKey(privateKey);
 
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
             owner: user,
             account: account,
             deadline: deadline,
-            collateralVault: eSUSDS,
-            borrowVault: eWETH,
+            collateralVault: ESUSDS,
+            borrowVault: EWETH,
             collateralAmount: SUSDS_MARGIN,
             borrowAmount: borrowAmount
         });
@@ -134,13 +133,13 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         vm.startPrank(user);
 
         // User approves SUSDS vault for deposit of the margin. Only required if there is margin to deposit and the user hasn't already approved
-        IERC20(SUSDS).approve(eSUSDS, type(uint256).max);
+        IERC20(SUSDS).approve(ESUSDS, type(uint256).max);
 
         // User signs (in this case we use setPreSignature. this is just for local testing purposes. Real flow would be a off-chain signature)
-        cowSettlement.setPreSignature(settlement.orderUid, true);
+        COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
 
         // Sign permit for EVC operator
-        bytes memory permitSignature = signerECDSA.signPermit(
+        bytes memory permitSignature = ecdsa.signPermit(
             user,
             address(openPositionWrapper),
             uint256(uint160(address(openPositionWrapper))),
@@ -153,8 +152,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         vm.stopPrank();
 
         // Record balances before
-        uint256 susdsBalanceBefore = IERC20(eSUSDS).balanceOf(user);
-        uint256 debtBefore = IEVault(eWETH).debtOf(user);
+        uint256 susdsBalanceBefore = IERC20(ESUSDS).balanceOf(user);
+        uint256 debtBefore = IEVault(EWETH).debtOf(user);
 
         // Encode settlement data
         bytes memory settleData = abi.encodeCall(
@@ -176,19 +175,19 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Verify the position was created successfully
         assertApproxEqAbs(
-            IEVault(eSUSDS).convertToAssets(IERC20(eSUSDS).balanceOf(account)),
+            IEVault(ESUSDS).convertToAssets(IERC20(ESUSDS).balanceOf(account)),
             expectedBuyAmount + SUSDS_MARGIN,
             1 ether,
             "User should have collateral deposited"
         );
-        assertEq(IEVault(eWETH).debtOf(account), borrowAmount, "User should have debt");
+        assertEq(IEVault(EWETH).debtOf(account), borrowAmount, "User should have debt");
         assertEq(debtBefore, 0, "User should start with no debt");
         assertEq(susdsBalanceBefore, 0, "User should start with no eSUSDS");
     }
 
     /// @notice Test that unauthorized users cannot call evcInternalSettle directly
     function test_OpenPositionWrapper_UnauthorizedInternalSettle() external {
-        vm.skip(bytes(FORK_RPC_URL).length == 0);
+        vm.skip(bytes(forkRpcUrl).length == 0);
 
         bytes memory settleData = "";
         bytes memory wrapperData = "";
@@ -200,7 +199,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
     /// @notice Test that non-solvers cannot call wrappedSettle
     function test_OpenPositionWrapper_NonSolverCannotSettle() external {
-        vm.skip(bytes(FORK_RPC_URL).length == 0);
+        vm.skip(bytes(forkRpcUrl).length == 0);
 
         bytes memory settleData = "";
         bytes memory wrapperData = "";
@@ -216,8 +215,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             owner: user,
             account: address(uint160(user) ^ 1),
             deadline: block.timestamp + 1 hours,
-            collateralVault: eSUSDS,
-            borrowVault: eWETH,
+            collateralVault: ESUSDS,
+            borrowVault: EWETH,
             collateralAmount: SUSDS_MARGIN,
             borrowAmount: 1e18
         });
@@ -231,14 +230,14 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
     /// @notice Test setting pre-approved hash
     function test_OpenPositionWrapper_SetPreApprovedHash() external {
-        vm.skip(bytes(FORK_RPC_URL).length == 0);
+        vm.skip(bytes(forkRpcUrl).length == 0);
 
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
             owner: user,
             account: address(uint160(user) ^ 1),
             deadline: block.timestamp + 1 hours,
-            collateralVault: eSUSDS,
-            borrowVault: eWETH,
+            collateralVault: ESUSDS,
+            borrowVault: EWETH,
             collateralAmount: SUSDS_MARGIN,
             borrowAmount: 1e18
         });
@@ -269,7 +268,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
     /// @notice Test opening a position with pre-approved hash (no signature needed)
     function test_OpenPositionWrapper_WithPreApprovedHash() external {
-        vm.skip(bytes(FORK_RPC_URL).length == 0);
+        vm.skip(bytes(forkRpcUrl).length == 0);
 
         uint256 borrowAmount = 1e18; // Borrow 1 WETH
         uint256 expectedBuyAmount = 999e18; // Expect to receive 999 eSUSDS
@@ -281,21 +280,21 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             owner: user,
             account: account,
             deadline: block.timestamp + 1 hours,
-            collateralVault: eSUSDS,
-            borrowVault: eWETH,
+            collateralVault: ESUSDS,
+            borrowVault: EWETH,
             collateralAmount: SUSDS_MARGIN,
             borrowAmount: borrowAmount
         });
 
         // Get settlement data
         SettlementData memory settlement =
-            getOpenPositionSettlement(user, account, WETH, eSUSDS, borrowAmount, expectedBuyAmount);
+            getOpenPositionSettlement(user, account, WETH, ESUSDS, borrowAmount, expectedBuyAmount);
 
         vm.startPrank(user);
 
         // User approves SUSDS vault for deposit of the margin
         // This is only needed if the user is depositing new margin
-        IERC20(SUSDS).approve(eSUSDS, type(uint256).max);
+        IERC20(SUSDS).approve(ESUSDS, type(uint256).max);
 
         // User approves the wrapper to be operator (both of the main account and the subaccount)
         // This is only needed if its the first time the user/account is using this wrapper
@@ -310,12 +309,12 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         // NOTE: this could technically be exchanged for a Permit2 approve on the wrapper contract and EIP-1271 authentication,
         // and that would leave the user with only 1 off-chain Permit2 call
         // but combined with the approval txns that are needed above, this flow doesn't seem very viable.
-        cowSettlement.setPreSignature(settlement.orderUid, true);
+        COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
 
         vm.stopPrank();
 
         // Record balances before
-        uint256 debtBefore = IEVault(eWETH).debtOf(account);
+        uint256 debtBefore = IEVault(EWETH).debtOf(account);
 
         // Encode settlement data
         bytes memory settleData = abi.encodeCall(
@@ -337,12 +336,12 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Verify the position was created successfully
         assertApproxEqAbs(
-            IEVault(eSUSDS).convertToAssets(IERC20(eSUSDS).balanceOf(account)),
+            IEVault(ESUSDS).convertToAssets(IERC20(ESUSDS).balanceOf(account)),
             expectedBuyAmount + SUSDS_MARGIN,
             1 ether,
             "User should have collateral deposited"
         );
-        assertEq(IEVault(eWETH).debtOf(account), borrowAmount, "User should have debt");
+        assertEq(IEVault(EWETH).debtOf(account), borrowAmount, "User should have debt");
         assertEq(debtBefore, 0, "User should start with no debt");
     }
 }

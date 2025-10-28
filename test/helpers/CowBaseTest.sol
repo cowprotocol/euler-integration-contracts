@@ -24,23 +24,23 @@ contract Solver {
 
 contract CowBaseTest is EVaultTestBase {
     uint256 mainnetFork;
-    uint256 BLOCK_NUMBER = 22546006;
-    string FORK_RPC_URL = vm.envOr("FORK_RPC_URL", string(""));
+    uint256 constant BLOCK_NUMBER = 22546006;
+    string forkRpcUrl = vm.envOr("FORK_RPC_URL", string(""));
 
     //address constant solver = 0x7E2eF26AdccB02e57258784957922AEEFEe807e5; // quasilabs
-    address constant allowListManager = 0xA03be496e67Ec29bC62F01a428683D7F9c204930;
+    address constant ALLOW_LIST_MANAGER = 0xA03be496e67Ec29bC62F01a428683D7F9c204930;
 
     address constant SUSDS = 0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD;
     address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     // Vaults
-    address internal eSUSDS = 0x1e548CfcE5FCF17247E024eF06d32A01841fF404;
-    address internal eWETH = 0xD8b27CF359b7D15710a5BE299AF6e7Bf904984C2;
+    address internal constant ESUSDS = 0x1e548CfcE5FCF17247E024eF06d32A01841fF404;
+    address internal constant EWETH = 0xD8b27CF359b7D15710a5BE299AF6e7Bf904984C2;
 
-    address payable constant realEVC = payable(0x0C9a3dd6b8F28529d72d7f9cE918D493519EE383);
+    address payable constant REAL_EVC = payable(0x0C9a3dd6b8F28529d72d7f9cE918D493519EE383);
     address internal swapVerifier = 0xae26485ACDDeFd486Fe9ad7C2b34169d360737c7;
 
-    CowSettlement constant cowSettlement = CowSettlement(payable(0x9008D19f58AAbD9eD0D60971565AA8510560ab41));
+    CowSettlement constant COW_SETTLEMENT = CowSettlement(payable(0x9008D19f58AAbD9eD0D60971565AA8510560ab41));
 
     MilkSwap public milkSwap;
     address user;
@@ -52,19 +52,19 @@ contract CowBaseTest is EVaultTestBase {
         super.setUp();
         solver = new Solver();
 
-        if (bytes(FORK_RPC_URL).length == 0) {
+        if (bytes(forkRpcUrl).length == 0) {
             revert("Must supply FORK_RPC_URL");
         }
 
-        mainnetFork = vm.createSelectFork(FORK_RPC_URL);
+        mainnetFork = vm.createSelectFork(forkRpcUrl);
         vm.rollFork(BLOCK_NUMBER);
 
-        evc = EthereumVaultConnector(realEVC);
+        evc = EthereumVaultConnector(REAL_EVC);
 
         user = vm.addr(privateKey);
 
         // Add wrapper and our fake solver as solver
-        GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(cowSettlement.authenticator()));
+        GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
         address manager = allowList.manager();
         // vm.deal(address(manager), 1e18);
         vm.startPrank(manager);
@@ -79,30 +79,30 @@ contract CowBaseTest is EVaultTestBase {
         milkSwap.setPrice(SUSDS, 1e18); // 1 USDS = 1 USD
 
         // Set the approval for MilkSwap in the settlement as a convenience
-        vm.startPrank(address(cowSettlement));
+        vm.startPrank(address(COW_SETTLEMENT));
         IERC20(WETH).approve(address(milkSwap), type(uint256).max);
         IERC20(SUSDS).approve(address(milkSwap), type(uint256).max);
 
-        IERC20(eSUSDS).approve(address(eSUSDS), type(uint256).max);
-        IERC20(eWETH).approve(address(eWETH), type(uint256).max);
+        IERC20(ESUSDS).approve(address(ESUSDS), type(uint256).max);
+        IERC20(EWETH).approve(address(EWETH), type(uint256).max);
 
         vm.stopPrank();
 
         // User has approved WETH for COW Protocol
-        address vaultRelayer = cowSettlement.vaultRelayer();
+        address vaultRelayer = COW_SETTLEMENT.vaultRelayer();
         vm.prank(user);
         IERC20(WETH).approve(vaultRelayer, type(uint256).max);
 
         // Setup labels
         //vm.label(solver, "solver");
-        vm.label(allowListManager, "allowListManager");
+        vm.label(ALLOW_LIST_MANAGER, "allow list manager");
         vm.label(user, "user");
         vm.label(SUSDS, "SUSDS");
         vm.label(WETH, "WETH");
-        vm.label(eSUSDS, "eSUSDS");
-        vm.label(eWETH, "eWETH");
-        vm.label(address(cowSettlement), "cowSettlement");
-        vm.label(address(milkSwap), "milkSwap");
+        vm.label(ESUSDS, "eSUSDS");
+        vm.label(EWETH, "eWETH");
+        vm.label(address(COW_SETTLEMENT), "cow settlement");
+        vm.label(address(milkSwap), "milkswap");
     }
 
     function getEmptySettlement()
@@ -129,7 +129,7 @@ contract CowBaseTest is EVaultTestBase {
 
     function getOrderUid(address owner, GPv2Order.Data memory orderData) public view returns (bytes memory orderUid) {
         // Generate order digest using EIP-712
-        bytes32 orderDigest = GPv2Order.hash(orderData, cowSettlement.domainSeparator());
+        bytes32 orderDigest = GPv2Order.hash(orderData, COW_SETTLEMENT.domainSeparator());
 
         // Create order UID by concatenating orderDigest, owner, and validTo
         return abi.encodePacked(orderDigest, address(owner), uint32(orderData.validTo));
@@ -162,21 +162,21 @@ contract CowBaseTest is EVaultTestBase {
 
     function getWithdrawInteraction(address vault, uint256 sellAmount)
         public
-        view
+        pure
         returns (CowSettlement.CowInteractionData memory)
     {
         return CowSettlement.CowInteractionData({
             target: vault,
             value: 0,
-            callData: abi.encodeCall(IERC4626.withdraw, (sellAmount, address(cowSettlement), address(cowSettlement)))
+            callData: abi.encodeCall(IERC4626.withdraw, (sellAmount, address(COW_SETTLEMENT), address(COW_SETTLEMENT)))
         });
     }
 
-    function getSkimInteraction() public view returns (CowSettlement.CowInteractionData memory) {
+    function getSkimInteraction() public pure returns (CowSettlement.CowInteractionData memory) {
         return CowSettlement.CowInteractionData({
-            target: address(eSUSDS),
+            target: address(ESUSDS),
             value: 0,
-            callData: abi.encodeCall(IVault.skim, (type(uint256).max, address(cowSettlement)))
+            callData: abi.encodeCall(IVault.skim, (type(uint256).max, address(COW_SETTLEMENT)))
         });
     }
 
@@ -208,10 +208,10 @@ contract CowBaseTest is EVaultTestBase {
         });
     }
 
-    function getTokensAndPrices() public view returns (address[] memory tokens, uint256[] memory clearingPrices) {
+    function getTokensAndPrices() public pure returns (address[] memory tokens, uint256[] memory clearingPrices) {
         tokens = new address[](2);
         tokens[0] = WETH;
-        tokens[1] = eSUSDS;
+        tokens[1] = ESUSDS;
 
         clearingPrices = new uint256[](2);
         clearingPrices[0] = 999; // WETH price (if it was against SUSD then 1000)

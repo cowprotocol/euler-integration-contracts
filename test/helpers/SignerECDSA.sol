@@ -16,7 +16,7 @@ abstract contract EIP712 {
     bytes32 internal constant _TYPE_HASH =
         keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
 
-    bytes32 internal immutable _hashedName;
+    bytes32 internal immutable HASHED_NAME;
     string private _name;
     string private _nameFallback;
 
@@ -33,7 +33,7 @@ abstract contract EIP712 {
      */
     constructor(string memory name) {
         _name = name;
-        _hashedName = keccak256(bytes(name));
+        HASHED_NAME = keccak256(bytes(name));
     }
 
     /**
@@ -68,7 +68,7 @@ abstract contract EIP712 {
 }
 
 contract SignerECDSA is EIP712, Test {
-    EthereumVaultConnector private immutable evc;
+    EthereumVaultConnector private immutable EVC;
     uint256 private privateKey;
 
     bytes32 internal constant PERMIT_TYPEHASH = keccak256(
@@ -76,7 +76,7 @@ contract SignerECDSA is EIP712, Test {
     );
 
     constructor(EthereumVaultConnector _evc) EIP712(_evc.name()) {
-        evc = _evc;
+        EVC = _evc;
     }
 
     function setPrivateKey(uint256 _privateKey) external {
@@ -84,7 +84,7 @@ contract SignerECDSA is EIP712, Test {
     }
 
     function _buildDomainSeparator() internal view override returns (bytes32) {
-        return keccak256(abi.encode(_TYPE_HASH, _hashedName, block.chainid, address(evc)));
+        return keccak256(abi.encode(_TYPE_HASH, HASHED_NAME, block.chainid, address(EVC)));
     }
 
     function signPermit(
