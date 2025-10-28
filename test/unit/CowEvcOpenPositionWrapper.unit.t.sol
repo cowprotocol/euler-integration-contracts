@@ -263,7 +263,9 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
 
         assertEq(items[0].targetContract, address(mockEVC), "First item should target EVC");
         assertEq(
-            items[0].data, abi.encodeCall(IEVC.enableCollateral, (ACCOUNT, COLLATERAL_VAULT)), "Should enable collateral"
+            items[0].data,
+            abi.encodeCall(IEVC.enableCollateral, (ACCOUNT, COLLATERAL_VAULT)),
+            "Should enable collateral"
         );
     }
 
@@ -340,7 +342,16 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     function test_EvcInternalSettle_CanBeCalledByEVC() public {
         bytes memory settleData = abi.encodeCall(
             CowSettlement.settle,
-            (new address[](0), new uint256[](0), new CowSettlement.CowTradeData[](0), [new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0)])
+            (
+                new address[](0),
+                new uint256[](0),
+                new CowSettlement.CowTradeData[](0),
+                [
+                    new CowSettlement.CowInteractionData[](0),
+                    new CowSettlement.CowInteractionData[](0),
+                    new CowSettlement.CowInteractionData[](0)
+                ]
+            )
         );
         bytes memory remainingWrapperData = "";
 
@@ -376,7 +387,16 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         bytes memory signature = new bytes(65); // Valid ECDSA signature length
         bytes memory settleData = abi.encodeCall(
             CowSettlement.settle,
-            (new address[](0), new uint256[](0), new CowSettlement.CowTradeData[](0), [new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0)])
+            (
+                new address[](0),
+                new uint256[](0),
+                new CowSettlement.CowTradeData[](0),
+                [
+                    new CowSettlement.CowInteractionData[](0),
+                    new CowSettlement.CowInteractionData[](0),
+                    new CowSettlement.CowInteractionData[](0)
+                ]
+            )
         );
         bytes memory wrapperData = abi.encode(params, signature);
         wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
@@ -409,7 +429,16 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
 
         bytes memory settleData = abi.encodeCall(
             CowSettlement.settle,
-            (new address[](0), new uint256[](0), new CowSettlement.CowTradeData[](0), [new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0)])
+            (
+                new address[](0),
+                new uint256[](0),
+                new CowSettlement.CowTradeData[](0),
+                [
+                    new CowSettlement.CowInteractionData[](0),
+                    new CowSettlement.CowInteractionData[](0),
+                    new CowSettlement.CowInteractionData[](0)
+                ]
+            )
         );
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
@@ -444,7 +473,16 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
 
         bytes memory settleData = abi.encodeCall(
             CowSettlement.settle,
-            (new address[](0), new uint256[](0), new CowSettlement.CowTradeData[](0), [new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](0)])
+            (
+                new address[](0),
+                new uint256[](0),
+                new CowSettlement.CowTradeData[](0),
+                [
+                    new CowSettlement.CowInteractionData[](0),
+                    new CowSettlement.CowInteractionData[](0),
+                    new CowSettlement.CowInteractionData[](0)
+                ]
+            )
         );
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);

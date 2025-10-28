@@ -41,12 +41,11 @@ contract MockCowSettlement is CowSettlement {
 
     function setPreSignature(bytes calldata, bool) external pure override {}
 
-    function settle(
-        address[] calldata,
-        uint256[] calldata,
-        CowTradeData[] calldata,
-        CowInteractionData[][3] calldata
-    ) external view override {
+    function settle(address[] calldata, uint256[] calldata, CowTradeData[] calldata, CowInteractionData[][3] calldata)
+        external
+        view
+        override
+    {
         require(shouldSucceed, "MockCowSettlement: settle failed");
     }
 
