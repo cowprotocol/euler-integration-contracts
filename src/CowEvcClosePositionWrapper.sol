@@ -326,7 +326,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         bytes calldata remainingWrapperData
     ) external payable {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
-        (address onBehalfOfAccount, ) = EVC.getCurrentOnBehalfOfAccount(address(0));
+        (address onBehalfOfAccount,) = EVC.getCurrentOnBehalfOfAccount(address(0));
         require(onBehalfOfAccount == address(this), Unauthorized(onBehalfOfAccount));
 
         ClosePositionParams memory params;
@@ -346,7 +346,10 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         // Additionally, we don't transfer this collateral directly to the settlement contract because the settlement contract
         // requires receiving of funds from the user's wallet, and cannot be put in the contract in advance.
         if (params.owner != params.account) {
-            require(bytes19(bytes20(params.owner)) == bytes19(bytes20(params.account)), SubaccountMustBeControlledByOwner(params.account, params.owner));
+            require(
+                bytes19(bytes20(params.owner)) == bytes19(bytes20(params.account)),
+                SubaccountMustBeControlledByOwner(params.account, params.owner)
+            );
             (uint256 collateralVaultPrice, uint256 borrowPrice) =
                 _findRatePrices(settleData, params.collateralVault, params.borrowVault);
             uint256 transferAmount = params.maxRepayAmount * borrowPrice / collateralVaultPrice;

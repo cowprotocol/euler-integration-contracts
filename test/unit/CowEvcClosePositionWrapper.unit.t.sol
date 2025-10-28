@@ -593,7 +593,13 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         bytes memory remainingWrapperData = "";
 
-        vm.expectRevert(abi.encodeWithSelector(CowEvcClosePositionWrapper.PricesNotFoundInSettlement.selector, mockCollateralVault, mockBorrowVault.asset()));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CowEvcClosePositionWrapper.PricesNotFoundInSettlement.selector,
+                mockCollateralVault,
+                mockBorrowVault.asset()
+            )
+        );
         vm.prank(address(mockEVC));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
