@@ -39,11 +39,16 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     /// this contract.
     bytes32 public immutable DOMAIN_SEPARATOR;
 
-    string public override name = "Euler EVC - Open Position";
-
+    //// @dev The EVC nonce namespace to use when calling `EVC.permit` to authorize this contract.
     uint256 public immutable NONCE_NAMESPACE;
 
+    /// @dev A descriptive label for this contract, as required by CowWrapper
+    string public override name = "Euler EVC - Open Position";
+
+    /// @dev Indicates that the current operation cannot be completed with the given msgSender
     error Unauthorized(address msgSender);
+
+    /// @dev Indicates that the pre-approved hash is no longer able to be executed because the block timestamp is too old
     error OperationDeadlineExceeded(uint256 validToTimestamp, uint256 currentTimestamp);
 
     constructor(address _evc, CowSettlement _settlement) CowWrapper(_settlement) {

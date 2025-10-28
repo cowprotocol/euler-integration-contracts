@@ -40,14 +40,23 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     /// this contract.
     bytes32 public immutable DOMAIN_SEPARATOR;
 
-    string public override name = "Euler EVC - Close Position";
-
+    //// @dev The EVC nonce namespace to use when calling `EVC.permit` to authorize this contract.
     uint256 public immutable NONCE_NAMESPACE;
 
+    /// @dev A descriptive label for this contract, as required by CowWrapper
+    string public override name = "Euler EVC - Close Position";
+
+    /// @dev Indicates that the current operation cannot be completed with the given msgSender
     error Unauthorized(address msgSender);
+
+    /// @dev Indicates that the pre-approved hash is no longer able to be executed because the block timestamp is too old
     error OperationDeadlineExceeded(uint256 validToTimestamp, uint256 currentTimestamp);
+
+    /// @dev Indicates that this contract did not receive enough repayment assets from the settlement contract in order to cover all user's orders
     error InsufficientRepaymentAsset(address vault, uint256 balanceAmount, uint256 repayAmount);
-    error PricesNotFoundInSettlement();
+
+    /// @dev Indicates that the close order cannot be executed becuase the necessary pricing data is not present in the `tokens`/`clearingPrices` variable
+    error PricesNotFoundInSettlement(address collateralVaultToken, address borrowToken);
 
     constructor(address _evc, CowSettlement _settlement) CowWrapper(_settlement) {
         EVC = IEVC(_evc);
@@ -304,7 +313,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
                 borrowPrice = clearingPrices[i];
             }
         }
-        require(collateralVaultPrice != 0 && borrowPrice != 0, PricesNotFoundInSettlement());
+        require(collateralVaultPrice != 0 && borrowPrice != 0, PricesNotFoundInSettlement(collateralVault, borrowAsset));
     }
 
     /// @notice Internal settlement function called by EVC
