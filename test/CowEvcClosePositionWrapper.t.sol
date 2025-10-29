@@ -76,7 +76,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Borrow assets from the account (needs to be called with account as onBehalfOf)
         vm.startPrank(account);
-        IBorrowing(EWETH).borrow(borrowAmount, user);
+        IBorrowing(EWETH).borrow(borrowAmount, address(this));
 
         vm.stopPrank();
     }
@@ -157,7 +157,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Get settlement data
         SettlementData memory settlement =
-            getClosePositionSettlement(user, address(closePositionWrapper), ESUSDS, WETH, sellAmount, buyAmount);
+            getClosePositionSettlement(user, user, ESUSDS, WETH, sellAmount, buyAmount);
 
         // Prepare ClosePositionParams
         uint256 deadline = block.timestamp + 1 hours;
@@ -169,7 +169,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             deadline: deadline,
             borrowVault: EWETH,
             collateralVault: ESUSDS,
-            maxRepayAmount: 1.001 ether // A bit extra to repay full debt
+            collateralAmount: sellAmount,
+            repayAmount: buyAmount,
+            kind: GPv2Order.KIND_BUY
         });
 
         // Now close the position
@@ -195,6 +197,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // User approves vault shares for settlement
         // only required if the approve has not already been granted. Could be skipped with a Permit2 flow
         IEVault(ESUSDS).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+
+        // User approves the wrapper so it can repay
+        IERC20(WETH).approve(address(closePositionWrapper), type(uint256).max);
 
         // Sign permit for EVC operator (absolutely required in some form or another)
         bytes memory permitSignature = ecdsa.signPermit(
@@ -278,16 +283,19 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         vm.startPrank(user);
 
         // Close only half the position
-        uint256 sellAmount = 1002e18; // Sell up to 1002 ESUSDS (buffer)
-        uint256 buyAmount = 1e18; // Buy 1 WETH to repay half the debt
+        uint256 sellAmount = 1000e18; // Sell exactly 1000 ESUSDS (buffer)
+        uint256 buyAmount = 0.98e18; // Buy at least 0.98 WETH to repay around half the debt
 
         // Get settlement data
         SettlementData memory settlement =
-            getClosePositionSettlement(user, address(closePositionWrapper), ESUSDS, WETH, sellAmount, buyAmount);
+            getClosePositionSettlement(user, user, ESUSDS, WETH, sellAmount, buyAmount);
 
         // User pre-approves the order
         COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
         IEVault(ESUSDS).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+
+        // User approves spending of funds from the close position wrapper
+        IERC20(WETH).approve(address(closePositionWrapper), type(uint256).max);
 
         // Prepare ClosePositionParams with partial repayment
         uint256 deadline = block.timestamp + 1 hours;
@@ -313,7 +321,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             deadline: deadline,
             borrowVault: EWETH,
             collateralVault: ESUSDS,
-            maxRepayAmount: buyAmount // Repay only the bought amount
+            collateralAmount: sellAmount,
+            repayAmount: buyAmount,
+            kind: GPv2Order.KIND_SELL // use KIND_SELL here because that is the generally expected pattern for a partial sell type of order
         });
 
         bytes memory permitSignature = ecdsa.signPermit(
@@ -345,6 +355,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Verify partial repayment
         uint256 debtAfter = IEVault(EWETH).debtOf(account);
         assertApproxEqAbs(debtAfter, borrowAmount - buyAmount, 0.01e18, "Debt should be reduced by repaid amount");
+        assertEq(IERC20(WETH).balanceOf(user), 0, "User should have used any collateral they received to repay");
     }
 
     /// @notice Test parseWrapperData function
@@ -355,7 +366,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             deadline: block.timestamp + 1 hours,
             borrowVault: EWETH,
             collateralVault: ESUSDS,
-            maxRepayAmount: type(uint256).max
+            collateralAmount: 0,
+            repayAmount: type(uint256).max,
+            kind: GPv2Order.KIND_BUY
         });
 
         bytes memory wrapperData = abi.encode(params, new bytes(65));
@@ -363,50 +376,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // After parsing ClosePositionParams, remaining data should be empty
         assertEq(remainingData.length, 0, "Remaining data should be empty");
-    }
-
-    /// @notice Test helperRepayAndReturn function
-    function test_ClosePositionWrapper_HelperRepayAndReturn() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
-        uint256 borrowAmount = 1e18;
-        uint256 collateralAmount = SUSDS_MARGIN + 999e18; // Sufficient collateral
-
-        // Set up a leveraged position
-        _setupLeveragedPosition(borrowAmount, collateralAmount);
-
-        // Give the wrapper some WETH to repay with
-        uint256 wethAmount = 2e18;
-        deal(WETH, address(closePositionWrapper), wethAmount);
-
-        address account = address(uint160(user) ^ uint8(0x01));
-
-        // First, user needs to authorize the wrapper as operator for the account
-        vm.startPrank(user);
-        evc.setAccountOperator(account, address(closePositionWrapper), true);
-        vm.stopPrank();
-
-        // Call helperRepayAndReturn through EVC on behalf of account
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
-        items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: account,
-            targetContract: address(closePositionWrapper),
-            value: 0,
-            data: abi.encodeCall(
-                closePositionWrapper.helperRepayAndReturn,
-                (EWETH, account, account, wethAmount, true) // Use actual amount, not type(uint256).max
-            )
-        });
-
-        // The wrapper (as authorized operator) can batch operations on behalf of the account
-        vm.prank(address(closePositionWrapper));
-        evc.batch(items);
-
-        // Verify debt was repaid
-        assertEq(IEVault(EWETH).debtOf(account), 0, "Debt should be fully repaid");
-
-        // Verify remaining WETH was sent to account
-        assertGt(IERC20(WETH).balanceOf(account), 0, "Account should receive remaining WETH");
     }
 
     /// @notice Test setting pre-approved hash
@@ -419,7 +388,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             deadline: block.timestamp + 1 hours,
             borrowVault: EWETH,
             collateralVault: ESUSDS,
-            maxRepayAmount: type(uint256).max
+            collateralAmount: 0,
+            repayAmount: type(uint256).max,
+            kind: GPv2Order.KIND_BUY
         });
 
         bytes32 hash = closePositionWrapper.getApprovalHash(params);
@@ -458,6 +429,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         address account = address(uint160(user) ^ uint8(0x01));
 
+        uint256 sellAmount = 1002 ether;
+        uint256 buyAmount = 1.001 ether;
+
         // Prepare ClosePositionParams
         CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
             owner: user,
@@ -465,15 +439,14 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             deadline: block.timestamp + 1 hours,
             borrowVault: EWETH,
             collateralVault: ESUSDS,
-            maxRepayAmount: 1.001 ether
+            collateralAmount: sellAmount,
+            repayAmount: buyAmount,
+            kind: GPv2Order.KIND_BUY
         });
-
-        uint256 sellAmount = 1002 ether;
-        uint256 buyAmount = 1.001 ether;
 
         // Get settlement data
         SettlementData memory settlement =
-            getClosePositionSettlement(user, address(closePositionWrapper), ESUSDS, WETH, sellAmount, buyAmount);
+            getClosePositionSettlement(user, user, ESUSDS, WETH, sellAmount, buyAmount);
 
         // Now close the position
         vm.startPrank(user);
@@ -503,6 +476,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // User approves vault shares for settlement
         IEVault(ESUSDS).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+
+        // User approves the wrapper so it can repay
+        IERC20(WETH).approve(address(closePositionWrapper), type(uint256).max);
 
         vm.stopPrank();
 

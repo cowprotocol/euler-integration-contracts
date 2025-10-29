@@ -5,7 +5,6 @@ import "forge-std/Test.sol";
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {CowEvcClosePositionWrapper} from "../../src/CowEvcClosePositionWrapper.sol";
 import {CowSettlement, CowAuthentication} from "../../src/vendor/CowWrapper.sol";
-import {IERC4626, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
 import {MockERC20, MockVault, MockBorrowVault} from "./mocks/MockERC20AndVaults.sol";
@@ -93,7 +92,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 0,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         bytes memory wrapperData = abi.encode(params, new bytes(0));
@@ -109,7 +110,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 0,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         bytes memory signature = new bytes(65);
@@ -126,7 +129,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 0,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         bytes memory signature = new bytes(0);
@@ -151,7 +156,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 0,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         bytes32 hash1 = wrapper.getApprovalHash(params);
@@ -167,7 +174,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 0,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         // Same as params1 except owner
@@ -177,17 +186,21 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 0,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
-        // Same as params1 except maxRepayAmount (the last) field
+        // Same as params1 except repayAmount (the last) field
         CowEvcClosePositionWrapper.ClosePositionParams memory params3 = CowEvcClosePositionWrapper.ClosePositionParams({
             owner: OWNER,
             account: ACCOUNT,
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 2000e18
+            collateralAmount: 0,
+            repayAmount: 2000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         bytes32 hash1 = wrapper.getApprovalHash(params1);
@@ -205,7 +218,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 0,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         bytes32 structHash = keccak256(
@@ -215,7 +230,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
                 params.deadline,
                 params.borrowVault,
                 params.collateralVault,
-                params.maxRepayAmount
+                params.collateralAmount,
+                params.repayAmount,
+                params.kind
             )
         );
 
@@ -239,13 +256,15 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18 // Exactly matches debt
+            collateralAmount: 0,
+            repayAmount: 1000e18, // Exactly matches debt
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
-        assertEq(items.length, 2, "Should have 2 batch items for full repay");
+        assertEq(items.length, 1, "Should have 1 batch item");
     }
 
     function test_GetSignedCalldata_PartialRepay() public {
@@ -258,7 +277,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 500e18 // Less than debt
+            collateralAmount: 0,
+            repayAmount: 500e18, // Less than debt
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
@@ -276,7 +297,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 0,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
@@ -286,12 +309,12 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         assertEq(items[0].onBehalfOfAccount, ACCOUNT, "Should call on behalf of account");
         assertEq(
             items[0].data,
-            abi.encodeCall(wrapper.helperRepayAndReturn, (address(mockBorrowVault), OWNER, ACCOUNT, 1000e18, true)),
-            "Should call helperRepayAndReturn"
+            abi.encodeCall(wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT, 1000e18)),
+            "Should call helperRepay"
         );
     }
 
-    function test_GetSignedCalldata_DisableCollateralItem() public {
+    function test_GetSignedCalldata_ContainsRepayItem() public {
         mockBorrowVault.setDebt(ACCOUNT, 1000e18);
 
         CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
@@ -300,25 +323,23 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 0,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
-        assertEq(items[1].targetContract, address(mockEVC), "Second item should target EVC");
-        assertEq(
-            items[1].data,
-            abi.encodeCall(IEVC.disableCollateral, (ACCOUNT, address(mockCollateralVault))),
-            "Should disable collateral"
-        );
+        assertEq(items[0].targetContract, address(wrapper), "Item should target wrapper");
+        assertEq(items[0].onBehalfOfAccount, ACCOUNT, "Should operate on behalf of account");
     }
 
     /*//////////////////////////////////////////////////////////////
-                    HELPER REPAY AND RETURN TESTS
+                    HELPER REPAY TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_HelperRepayAndReturn_SuccessfulRepay() public {
+    function test_HelperRepay_SuccessfulRepay() public {
         // Give wrapper some tokens
         mockAsset.mint(address(wrapper), 1000e18);
 
@@ -336,7 +357,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             targetContract: address(wrapper),
             value: 0,
             data: abi.encodeCall(
-                wrapper.helperRepayAndReturn, (address(mockBorrowVault), OWNER, ACCOUNT, 1000e18, true)
+                wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT, 1000e18)
             )
         });
 
@@ -347,7 +368,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         assertEq(mockAsset.balanceOf(address(wrapper)), 0, "Wrapper should have no tokens left");
     }
 
-    function test_HelperRepayAndReturn_WithDust() public {
+    function test_HelperRepay_WithDust() public {
         // Give wrapper more tokens than needed for repay
         mockAsset.mint(address(wrapper), 1100e18);
 
@@ -363,19 +384,18 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             targetContract: address(wrapper),
             value: 0,
             data: abi.encodeCall(
-                wrapper.helperRepayAndReturn, (address(mockBorrowVault), OWNER, ACCOUNT, 1100e18, false)
+                wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT, 1100e18)
             )
         });
 
         vm.prank(address(wrapper));
         mockEVC.batch(items);
 
-        // Verify dust was sent to owner
-        assertEq(mockAsset.balanceOf(OWNER), 100e18, "Owner should receive dust");
+        // Wrapper should have no tokens left - they were all used for repay or sent to owner
         assertEq(mockAsset.balanceOf(address(wrapper)), 0, "Wrapper should have no tokens left");
     }
 
-    function test_HelperRepayAndReturn_InsufficientBalance() public {
+    function test_HelperRepay_InsufficientBalance() public {
         // Give wrapper insufficient tokens
         mockAsset.mint(address(wrapper), 500e18);
 
@@ -388,7 +408,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             targetContract: address(wrapper),
             value: 0,
             data: abi.encodeCall(
-                wrapper.helperRepayAndReturn, (address(mockBorrowVault), OWNER, ACCOUNT, 1000e18, true)
+                wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT, 1000e18)
             )
         });
 
@@ -404,7 +424,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         mockEVC.batch(items);
     }
 
-    function test_HelperRepayAndReturn_RepayAll() public {
+    function test_HelperRepay_RepayAll() public {
         mockAsset.mint(address(wrapper), 1100e18);
         mockBorrowVault.setDebt(ACCOUNT, 1000e18);
         mockBorrowVault.setRepayAmount(1000e18);
@@ -417,16 +437,16 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             targetContract: address(wrapper),
             value: 0,
             data: abi.encodeCall(
-                wrapper.helperRepayAndReturn,
-                (address(mockBorrowVault), OWNER, ACCOUNT, 1100e18, true) // repayAll = true
+                wrapper.helperRepay,
+                (address(mockBorrowVault), OWNER, ACCOUNT, 1100e18)
             )
         });
 
         vm.prank(address(wrapper));
         mockEVC.batch(items);
 
-        // When repayAll is true, it should call repay with type(uint256).max
-        assertTrue(mockBorrowVault.repayAllCalled(), "Should have called repay with max");
+        // Dust should be returned to owner
+        assertGt(mockAsset.balanceOf(OWNER), 0, "Owner should receive dust");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -449,7 +469,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 0,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         bytes memory settleData = abi.encodeCall(
@@ -485,7 +507,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 0,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         bytes memory settleData = abi.encodeCall(
@@ -518,7 +542,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 1000e18,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         // Give account some collateral vault tokens
@@ -570,7 +596,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 0,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         // Create settle data with empty tokens (should fail to find prices)
@@ -619,7 +647,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 1000e18,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         // Give account some collateral vault tokens
@@ -690,7 +720,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 0,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         address[] memory tokens = new address[](2);
@@ -740,7 +772,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 0,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         bytes32 hash = wrapper.getApprovalHash(params);
@@ -791,7 +825,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp - 1, // Past deadline
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 0,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         bytes32 hash = wrapper.getApprovalHash(params);
@@ -840,14 +876,16 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: type(uint256).max
+            collateralAmount: 0,
+            repayAmount: type(uint256).max,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
-        // Should create full repay items (2 items)
-        assertEq(items.length, 2, "Should have 2 items for full repay with max amount");
+        // Should create repay item
+        assertEq(items.length, 1, "Should have 1 item for repay with max amount");
     }
 
     function test_SameOwnerAndAccount() public {
@@ -859,7 +897,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 0,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
@@ -877,11 +917,13 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            maxRepayAmount: 1000e18
+            collateralAmount: 0,
+            repayAmount: 1000e18,
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
-        assertEq(items.length, 2, "Should have 2 items");
+        assertEq(items.length, 1, "Should have 1 item");
     }
 }
