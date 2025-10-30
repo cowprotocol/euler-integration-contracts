@@ -156,8 +156,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 buyAmount = 1.001 ether; // Buy exactly 1.001 WETH to repay debt (a small amount will be returned to user)
 
         // Get settlement data
-        SettlementData memory settlement =
-            getClosePositionSettlement(user, user, ESUSDS, WETH, sellAmount, buyAmount);
+        SettlementData memory settlement = getClosePositionSettlement(user, user, ESUSDS, WETH, sellAmount, buyAmount);
 
         // Prepare ClosePositionParams
         uint256 deadline = block.timestamp + 1 hours;
@@ -287,8 +286,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 buyAmount = 0.98e18; // Buy at least 0.98 WETH to repay around half the debt
 
         // Get settlement data
-        SettlementData memory settlement =
-            getClosePositionSettlement(user, user, ESUSDS, WETH, sellAmount, buyAmount);
+        SettlementData memory settlement = getClosePositionSettlement(user, user, ESUSDS, WETH, sellAmount, buyAmount);
 
         // User pre-approves the order
         COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
@@ -445,8 +443,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         });
 
         // Get settlement data
-        SettlementData memory settlement =
-            getClosePositionSettlement(user, user, ESUSDS, WETH, sellAmount, buyAmount);
+        SettlementData memory settlement = getClosePositionSettlement(user, user, ESUSDS, WETH, sellAmount, buyAmount);
 
         // Now close the position
         vm.startPrank(user);

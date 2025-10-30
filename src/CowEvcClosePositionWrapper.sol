@@ -41,8 +41,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     /// ```
     /// keccak256("sell")
     /// ```
-    bytes32 private constant KIND_SELL =
-        hex"f3b277728b3fee749481eb3e0b3b48980dbbab78658fc419025cb16eee346775";
+    bytes32 private constant KIND_SELL = hex"f3b277728b3fee749481eb3e0b3b48980dbbab78658fc419025cb16eee346775";
 
     /// @dev The OrderKind marker value for a buy order for computing the order
     /// struct hash.
@@ -51,8 +50,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     /// ```
     /// keccak256("buy")
     /// ```
-    bytes32 private constant KIND_BUY =
-        hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc";
+    bytes32 private constant KIND_BUY = hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc";
 
     /// @dev The domain separator used for signing orders that gets mixed in
     /// making signatures for different domains incompatible. This domain
@@ -123,7 +121,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         address collateralVault;
 
         /**
-         * @dev 
+         * @dev
          */
         uint256 collateralAmount;
 
@@ -203,10 +201,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
             onBehalfOfAccount: params.account,
             targetContract: address(this),
             value: 0,
-            data: abi.encodeCall(
-                this.helperRepay,
-                (params.borrowVault, params.owner, params.account)
-            )
+            data: abi.encodeCall(this.helperRepay, (params.borrowVault, params.owner, params.account))
         });
     }
 
@@ -214,12 +209,10 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     /// @param vault The Euler vault in which the repayment should be made
     /// @param owner The address that should be receiving any surplus dust that may exist after the repayment is complete
     /// @param account The subaccount that should be receiving the repayment of debt
-    function helperRepay(address vault, address owner, address account)
-        external
-    {
+    function helperRepay(address vault, address owner, address account) external {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
         (address onBehalfOfAccount,) = EVC.getCurrentOnBehalfOfAccount(address(0));
-        require(onBehalfOfAccount == owner, Unauthorized(onBehalfOfAccount));
+        require(onBehalfOfAccount == account, Unauthorized(onBehalfOfAccount));
 
         IERC20 asset = IERC20(IERC4626(vault).asset());
 
