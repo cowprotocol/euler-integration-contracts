@@ -309,7 +309,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         assertEq(items[0].onBehalfOfAccount, ACCOUNT, "Should call on behalf of account");
         assertEq(
             items[0].data,
-            abi.encodeCall(wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT, 1000e18)),
+            abi.encodeCall(wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT)),
             "Should call helperRepay"
         );
     }
@@ -357,7 +357,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             targetContract: address(wrapper),
             value: 0,
             data: abi.encodeCall(
-                wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT, 1000e18)
+                wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT)
             )
         });
 
@@ -384,7 +384,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             targetContract: address(wrapper),
             value: 0,
             data: abi.encodeCall(
-                wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT, 1100e18)
+                wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT)
             )
         });
 
@@ -408,7 +408,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             targetContract: address(wrapper),
             value: 0,
             data: abi.encodeCall(
-                wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT, 1000e18)
+                wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT)
             )
         });
 
@@ -438,7 +438,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             value: 0,
             data: abi.encodeCall(
                 wrapper.helperRepay,
-                (address(mockBorrowVault), OWNER, ACCOUNT, 1100e18)
+                (address(mockBorrowVault), OWNER, ACCOUNT)
             )
         });
 
