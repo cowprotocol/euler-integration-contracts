@@ -2,10 +2,10 @@
 pragma solidity ^0.8;
 pragma abicoder v2;
 
-import "../src/vendor/CowWrapper.sol";
+import {CowWrapper, CowSettlement} from "../src/vendor/CowWrapper.sol";
 
 contract EmptyWrapper is CowWrapper {
-    string public constant name = "Empty Wrapper";
+    string public override name = "Empty Wrapper";
 
     constructor(CowSettlement settlement_) CowWrapper(settlement_) {}
 
