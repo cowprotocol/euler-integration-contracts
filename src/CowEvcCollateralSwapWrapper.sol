@@ -11,9 +11,9 @@ import {PreApprovedHashes} from "./PreApprovedHashes.sol";
 /// @title CowEvcCollateralSwapWrapper
 /// @notice A specialized wrapper for swapping collateral between vaults with EVC
 /// @dev This wrapper enables atomic collateral swaps:
-///      1. Transfer collateral from EVC subaccount to main account (if using subaccount)
-///      2. Execute settlement to swap collateral
-///      3. Enable new collateral vault
+///      1. Enable new collateral vault
+///      2. Transfer collateral from EVC subaccount to main account (if using subaccount)
+///      3. Execute settlement to swap collateral (new collateral is deposited directly into user's account)
 ///      All operations are atomic within EVC batch
 contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
     IEVC public immutable EVC;
