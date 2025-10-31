@@ -32,10 +32,12 @@ contract CowBaseTest is EVaultTestBase {
 
     address constant SUSDS = 0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD;
     address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address constant WBTC = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
 
     // Vaults
     address internal constant ESUSDS = 0x1e548CfcE5FCF17247E024eF06d32A01841fF404;
     address internal constant EWETH = 0xD8b27CF359b7D15710a5BE299AF6e7Bf904984C2;
+    address internal constant EWBTC = 0x998D761eC1BAdaCeb064624cc3A1d37A46C88bA4;
 
     address payable constant REAL_EVC = payable(0x0C9a3dd6b8F28529d72d7f9cE918D493519EE383);
     address internal swapVerifier = 0xae26485ACDDeFd486Fe9ad7C2b34169d360737c7;
@@ -73,18 +75,22 @@ contract CowBaseTest is EVaultTestBase {
 
         // Setup some liquidity for MilkSwap
         milkSwap = new MilkSwap();
-        deal(SUSDS, address(milkSwap), 10000e18); // Add SUSDS to MilkSwap
-        deal(WETH, address(milkSwap), 10000e18); // Add WETH to MilkSwap
-        milkSwap.setPrice(WETH, 1000e18); // 1 ETH = 1,000 USD
+        deal(SUSDS, address(milkSwap), 100000e18); // Add SUSDS to MilkSwap
+        deal(WETH, address(milkSwap), 100000e18); // Add WETH to MilkSwap
+        deal(WBTC, address(milkSwap), 100000e8); // Add WBTC to MilkSwap (8 decimals)
+        milkSwap.setPrice(WETH, 2500e18); // 1 ETH = 2,500 USD
         milkSwap.setPrice(SUSDS, 1e18); // 1 USDS = 1 USD
+        milkSwap.setPrice(WBTC, 100000e18 * 1e10); // 1 BTC = 100,000 USD (8 decimals)
 
         // Set the approval for MilkSwap in the settlement as a convenience
         vm.startPrank(address(COW_SETTLEMENT));
         IERC20(WETH).approve(address(milkSwap), type(uint256).max);
         IERC20(SUSDS).approve(address(milkSwap), type(uint256).max);
+        IERC20(WBTC).approve(address(milkSwap), type(uint256).max);
 
         IERC20(ESUSDS).approve(address(ESUSDS), type(uint256).max);
         IERC20(EWETH).approve(address(EWETH), type(uint256).max);
+        IERC20(EWBTC).approve(address(EWBTC), type(uint256).max);
 
         vm.stopPrank();
 
@@ -99,10 +105,12 @@ contract CowBaseTest is EVaultTestBase {
         vm.label(user, "user");
         vm.label(SUSDS, "SUSDS");
         vm.label(WETH, "WETH");
+        vm.label(WBTC, "WBTC");
         vm.label(ESUSDS, "eSUSDS");
         vm.label(EWETH, "eWETH");
-        vm.label(address(COW_SETTLEMENT), "cow settlement");
-        vm.label(address(milkSwap), "milkswap");
+        vm.label(EWBTC, "eWBTC");
+        vm.label(address(COW_SETTLEMENT), "cowSettlement");
+        vm.label(address(milkSwap), "milkSwap");
     }
 
     function getEmptySettlement()
