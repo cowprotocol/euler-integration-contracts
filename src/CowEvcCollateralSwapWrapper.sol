@@ -21,9 +21,7 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
     /// @dev The EIP-712 domain type hash used for computing the domain
     /// separator.
     bytes32 private constant DOMAIN_TYPE_HASH =
-        keccak256(
-            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-        );
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
 
     /// @dev The EIP-712 domain name used for computing the domain separator.
     bytes32 private constant DOMAIN_NAME = keccak256("CowEvcCollateralSwapWrapper");
@@ -39,8 +37,7 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
     /// ```
     /// keccak256("sell")
     /// ```
-    bytes32 private constant KIND_SELL =
-        hex"f3b277728b3fee749481eb3e0b3b48980dbbab78658fc419025cb16eee346775";
+    bytes32 private constant KIND_SELL = hex"f3b277728b3fee749481eb3e0b3b48980dbbab78658fc419025cb16eee346775";
 
     /// @dev The OrderKind marker value for a buy order for computing the order
     /// struct hash.
@@ -49,8 +46,7 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
     /// ```
     /// keccak256("buy")
     /// ```
-    bytes32 private constant KIND_BUY =
-        hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc";
+    bytes32 private constant KIND_BUY = hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc";
 
     /// @dev The domain separator used for signing orders that gets mixed in
     /// making signatures for different domains incompatible. This domain
@@ -71,15 +67,8 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         EVC = IEVC(_evc);
         nonceNamespace = uint256(uint160(address(this)));
 
-        domainSeparator = keccak256(
-            abi.encode(
-                DOMAIN_TYPE_HASH,
-                DOMAIN_NAME,
-                DOMAIN_VERSION,
-                block.chainid,
-                address(this)
-            )
-        );
+        domainSeparator =
+            keccak256(abi.encode(DOMAIN_TYPE_HASH, DOMAIN_NAME, DOMAIN_VERSION, block.chainid, address(this)));
     }
 
     /**
@@ -201,7 +190,7 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         // Decode wrapper data into CollateralSwapParams
         CollateralSwapParams memory params;
         bytes memory signature;
-        (params, signature, ) = _parseCollateralSwapParams(wrapperData);
+        (params, signature,) = _parseCollateralSwapParams(wrapperData);
 
         // Check if the signed calldata hash is pre-approved
         IEVC.BatchItem[] memory signedItems = _getSignedCalldata(params);
@@ -277,14 +266,15 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
     }
 
     /// @notice Internal swap function called by EVC
-    function evcInternalSwap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
-        external
-        payable
-    {
+    function evcInternalSwap(
+        bytes calldata settleData,
+        bytes calldata wrapperData,
+        bytes calldata remainingWrapperData
+    ) external payable {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
 
         CollateralSwapParams memory params;
-        (params, , ) = _parseCollateralSwapParams(wrapperData);
+        (params,,) = _parseCollateralSwapParams(wrapperData);
         _evcInternalSwap(settleData, remainingWrapperData, params);
     }
 

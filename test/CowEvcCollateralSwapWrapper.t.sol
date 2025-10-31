@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8;
 
-import {GPv2Order, IERC20 as CowERC20 } from "cow/libraries/GPv2Order.sol";
+import {GPv2Order, IERC20 as CowERC20} from "cow/libraries/GPv2Order.sol";
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IEVault, IERC4626, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
@@ -25,10 +25,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         super.setUp();
 
         // Deploy the collateral swap wrapper
-        collateralSwapWrapper = new CowEvcCollateralSwapWrapper(
-            address(evc),
-            COW_SETTLEMENT
-        );
+        collateralSwapWrapper = new CowEvcCollateralSwapWrapper(address(evc), COW_SETTLEMENT);
 
         // Add wrapper as a solver
         GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
@@ -138,21 +135,23 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         r.clearingPrices[1] = milkSwap.prices(IERC4626(buyVaultToken).asset()) * 1 ether / 0.98 ether;
 
         // Setup interactions - withdraw from sell vault, swap underlying assets, deposit to buy vault
-        r.interactions = [new CowSettlement.CowInteractionData[](0), new CowSettlement.CowInteractionData[](4), new CowSettlement.CowInteractionData[](0)];
+        r.interactions = [
+            new CowSettlement.CowInteractionData[](0),
+            new CowSettlement.CowInteractionData[](4),
+            new CowSettlement.CowInteractionData[](0)
+        ];
 
         // Withdraw from sell vault
         r.interactions[1][0] = getWithdrawInteraction(sellVaultToken, sellAmount);
 
         // Swap underlying assets
         uint256 swapAmount = sellAmount * 0.999 ether / 1 ether;
-        r.interactions[1][1] = getSwapInteraction(
-            IERC4626(sellVaultToken).asset(),
-            IERC4626(buyVaultToken).asset(),
-            swapAmount
-        );
+        r.interactions[1][1] =
+            getSwapInteraction(IERC4626(sellVaultToken).asset(), IERC4626(buyVaultToken).asset(), swapAmount);
 
         // Deposit to buy vault (transfer underlying to vault)
-        uint256 buyUnderlyingAmount = sellAmount * r.clearingPrices[0] / milkSwap.prices(IERC4626(buyVaultToken).asset());
+        uint256 buyUnderlyingAmount =
+            sellAmount * r.clearingPrices[0] / milkSwap.prices(IERC4626(buyVaultToken).asset());
         r.interactions[1][2] = getDepositInteraction(buyVaultToken, buyUnderlyingAmount);
 
         // Skim to mint vault shares to receiver
@@ -225,13 +224,9 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         );
 
         // Encode settlement data
-        bytes memory settleData = abi.encodeCall(CowSettlement.settle,
-            (
-                settlement.tokens,
-                settlement.clearingPrices,
-                settlement.trades,
-                settlement.interactions
-            )
+        bytes memory settleData = abi.encodeCall(
+            CowSettlement.settle,
+            (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
         );
 
         // Encode wrapper data with CollateralSwapParams
@@ -242,24 +237,15 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         address[] memory targets = new address[](1);
         bytes[] memory datas = new bytes[](1);
         targets[0] = address(collateralSwapWrapper);
-        datas[0] = abi.encodeCall(
-            collateralSwapWrapper.wrappedSettle,
-            (settleData, wrapperData)
-        );
+        datas[0] = abi.encodeCall(collateralSwapWrapper.wrappedSettle, (settleData, wrapperData));
 
         solver.runBatch(targets, datas);
 
         // Verify the collateral was swapped successfully
         assertEq(
-            IERC20(ESUSDS).balanceOf(user),
-            susdsBalanceBefore - sellAmount,
-            "User should have less ESUSDS after swap"
+            IERC20(ESUSDS).balanceOf(user), susdsBalanceBefore - sellAmount, "User should have less ESUSDS after swap"
         );
-        assertGt(
-            IERC20(EWBTC).balanceOf(user),
-            wbtcBalanceBefore,
-            "User should have more EWBTC after swap"
-        );
+        assertGt(IERC20(EWBTC).balanceOf(user), wbtcBalanceBefore, "User should have more EWBTC after swap");
     }
 
     /// @notice Test swapping collateral from subaccount
@@ -281,7 +267,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             swapAmount: sellAmount,
             kind: GPv2Order.KIND_SELL
         });
-
 
         vm.startPrank(user);
 
@@ -332,13 +317,9 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         uint256 wbtcBalanceBefore = IERC20(EWBTC).balanceOf(account);
 
         // Encode settlement data
-        bytes memory settleData = abi.encodeCall(CowSettlement.settle,
-            (
-                settlement.tokens,
-                settlement.clearingPrices,
-                settlement.trades,
-                settlement.interactions
-            )
+        bytes memory settleData = abi.encodeCall(
+            CowSettlement.settle,
+            (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
         );
 
         // Encode wrapper data with CollateralSwapParams
@@ -350,10 +331,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         address[] memory targets = new address[](1);
         bytes[] memory datas = new bytes[](1);
         targets[0] = address(collateralSwapWrapper);
-        datas[0] = abi.encodeCall(
-            collateralSwapWrapper.wrappedSettle,
-            (settleData, wrapperData)
-        );
+        datas[0] = abi.encodeCall(collateralSwapWrapper.wrappedSettle, (settleData, wrapperData));
 
         solver.runBatch(targets, datas);
 
@@ -363,18 +341,10 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             susdsBalanceBefore - sellAmount,
             "Subaccount should have less ESUSDS after swap"
         );
-        assertGt(
-            IERC20(EWBTC).balanceOf(account),
-            wbtcBalanceBefore,
-            "Subaccount should have more EWBTC after swap"
-        );
+        assertGt(IERC20(EWBTC).balanceOf(account), wbtcBalanceBefore, "Subaccount should have more EWBTC after swap");
 
         // Main account balance should remain unchanged (transfer is atomic through settlement)
-        assertEq(
-            IERC20(ESUSDS).balanceOf(user),
-            0,
-            "Main account ESUSDS balance should be 0"
-        );
+        assertEq(IERC20(ESUSDS).balanceOf(user), 0, "Main account ESUSDS balance should be 0");
     }
 
     /// @notice Test that unauthorized users cannot call evcInternalSwap directly
@@ -493,13 +463,9 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         uint256 debtBefore = IEVault(EWETH).debtOf(account);
 
         // Encode settlement data
-        bytes memory settleData = abi.encodeCall(CowSettlement.settle,
-            (
-                settlement.tokens,
-                settlement.clearingPrices,
-                settlement.trades,
-                settlement.interactions
-            )
+        bytes memory settleData = abi.encodeCall(
+            CowSettlement.settle,
+            (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
         );
 
         // Encode wrapper data with CollateralSwapParams
@@ -511,10 +477,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         address[] memory targets = new address[](1);
         bytes[] memory datas = new bytes[](1);
         targets[0] = address(collateralSwapWrapper);
-        datas[0] = abi.encodeCall(
-            collateralSwapWrapper.wrappedSettle,
-            (settleData, wrapperData)
-        );
+        datas[0] = abi.encodeCall(collateralSwapWrapper.wrappedSettle, (settleData, wrapperData));
 
         solver.runBatch(targets, datas);
 
@@ -524,15 +487,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             susdsBalanceBefore - sellAmount,
             "Account should have less ESUSDS after swap"
         );
-        assertGt(
-            IERC20(EWBTC).balanceOf(account),
-            wbtcBalanceBefore,
-            "Account should have more EWBTC after swap"
-        );
-        assertEq(
-            IEVault(EWETH).debtOf(account),
-            debtBefore,
-            "Debt should remain unchanged after swap"
-        );
+        assertGt(IERC20(EWBTC).balanceOf(account), wbtcBalanceBefore, "Account should have more EWBTC after swap");
+        assertEq(IEVault(EWETH).debtOf(account), debtBefore, "Debt should remain unchanged after swap");
     }
 }
