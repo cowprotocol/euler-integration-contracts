@@ -53,21 +53,31 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
     /// separator is computed following the EIP-712 standard and has replay
     /// protection mixed in so that signed orders are only valid for specific
     /// this contract.
-    bytes32 public immutable domainSeparator;
+    bytes32 public immutable DOMAIN_SEPARATOR;
 
-    string public constant name = "Euler EVC - Collateral Swap";
+    //// @dev The EVC nonce namespace to use when calling `EVC.permit` to authorize this contract.
+    uint256 public immutable NONCE_NAMESPACE;
 
-    uint256 public immutable nonceNamespace;
+    /// @dev A descriptive label for this contract, as required by CowWrapper
+    string public override name = "Euler EVC - Collateral Swap";
 
+    /// @dev Indicates that the current operation cannot be completed with the given msgSender
     error Unauthorized(address msgSender);
+
+    /// @dev Indicates that the pre-approved hash is no longer able to be executed because the block timestamp is too old
     error OperationDeadlineExceeded(uint256 validToTimestamp, uint256 currentTimestamp);
-    error PricesNotFoundInSettlement();
+
+    /// @dev Indicates that the collateral swap cannot be executed because the necessary pricing data is not present in the `tokens`/`clearingPrices` variable
+    error PricesNotFoundInSettlement(address fromVault, address toVault);
+
+    /// @dev Indicates that a user attempted to interact with an account that is not their own
+    error SubaccountMustBeControlledByOwner(address subaccount, address owner);
 
     constructor(address _evc, CowSettlement _settlement) CowWrapper(_settlement) {
         EVC = IEVC(_evc);
-        nonceNamespace = uint256(uint160(address(this)));
+        NONCE_NAMESPACE = uint256(uint160(address(this)));
 
-        domainSeparator =
+        DOMAIN_SEPARATOR =
             keccak256(abi.encode(DOMAIN_TYPE_HASH, DOMAIN_NAME, DOMAIN_VERSION, block.chainid, address(this)));
     }
 
@@ -140,9 +150,10 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
     }
 
     function _getApprovalHash(CollateralSwapParams memory params) internal view returns (bytes32 digest) {
-        bytes32 structHash = keccak256(abi.encode(params));
-        bytes32 separator = domainSeparator;
+        bytes32 structHash;
+        bytes32 separator = DOMAIN_SEPARATOR;
         assembly ("memory-safe") {
+            structHash := keccak256(params, 224)
             let ptr := mload(0x40)
             mstore(ptr, "\x19\x01")
             mstore(add(ptr, 0x02), separator)
@@ -214,8 +225,8 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
                     (
                         params.owner,
                         address(this),
-                        uint256(nonceNamespace),
-                        EVC.getNonce(bytes19(bytes20(params.owner)), nonceNamespace),
+                        uint256(NONCE_NAMESPACE),
+                        EVC.getNonce(bytes19(bytes20(params.owner)), NONCE_NAMESPACE),
                         params.deadline,
                         0,
                         abi.encodeCall(EVC.batch, signedItems),
@@ -233,7 +244,7 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
 
         // 2. Settlement call
         items[itemIndex] = IEVC.BatchItem({
-            onBehalfOfAccount: address(0),
+            onBehalfOfAccount: address(this),
             targetContract: address(this),
             value: 0,
             data: abi.encodeCall(this.evcInternalSwap, (settleData, wrapperData, remainingWrapperData))
@@ -262,7 +273,7 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
                 toVaultPrice = clearingPrices[i];
             }
         }
-        require(fromVaultPrice != 0 && toVaultPrice != 0, PricesNotFoundInSettlement());
+        require(fromVaultPrice != 0 && toVaultPrice != 0, PricesNotFoundInSettlement(fromVault, toVault));
     }
 
     /// @notice Internal swap function called by EVC
@@ -272,6 +283,8 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         bytes calldata remainingWrapperData
     ) external payable {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
+        (address onBehalfOfAccount,) = EVC.getCurrentOnBehalfOfAccount(address(0));
+        require(onBehalfOfAccount == address(this), Unauthorized(onBehalfOfAccount));
 
         CollateralSwapParams memory params;
         (params,,) = _parseCollateralSwapParams(wrapperData);
@@ -284,24 +297,32 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         CollateralSwapParams memory params
     ) internal {
         // If a subaccount is being used, we need to transfer the required amount of collateral for the trade into the owner's wallet.
-        // This is required because the settlement contract can only pull funds from the wallet that signed the transaction.
-        // Since it's not possible for a subaccount to sign a transaction due to the private key not existing and there being no
+        // This is required becuase the settlement contract can only pull funds from the wallet that signed the transaction.
+        // Since its not possible for a subaccount to sign a transaction due to the private key not existing and their being no
         // contract deployed to the subaccount address, transferring to the owner's account is the only option.
         // Additionally, we don't transfer this collateral directly to the settlement contract because the settlement contract
         // requires receiving of funds from the user's wallet, and cannot be put in the contract in advance.
         if (params.owner != params.account) {
-            (uint256 fromVaultPrice, uint256 toVaultPrice) =
-                _findRatePrices(settleData, params.fromVault, params.toVault);
+            require(
+                bytes19(bytes20(params.owner)) == bytes19(bytes20(params.account)),
+                SubaccountMustBeControlledByOwner(params.account, params.owner)
+            );
+
             uint256 transferAmount = params.swapAmount;
+
             if (params.kind == KIND_BUY) {
-                transferAmount = transferAmount * fromVaultPrice / toVaultPrice;
+                (uint256 fromVaultPrice, uint256 toVaultPrice) =
+                    _findRatePrices(settleData, params.fromVault, params.toVault);
+                transferAmount = params.swapAmount * toVaultPrice / fromVaultPrice;
             }
+
             SafeERC20Lib.safeTransferFrom(
                 IERC20(params.fromVault), params.account, params.owner, transferAmount, address(0)
             );
         }
 
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
+        // wrapperData is empty since we've already processed it in _wrap
         _internalSettle(settleData, remainingWrapperData);
     }
 }
