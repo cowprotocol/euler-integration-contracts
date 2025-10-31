@@ -205,7 +205,7 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
 
         // Check if the signed calldata hash is pre-approved
         IEVC.BatchItem[] memory signedItems = _getSignedCalldata(params);
-        bool isPreApproved = _consumePreApprovedHash(params.owner, _getApprovalHash(params));
+        bool isPreApproved = signature.length == 0 && _consumePreApprovedHash(params.owner, _getApprovalHash(params));
 
         // Build the EVC batch items for swapping collateral
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](isPreApproved ? signedItems.length + 1 : 2);
