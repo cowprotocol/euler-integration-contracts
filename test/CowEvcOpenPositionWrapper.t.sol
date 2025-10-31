@@ -174,7 +174,12 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         // Expect the event to be emitted
         vm.expectEmit(true, true, true, true);
         emit CowEvcOpenPositionWrapper.CowEvcPositionOpened(
-            params.owner, params.account, params.collateralVault, params.borrowVault, params.collateralAmount, params.borrowAmount
+            params.owner,
+            params.account,
+            params.collateralVault,
+            params.borrowVault,
+            params.collateralAmount,
+            params.borrowAmount
         );
 
         solver.runBatch(targets, datas);
@@ -341,7 +346,12 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         // Expect the event to be emitted
         vm.expectEmit(true, true, true, true);
         emit CowEvcOpenPositionWrapper.CowEvcPositionOpened(
-            params.owner, params.account, params.collateralVault, params.borrowVault, params.collateralAmount, params.borrowAmount
+            params.owner,
+            params.account,
+            params.collateralVault,
+            params.borrowVault,
+            params.collateralAmount,
+            params.borrowAmount
         );
 
         solver.runBatch(targets, datas);

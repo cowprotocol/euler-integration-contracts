@@ -267,7 +267,9 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         // Execute all items in a single batch
         EVC.batch(items);
 
-        emit CowEvcCollateralSwapped(params.owner, params.account, params.fromVault, params.toVault, params.swapAmount, params.kind);
+        emit CowEvcCollateralSwapped(
+            params.owner, params.account, params.fromVault, params.toVault, params.swapAmount, params.kind
+        );
     }
 
     function _findRatePrices(bytes calldata settleData, address fromVault, address toVault)

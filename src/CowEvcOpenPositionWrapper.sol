@@ -227,7 +227,12 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
         EVC.batch(items);
 
         emit CowEvcPositionOpened(
-            params.owner, params.account, params.collateralVault, params.borrowVault, params.collateralAmount, params.borrowAmount
+            params.owner,
+            params.account,
+            params.collateralVault,
+            params.borrowVault,
+            params.collateralAmount,
+            params.borrowAmount
         );
     }
 
