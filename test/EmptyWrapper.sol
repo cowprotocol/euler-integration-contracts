@@ -5,7 +5,7 @@ pragma abicoder v2;
 import {CowWrapper, CowSettlement} from "../src/vendor/CowWrapper.sol";
 
 contract EmptyWrapper is CowWrapper {
-    string public constant name = "Empty Wrapper";
+    string public override name = "Empty Wrapper";
 
     constructor(CowSettlement settlement_) CowWrapper(settlement_) {}
 
@@ -13,7 +13,12 @@ contract EmptyWrapper is CowWrapper {
         _internalSettle(settleData, remainingWrapperData);
     }
 
-    function parseWrapperData(bytes calldata wrapperData) external pure override returns (bytes calldata remainingWrapperData) {
+    function parseWrapperData(bytes calldata wrapperData)
+        external
+        pure
+        override
+        returns (bytes calldata remainingWrapperData)
+    {
         // EmptyWrapper doesn't consume any wrapper data
         return wrapperData;
     }

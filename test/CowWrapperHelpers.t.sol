@@ -30,7 +30,7 @@ contract MockSettlement {
 }
 
 contract MockWrapper is CowWrapper {
-    string constant public name = "Mock Wrapper";
+    string public override name = "Mock Wrapper";
     uint256 public consumeBytes;
 
     constructor(CowSettlement settlement_, uint256 consumeBytes_) CowWrapper(settlement_) {
@@ -41,13 +41,18 @@ contract MockWrapper is CowWrapper {
         // Not used in these tests
     }
 
-    function parseWrapperData(bytes calldata wrapperData) external view override returns (bytes calldata remainingWrapperData) {
+    function parseWrapperData(bytes calldata wrapperData)
+        external
+        view
+        override
+        returns (bytes calldata remainingWrapperData)
+    {
         return wrapperData[consumeBytes:];
     }
 }
 
 contract BrokenWrapper is CowWrapper {
-    string public constant name = "Broken Wrapper";
+    string public override name = "Broken Wrapper";
     constructor(CowSettlement settlement_) CowWrapper(settlement_) {}
 
     function _wrap(bytes calldata, bytes calldata, bytes calldata) internal override {
@@ -101,10 +106,7 @@ contract CowWrapperHelpersTest is Test {
 
     function test_verifyAndBuildWrapperData_SingleWrapper() public view {
         CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](1);
-        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({
-            target: address(wrapper1),
-            data: hex"deadbeef"
-        });
+        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({target: address(wrapper1), data: hex"deadbeef"});
 
         bytes memory result = helpers.verifyAndBuildWrapperData(wrapperCalls);
 
@@ -115,18 +117,9 @@ contract CowWrapperHelpersTest is Test {
 
     function test_verifyAndBuildWrapperData_MultipleWrappers() public view {
         CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](3);
-        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({
-            target: address(wrapper1),
-            data: hex"deadbeef"
-        });
-        wrapperCalls[1] = CowWrapperHelpers.WrapperCall({
-            target: address(wrapper2),
-            data: hex"cafebabe12345678"
-        });
-        wrapperCalls[2] = CowWrapperHelpers.WrapperCall({
-            target: address(wrapper3),
-            data: hex""
-        });
+        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({target: address(wrapper1), data: hex"deadbeef"});
+        wrapperCalls[1] = CowWrapperHelpers.WrapperCall({target: address(wrapper2), data: hex"cafebabe12345678"});
+        wrapperCalls[2] = CowWrapperHelpers.WrapperCall({target: address(wrapper3), data: hex""});
 
         bytes memory result = helpers.verifyAndBuildWrapperData(wrapperCalls);
 
@@ -148,12 +141,11 @@ contract CowWrapperHelpersTest is Test {
         address notAWrapper = makeAddr("notAWrapper");
 
         CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](1);
-        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({
-            target: notAWrapper,
-            data: hex""
-        });
+        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({target: notAWrapper, data: hex""});
 
-        vm.expectRevert(abi.encodeWithSelector(CowWrapperHelpers.NotAWrapper.selector, 0, notAWrapper, address(wrapperAuth)));
+        vm.expectRevert(
+            abi.encodeWithSelector(CowWrapperHelpers.NotAWrapper.selector, 0, notAWrapper, address(wrapperAuth))
+        );
         helpers.verifyAndBuildWrapperData(wrapperCalls);
     }
 
@@ -161,16 +153,12 @@ contract CowWrapperHelpersTest is Test {
         address notAWrapper = makeAddr("notAWrapper");
 
         CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](2);
-        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({
-            target: address(wrapper1),
-            data: hex"deadbeef"
-        });
-        wrapperCalls[1] = CowWrapperHelpers.WrapperCall({
-            target: notAWrapper,
-            data: hex""
-        });
+        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({target: address(wrapper1), data: hex"deadbeef"});
+        wrapperCalls[1] = CowWrapperHelpers.WrapperCall({target: notAWrapper, data: hex""});
 
-        vm.expectRevert(abi.encodeWithSelector(CowWrapperHelpers.NotAWrapper.selector, 1, notAWrapper, address(wrapperAuth)));
+        vm.expectRevert(
+            abi.encodeWithSelector(CowWrapperHelpers.NotAWrapper.selector, 1, notAWrapper, address(wrapperAuth))
+        );
         helpers.verifyAndBuildWrapperData(wrapperCalls);
     }
 
@@ -187,10 +175,7 @@ contract CowWrapperHelpersTest is Test {
 
     function test_verifyAndBuildWrapperData_RevertsOnWrapperDataMalformed() public {
         CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](1);
-        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({
-            target: address(brokenWrapper),
-            data: hex"deadbeef"
-        });
+        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({target: address(brokenWrapper), data: hex"deadbeef"});
 
         vm.expectRevert();
         helpers.verifyAndBuildWrapperData(wrapperCalls);
@@ -201,10 +186,7 @@ contract CowWrapperHelpersTest is Test {
         solverAuth.addSolver(address(mockSettlement));
 
         CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](1);
-        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({
-            target: address(wrapper1),
-            data: hex"deadbeef"
-        });
+        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({target: address(wrapper1), data: hex"deadbeef"});
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -264,8 +246,78 @@ contract CowWrapperHelpersTest is Test {
         assertEq(result, expected);
     }
 
+    function test_verifyAndBuildWrapperData_RevertsOnSettlementMismatch() public {
+        MockSettlement differentSettlement = new MockSettlement(CowAuthentication(address(wrapperAuth)));
+        MockWrapper differentWrapper = new MockWrapper(CowSettlement(address(differentSettlement)), 4);
+        wrapperAuth.addSolver(address(differentWrapper));
+
+        CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](2);
+        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({target: address(wrapper1), data: hex"deadbeef"});
+        wrapperCalls[1] = CowWrapperHelpers.WrapperCall({target: address(differentWrapper), data: hex"cafebabe"});
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CowWrapperHelpers.SettlementMismatch.selector, 1, address(mockSettlement), address(differentSettlement)
+            )
+        );
+        helpers.verifyAndBuildWrapperData(wrapperCalls);
+    }
+
     function test_immutableAuthenticators() public view {
         assertEq(address(helpers.WRAPPER_AUTHENTICATOR()), address(wrapperAuth));
         assertEq(address(helpers.SOLVER_AUTHENTICATOR()), address(solverAuth));
+    }
+
+    function test_verifyAndBuildWrapperData_RevertsOnWrapperDataTooLong_FirstWrapper() public {
+        // Create data that's exactly 65536 bytes (exceeds uint16 max of 65535)
+        bytes memory tooLongData = new bytes(65536);
+
+        // Create a wrapper that consumes all bytes passed to it
+        MockWrapper largeWrapper = new MockWrapper(CowSettlement(address(mockSettlement)), 65536);
+        wrapperAuth.addSolver(address(largeWrapper));
+
+        CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](1);
+        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({target: address(largeWrapper), data: tooLongData});
+
+        vm.expectRevert(abi.encodeWithSelector(CowWrapperHelpers.WrapperDataTooLong.selector, 0, 65536));
+        helpers.verifyAndBuildWrapperData(wrapperCalls);
+    }
+
+    function test_verifyAndBuildWrapperData_RevertsOnWrapperDataTooLong_SecondWrapper() public {
+        // Create data that's exactly 65536 bytes for the second wrapper
+        bytes memory tooLongData = new bytes(65536);
+
+        // Create a wrapper that consumes all bytes passed to it
+        MockWrapper largeWrapper = new MockWrapper(CowSettlement(address(mockSettlement)), 65536);
+        wrapperAuth.addSolver(address(largeWrapper));
+
+        CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](2);
+        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({target: address(wrapper1), data: hex"deadbeef"});
+        wrapperCalls[1] = CowWrapperHelpers.WrapperCall({target: address(largeWrapper), data: tooLongData});
+
+        vm.expectRevert(abi.encodeWithSelector(CowWrapperHelpers.WrapperDataTooLong.selector, 1, 65536));
+        helpers.verifyAndBuildWrapperData(wrapperCalls);
+    }
+
+    function test_verifyAndBuildWrapperData_SucceedsWithMaxLengthData() public {
+        // Create data that's exactly 65535 bytes (max valid uint16)
+        bytes memory maxLengthData = new bytes(65535);
+
+        // Create a wrapper that consumes all bytes
+        MockWrapper largeWrapper = new MockWrapper(CowSettlement(address(mockSettlement)), 65535);
+        wrapperAuth.addSolver(address(largeWrapper));
+
+        CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](1);
+        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({target: address(largeWrapper), data: maxLengthData});
+
+        // Should not revert - 65535 is the max valid length
+        bytes memory result = helpers.verifyAndBuildWrapperData(wrapperCalls);
+
+        // Verify the length prefix is correct (first 2 bytes)
+        bytes2 lengthPrefix;
+        assembly {
+            lengthPrefix := mload(add(result, 32))
+        }
+        assertEq(uint16(lengthPrefix), 65535);
     }
 }

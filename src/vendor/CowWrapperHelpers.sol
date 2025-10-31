@@ -24,6 +24,11 @@ contract CowWrapperHelpers {
     /// @param wrapperError The error returned by the wrapper's parseWrapperData
     error WrapperDataMalformed(uint256 wrapperIndex, bytes wrapperError);
 
+    /// @notice Thrown when the data for the wrapper is too long. Its limited to 65535 bytes.
+    /// @param wrapperIndex The index of the wrapper with data that is too long
+    /// @param exceedingLength The observed length of the data
+    error WrapperDataTooLong(uint256 wrapperIndex, uint256 exceedingLength);
+
     /// @notice Thrown when the settlement contract is authenticated as a solver
     /// @dev The settlement contract should not be a solver to prevent direct settlement calls bypassing wrappers
     /// @param settlementContract The settlement contract address
@@ -71,31 +76,38 @@ contract CowWrapperHelpers {
     ///      Note: No settlement address is appended as wrappers now use a static SETTLEMENT.
     /// @param wrapperCalls Array of calls in execution order
     /// @return wrapperData The encoded wrapper data ready to be passed to the first wrapper's wrappedSettle
-    function verifyAndBuildWrapperData(WrapperCall[] memory wrapperCalls) external view returns (bytes memory wrapperData) {
+    function verifyAndBuildWrapperData(WrapperCall[] memory wrapperCalls)
+        external
+        view
+        returns (bytes memory wrapperData)
+    {
         if (wrapperCalls.length == 0) {
             return wrapperData;
         }
 
         // First pass: verify all wrappers are authenticated
-        for (uint256 i = 0;i < wrapperCalls.length;i++) {
-            if (!WRAPPER_AUTHENTICATOR.isSolver(wrapperCalls[i].target)) {
-                revert NotAWrapper(i, wrapperCalls[i].target, address(WRAPPER_AUTHENTICATOR));
-            }
+        for (uint256 i = 0; i < wrapperCalls.length; i++) {
+            require(
+                WRAPPER_AUTHENTICATOR.isSolver(wrapperCalls[i].target),
+                NotAWrapper(i, wrapperCalls[i].target, address(WRAPPER_AUTHENTICATOR))
+            );
         }
 
         // Get the expected settlement from the first wrapper
         address expectedSettlement = address(ICowWrapper(wrapperCalls[0].target).SETTLEMENT());
 
-        for (uint256 i = 0;i < wrapperCalls.length;i++) {
-
+        for (uint256 i = 0; i < wrapperCalls.length; i++) {
             // All wrappers must use the same settlement contract
             address wrapperSettlement = address(ICowWrapper(wrapperCalls[i].target).SETTLEMENT());
-            if (wrapperSettlement != expectedSettlement) {
-                revert SettlementMismatch(i, expectedSettlement, wrapperSettlement);
-            }
+
+            require(
+                wrapperSettlement == expectedSettlement, SettlementMismatch(i, expectedSettlement, wrapperSettlement)
+            );
 
             // The wrapper data must be parsable and fully consumed
-            try ICowWrapper(wrapperCalls[i].target).parseWrapperData(wrapperCalls[i].data) returns (bytes memory remainingWrapperData) {
+            try ICowWrapper(wrapperCalls[i].target).parseWrapperData(wrapperCalls[i].data) returns (
+                bytes memory remainingWrapperData
+            ) {
                 if (remainingWrapperData.length > 0) {
                     revert WrapperDataNotFullyConsumed(i, remainingWrapperData);
                 }
@@ -109,11 +121,14 @@ contract CowWrapperHelpers {
             revert SettlementContractShouldNotBeSolver(expectedSettlement, address(SOLVER_AUTHENTICATOR));
         }
 
-        // Build wrapper data without settlement address at the end
-        wrapperData = abi.encodePacked(uint16(wrapperCalls[0].data.length), wrapperCalls[0].data);
+        // Build wrapper data
+        for (uint256 i = 0; i < wrapperCalls.length; i++) {
+            if (i > 0) {
+                wrapperData = abi.encodePacked(wrapperData, wrapperCalls[i].target);
+            }
 
-        for (uint256 i = 1;i < wrapperCalls.length;i++) {
-            wrapperData = abi.encodePacked(wrapperData, wrapperCalls[i].target, uint16(wrapperCalls[i].data.length), wrapperCalls[i].data);
+            require(wrapperCalls[i].data.length < 65536, WrapperDataTooLong(i, wrapperCalls[i].data.length));
+            wrapperData = abi.encodePacked(wrapperData, uint16(wrapperCalls[i].data.length), wrapperCalls[i].data);
         }
 
         return wrapperData;

@@ -24,9 +24,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     /// @dev The EIP-712 domain type hash used for computing the domain
     /// separator.
     bytes32 private constant DOMAIN_TYPE_HASH =
-        keccak256(
-            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-        );
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
 
     /// @dev The EIP-712 domain name used for computing the domain separator.
     bytes32 private constant DOMAIN_NAME = keccak256("CowEvcOpenPositionWrapper");
@@ -39,28 +37,26 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     /// separator is computed following the EIP-712 standard and has replay
     /// protection mixed in so that signed orders are only valid for specific
     /// this contract.
-    bytes32 public immutable domainSeparator;
+    bytes32 public immutable DOMAIN_SEPARATOR;
 
-    string public constant name = "Euler EVC - Open Position";
+    //// @dev The EVC nonce namespace to use when calling `EVC.permit` to authorize this contract.
+    uint256 public immutable NONCE_NAMESPACE;
 
-    uint256 public immutable nonceNamespace;
+    /// @dev A descriptive label for this contract, as required by CowWrapper
+    string public override name = "Euler EVC - Open Position";
 
+    /// @dev Indicates that the current operation cannot be completed with the given msgSender
     error Unauthorized(address msgSender);
+
+    /// @dev Indicates that the pre-approved hash is no longer able to be executed because the block timestamp is too old
     error OperationDeadlineExceeded(uint256 validToTimestamp, uint256 currentTimestamp);
 
     constructor(address _evc, CowSettlement _settlement) CowWrapper(_settlement) {
         EVC = IEVC(_evc);
-        nonceNamespace = uint256(uint160(address(this)));
+        NONCE_NAMESPACE = uint256(uint160(address(this)));
 
-        domainSeparator = keccak256(
-            abi.encode(
-                DOMAIN_TYPE_HASH,
-                DOMAIN_NAME,
-                DOMAIN_VERSION,
-                block.chainid,
-                address(this)
-            )
-        );
+        DOMAIN_SEPARATOR =
+            keccak256(abi.encode(DOMAIN_TYPE_HASH, DOMAIN_NAME, DOMAIN_VERSION, block.chainid, address(this)));
     }
 
     /**
@@ -73,7 +69,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
          * @dev The ethereum address that has permission to operate upon the account
          */
         address owner;
-        
+
         /**
          * @dev The subaccount to open the position on. Learn more about Euler subaccounts https://evc.wtf/docs/concepts/internals/sub-accounts
          */
@@ -133,9 +129,10 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     }
 
     function _getApprovalHash(OpenPositionParams memory params) internal view returns (bytes32 digest) {
-        bytes32 structHash = keccak256(abi.encode(params));
-        bytes32 separator = domainSeparator;
+        bytes32 structHash;
+        bytes32 separator = DOMAIN_SEPARATOR;
         assembly ("memory-safe") {
+            structHash := keccak256(params, 224)
             let ptr := mload(0x40)
             mstore(ptr, "\x19\x01")
             mstore(add(ptr, 0x02), separator)
@@ -156,15 +153,18 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     /// @notice Implementation of GPv2Wrapper._wrap - executes EVC operations to open a position
     /// @param settleData Data which will be used for the parameters in a call to `CowSettlement.settle`
     /// @param wrapperData Additional data containing OpenPositionParams
-    function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData) internal override {
+    function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
+        internal
+        override
+    {
         // Decode wrapper data into OpenPositionParams
         OpenPositionParams memory params;
         bytes memory signature;
-        (params, signature, ) = _parseOpenPositionParams(wrapperData);
+        (params, signature,) = _parseOpenPositionParams(wrapperData);
 
         // Check if the signed calldata hash is pre-approved
         IEVC.BatchItem[] memory signedItems = _getSignedCalldata(params);
-        bool isPreApproved = _consumePreApprovedHash(params.owner, _getApprovalHash(params));
+        bool isPreApproved = signature.length == 0 && _consumePreApprovedHash(params.owner, _getApprovalHash(params));
 
         // Build the EVC batch items for opening a position
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](isPreApproved ? signedItems.length + 1 : 2);
@@ -184,8 +184,8 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
                     (
                         params.owner,
                         address(this),
-                        uint256(nonceNamespace),
-                        EVC.getNonce(bytes19(bytes20(params.owner)), nonceNamespace),
+                        uint256(NONCE_NAMESPACE),
+                        EVC.getNonce(bytes19(bytes20(params.owner)), NONCE_NAMESPACE),
                         params.deadline,
                         0,
                         abi.encodeCall(EVC.batch, signedItems),
@@ -264,6 +264,8 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     /// @notice Internal settlement function called by EVC
     function evcInternalSettle(bytes calldata settleData, bytes calldata remainingWrapperData) external payable {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
+        (address onBehalfOfAccount,) = EVC.getCurrentOnBehalfOfAccount(address(0));
+        require(onBehalfOfAccount == address(this), Unauthorized(onBehalfOfAccount));
 
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap

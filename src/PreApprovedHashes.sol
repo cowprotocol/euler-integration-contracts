@@ -27,7 +27,7 @@ abstract contract PreApprovedHashes {
     /// @param hash The keccak256 hash of the signed calldata
     /// @param approved True to approve the hash, false to revoke approval
     function setPreApprovedHash(bytes32 hash, bool approved) external {
-        require(preApprovedHashes[msg.sender][hash] != CONSUMED_PRE_APPROVED, AlreadyConsumed(msg.sender, hash)); 
+        require(preApprovedHashes[msg.sender][hash] != CONSUMED_PRE_APPROVED, AlreadyConsumed(msg.sender, hash));
 
         if (approved) {
             preApprovedHashes[msg.sender][hash] = PRE_APPROVED;
