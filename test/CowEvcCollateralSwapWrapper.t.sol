@@ -239,6 +239,12 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         targets[0] = address(collateralSwapWrapper);
         datas[0] = abi.encodeCall(collateralSwapWrapper.wrappedSettle, (settleData, wrapperData));
 
+        // Expect the event to be emitted
+        vm.expectEmit(true, true, true, true);
+        emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
+            params.owner, params.account, params.fromVault, params.toVault, params.swapAmount, params.kind
+        );
+
         solver.runBatch(targets, datas);
 
         // Verify the collateral was swapped successfully
@@ -332,6 +338,12 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         bytes[] memory datas = new bytes[](1);
         targets[0] = address(collateralSwapWrapper);
         datas[0] = abi.encodeCall(collateralSwapWrapper.wrappedSettle, (settleData, wrapperData));
+
+        // Expect the event to be emitted
+        vm.expectEmit(true, true, true, true);
+        emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
+            params.owner, params.account, params.fromVault, params.toVault, params.swapAmount, params.kind
+        );
 
         solver.runBatch(targets, datas);
 
@@ -478,6 +490,12 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         bytes[] memory datas = new bytes[](1);
         targets[0] = address(collateralSwapWrapper);
         datas[0] = abi.encodeCall(collateralSwapWrapper.wrappedSettle, (settleData, wrapperData));
+
+        // Expect the event to be emitted
+        vm.expectEmit(true, true, true, true);
+        emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
+            params.owner, params.account, params.fromVault, params.toVault, params.swapAmount, params.kind
+        );
 
         solver.runBatch(targets, datas);
 

@@ -233,6 +233,18 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         targets[0] = address(closePositionWrapper);
         datas[0] = abi.encodeCall(closePositionWrapper.wrappedSettle, (settleData, wrapperData));
 
+        // Expect the event to be emitted
+        vm.expectEmit(true, true, true, true);
+        emit CowEvcClosePositionWrapper.CowEvcPositionClosed(
+            params.owner,
+            params.account,
+            params.borrowVault,
+            params.collateralVault,
+            params.collateralAmount,
+            params.repayAmount,
+            params.kind
+        );
+
         solver.runBatch(targets, datas);
 
         // Verify the position was closed successfully
@@ -347,6 +359,18 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         bytes[] memory datas = new bytes[](1);
         targets[0] = address(closePositionWrapper);
         datas[0] = abi.encodeCall(closePositionWrapper.wrappedSettle, (settleData, wrapperData));
+
+        // Expect the event to be emitted
+        vm.expectEmit(true, true, true, true);
+        emit CowEvcClosePositionWrapper.CowEvcPositionClosed(
+            params.owner,
+            params.account,
+            params.borrowVault,
+            params.collateralVault,
+            params.collateralAmount,
+            params.repayAmount,
+            params.kind
+        );
 
         solver.runBatch(targets, datas);
 
@@ -497,6 +521,18 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         bytes[] memory datas = new bytes[](1);
         targets[0] = address(closePositionWrapper);
         datas[0] = abi.encodeCall(closePositionWrapper.wrappedSettle, (settleData, wrapperData));
+
+        // Expect the event to be emitted
+        vm.expectEmit(true, true, true, true);
+        emit CowEvcClosePositionWrapper.CowEvcPositionClosed(
+            params.owner,
+            params.account,
+            params.borrowVault,
+            params.collateralVault,
+            params.collateralAmount,
+            params.repayAmount,
+            params.kind
+        );
 
         solver.runBatch(targets, datas);
 

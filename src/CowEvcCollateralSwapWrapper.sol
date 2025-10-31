@@ -73,6 +73,16 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that a user attempted to interact with an account that is not their own
     error SubaccountMustBeControlledByOwner(address subaccount, address owner);
 
+    /// @dev Emitted when collateral is swapped via this wrapper
+    event CowEvcCollateralSwapped(
+        address indexed owner,
+        address account,
+        address indexed fromVault,
+        address indexed toVault,
+        uint256 swapAmount,
+        bytes32 kind
+    );
+
     constructor(address _evc, CowSettlement _settlement) CowWrapper(_settlement) {
         EVC = IEVC(_evc);
         NONCE_NAMESPACE = uint256(uint160(address(this)));
@@ -256,6 +266,8 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
 
         // Execute all items in a single batch
         EVC.batch(items);
+
+        emit CowEvcCollateralSwapped(params.owner, params.account, params.fromVault, params.toVault, params.swapAmount, params.kind);
     }
 
     function _findRatePrices(bytes calldata settleData, address fromVault, address toVault)
