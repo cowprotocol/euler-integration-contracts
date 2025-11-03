@@ -171,6 +171,17 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         targets[0] = address(openPositionWrapper);
         datas[0] = abi.encodeCall(openPositionWrapper.wrappedSettle, (settleData, wrapperData));
 
+        // Expect the event to be emitted
+        vm.expectEmit(true, true, true, true);
+        emit CowEvcOpenPositionWrapper.CowEvcPositionOpened(
+            params.owner,
+            params.account,
+            params.collateralVault,
+            params.borrowVault,
+            params.collateralAmount,
+            params.borrowAmount
+        );
+
         solver.runBatch(targets, datas);
 
         // Verify the position was created successfully
@@ -331,6 +342,17 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         bytes[] memory datas = new bytes[](1);
         targets[0] = address(openPositionWrapper);
         datas[0] = abi.encodeCall(openPositionWrapper.wrappedSettle, (settleData, wrapperData));
+
+        // Expect the event to be emitted
+        vm.expectEmit(true, true, true, true);
+        emit CowEvcOpenPositionWrapper.CowEvcPositionOpened(
+            params.owner,
+            params.account,
+            params.collateralVault,
+            params.borrowVault,
+            params.collateralAmount,
+            params.borrowAmount
+        );
 
         solver.runBatch(targets, datas);
 

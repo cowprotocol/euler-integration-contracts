@@ -80,6 +80,17 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that a user attempted to interact with an account that is not their own
     error SubaccountMustBeControlledByOwner(address subaccount, address owner);
 
+    /// @dev Emitted when a position is closed via this wrapper
+    event CowEvcPositionClosed(
+        address indexed owner,
+        address account,
+        address indexed borrowVault,
+        address indexed collateralVault,
+        uint256 collateralAmount,
+        uint256 repayAmount,
+        bytes32 kind
+    );
+
     constructor(address _evc, CowSettlement _settlement) CowWrapper(_settlement) {
         EVC = IEVC(_evc);
         NONCE_NAMESPACE = uint256(uint160(address(this)));
@@ -302,6 +313,16 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
 
         // Execute all items in a single batch
         EVC.batch(items);
+
+        emit CowEvcPositionClosed(
+            params.owner,
+            params.account,
+            params.borrowVault,
+            params.collateralVault,
+            params.collateralAmount,
+            params.repayAmount,
+            params.kind
+        );
     }
 
     function _findRatePrices(bytes calldata settleData, address collateralVault, address borrowVault)

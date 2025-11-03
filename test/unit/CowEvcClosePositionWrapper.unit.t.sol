@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8;
 
-import "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {CowEvcClosePositionWrapper} from "../../src/CowEvcClosePositionWrapper.sol";
-import {CowSettlement, CowAuthentication} from "../../src/vendor/CowWrapper.sol";
+import {CowSettlement} from "../../src/vendor/CowWrapper.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
 import {MockERC20, MockVault, MockBorrowVault} from "./mocks/MockERC20AndVaults.sol";
@@ -13,7 +13,7 @@ import {MockERC20, MockVault, MockBorrowVault} from "./mocks/MockERC20AndVaults.
 /// @notice Comprehensive unit tests focusing on isolated functionality testing with mocks
 contract CowEvcClosePositionWrapperUnitTest is Test {
     CowEvcClosePositionWrapper public wrapper;
-    MockEVC public mockEVC;
+    MockEVC public mockEvc;
     MockCowSettlement public mockSettlement;
     MockCowAuthentication public mockAuth;
     MockERC20 public mockAsset;
@@ -39,18 +39,18 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     function setUp() public {
         mockAuth = new MockCowAuthentication();
         mockSettlement = new MockCowSettlement(address(mockAuth));
-        mockEVC = new MockEVC();
+        mockEvc = new MockEVC();
         mockAsset = new MockERC20("Mock Asset", "MOCK");
         mockCollateralVault = new MockVault(address(mockAsset), "Mock Collateral", "mCOL");
         mockBorrowVault = new MockBorrowVault(address(mockAsset), "Mock Borrow", "mBOR");
 
-        wrapper = new CowEvcClosePositionWrapper(address(mockEVC), CowSettlement(address(mockSettlement)));
+        wrapper = new CowEvcClosePositionWrapper(address(mockEvc), CowSettlement(address(mockSettlement)));
 
         // Set solver as authenticated
         mockAuth.setSolver(SOLVER, true);
 
         // Set the correct onBehalfOfAccount for evcInternalSettle calls
-        mockEVC.setOnBehalfOf(address(wrapper));
+        mockEvc.setOnBehalfOf(address(wrapper));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -58,7 +58,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function test_Constructor_SetsImmutables() public view {
-        assertEq(address(wrapper.EVC()), address(mockEVC), "EVC not set correctly");
+        assertEq(address(wrapper.EVC()), address(mockEvc), "EVC not set correctly");
         assertEq(address(wrapper.SETTLEMENT()), address(mockSettlement), "SETTLEMENT not set correctly");
         assertEq(address(wrapper.AUTHENTICATOR()), address(mockAuth), "AUTHENTICATOR not set correctly");
         assertEq(wrapper.NONCE_NAMESPACE(), uint256(uint160(address(wrapper))), "NONCE_NAMESPACE incorrect");
@@ -352,7 +352,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         mockBorrowVault.setRepayAmount(1000e18);
 
         // Set the correct onBehalfOfAccount for authentication check
-        mockEVC.setOnBehalfOf(ACCOUNT);
+        mockEvc.setOnBehalfOf(ACCOUNT);
 
         // Call through EVC batch
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
@@ -363,8 +363,8 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             data: abi.encodeCall(wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT))
         });
 
-        vm.prank(address(mockEVC));
-        mockEVC.batch(items);
+        vm.prank(address(mockEvc));
+        mockEvc.batch(items);
 
         // Verify owner's tokens were used for repayment
         assertEq(mockAsset.balanceOf(OWNER), 0, "Owner should have no tokens left");
@@ -383,7 +383,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         mockBorrowVault.setRepayAmount(1000e18); // Only 1000 actually needed
 
         // Set the correct onBehalfOfAccount for authentication check
-        mockEVC.setOnBehalfOf(ACCOUNT);
+        mockEvc.setOnBehalfOf(ACCOUNT);
 
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
         items[0] = IEVC.BatchItem({
@@ -393,8 +393,8 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             data: abi.encodeCall(wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT))
         });
 
-        vm.prank(address(mockEVC));
-        mockEVC.batch(items);
+        vm.prank(address(mockEvc));
+        mockEvc.batch(items);
 
         // Owner should have 100 tokens left (1100 - 1000 repaid)
         assertEq(mockAsset.balanceOf(OWNER), 100e18, "Owner should have dust remaining");
@@ -412,7 +412,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         mockBorrowVault.setRepayAmount(500e18); // Will only repay what's available
 
         // Set the correct onBehalfOfAccount for authentication check
-        mockEVC.setOnBehalfOf(ACCOUNT);
+        mockEvc.setOnBehalfOf(ACCOUNT);
 
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
         items[0] = IEVC.BatchItem({
@@ -422,8 +422,8 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             data: abi.encodeCall(wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT))
         });
 
-        vm.prank(address(mockEVC));
-        mockEVC.batch(items);
+        vm.prank(address(mockEvc));
+        mockEvc.batch(items);
 
         // Should repay partial amount (500e18)
         assertEq(mockAsset.balanceOf(OWNER), 0, "Owner should have no tokens left");
@@ -440,7 +440,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         mockBorrowVault.setRepayAmount(1000e18);
 
         // Set the correct onBehalfOfAccount for authentication check
-        mockEVC.setOnBehalfOf(ACCOUNT);
+        mockEvc.setOnBehalfOf(ACCOUNT);
 
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
         items[0] = IEVC.BatchItem({
@@ -450,8 +450,8 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             data: abi.encodeCall(wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT))
         });
 
-        vm.prank(address(mockEVC));
-        mockEVC.batch(items);
+        vm.prank(address(mockEvc));
+        mockEvc.batch(items);
 
         // Dust should remain with owner (100e18)
         assertEq(mockAsset.balanceOf(OWNER), 100e18, "Owner should have dust remaining");
@@ -483,9 +483,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             )
         });
 
-        vm.prank(address(mockEVC));
+        vm.prank(address(mockEvc));
         vm.expectRevert(abi.encodeWithSelector(CowEvcClosePositionWrapper.Unauthorized.selector, wrongAccount));
-        mockEVC.batch(items);
+        mockEvc.batch(items);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -532,9 +532,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         mockSettlement.setSuccessfulSettle(true);
 
         // Set incorrect onBehalfOfAccount (not address(wrapper))
-        mockEVC.setOnBehalfOf(address(0x9999));
+        mockEvc.setOnBehalfOf(address(0x9999));
 
-        vm.prank(address(mockEVC));
+        vm.prank(address(mockEvc));
         vm.expectRevert(abi.encodeWithSelector(CowEvcClosePositionWrapper.Unauthorized.selector, address(0x9999)));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
@@ -569,7 +569,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
 
         mockSettlement.setSuccessfulSettle(true);
 
-        vm.prank(address(mockEVC));
+        vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
 
@@ -620,7 +620,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
 
         mockSettlement.setSuccessfulSettle(true);
 
-        vm.prank(address(mockEVC));
+        vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
 
         // Verify transfer occurred from account to owner
@@ -667,7 +667,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
                 mockBorrowVault.asset()
             )
         );
-        vm.prank(address(mockEVC));
+        vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
 
@@ -721,7 +721,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
 
         mockSettlement.setSuccessfulSettle(true);
 
-        vm.prank(address(mockEVC));
+        vm.prank(address(mockEvc));
         vm.expectRevert(
             abi.encodeWithSelector(
                 CowEvcClosePositionWrapper.SubaccountMustBeControlledByOwner.selector, invalidSubaccount, OWNER
@@ -793,7 +793,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         bytes memory wrapperData = abi.encode(params, signature);
         wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
-        mockEVC.setSuccessfulBatch(true);
+        mockEvc.setSuccessfulBatch(true);
 
         vm.prank(SOLVER);
         wrapper.wrappedSettle(settleData, wrapperData);
@@ -832,8 +832,8 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         vm.prank(OWNER);
         wrapper.setPreApprovedHash(hash, true);
 
-        mockEVC.setOperator(OWNER, address(wrapper), true);
-        mockEVC.setOperator(ACCOUNT, address(wrapper), true);
+        mockEvc.setOperator(OWNER, address(wrapper), true);
+        mockEvc.setOperator(ACCOUNT, address(wrapper), true);
 
         address[] memory tokens = new address[](2);
         tokens[0] = mockBorrowVault.asset();
@@ -858,7 +858,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
-        mockEVC.setSuccessfulBatch(true);
+        mockEvc.setSuccessfulBatch(true);
 
         vm.prank(SOLVER);
         wrapper.wrappedSettle(settleData, wrapperData);
@@ -885,8 +885,8 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         vm.prank(OWNER);
         wrapper.setPreApprovedHash(hash, true);
 
-        mockEVC.setOperator(OWNER, address(wrapper), true);
-        mockEVC.setOperator(ACCOUNT, address(wrapper), true);
+        mockEvc.setOperator(OWNER, address(wrapper), true);
+        mockEvc.setOperator(ACCOUNT, address(wrapper), true);
 
         bytes memory settleData = abi.encodeCall(
             CowSettlement.settle,

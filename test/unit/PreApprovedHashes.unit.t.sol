@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8;
 
-import "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
 
 /// @title Unit tests for PreApprovedHashes

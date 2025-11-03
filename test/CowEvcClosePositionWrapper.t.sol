@@ -142,7 +142,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
         uint256 borrowAmount = 1e18; // Borrow 1 WETH
-        uint256 collateralAmount = SUSDS_MARGIN + 999e18; // The original margin plus the amount we would have if we sold the borrow amount into ESUSDS
+        uint256 collateralAmount = SUSDS_MARGIN + 2495e18; // The original margin plus the amount we would have if we sold the borrow amount into ESUSDS
 
         // First, set up a leveraged position
         _setupLeveragedPosition(borrowAmount, collateralAmount);
@@ -152,7 +152,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 debtBefore = IEVault(EWETH).debtOf(account);
         assertEq(debtBefore, borrowAmount, "Position should have debt");
 
-        uint256 sellAmount = 1002 ether; // Sell up to 1002 ESUSDS (buffer)
+        uint256 sellAmount = 2510 ether; // Sell up to 2510 ESUSDS (buffer)
         uint256 buyAmount = 1.001 ether; // Buy exactly 1.001 WETH to repay debt (a small amount will be returned to user)
 
         // Get settlement data
@@ -233,6 +233,18 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         targets[0] = address(closePositionWrapper);
         datas[0] = abi.encodeCall(closePositionWrapper.wrappedSettle, (settleData, wrapperData));
 
+        // Expect the event to be emitted
+        vm.expectEmit(true, true, true, true);
+        emit CowEvcClosePositionWrapper.CowEvcPositionClosed(
+            params.owner,
+            params.account,
+            params.borrowVault,
+            params.collateralVault,
+            params.collateralAmount,
+            params.repayAmount,
+            params.kind
+        );
+
         solver.runBatch(targets, datas);
 
         // Verify the position was closed successfully
@@ -269,12 +281,12 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         closePositionWrapper.wrappedSettle(settleData, wrapperData);
     }
 
-    /// @notice Test closing position with partial repayment
+    /// @notice Test shrinking the position with partial repayment
     function test_ClosePositionWrapper_PartialRepay() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
         uint256 borrowAmount = 2e18; // Borrow 2 WETH
-        uint256 collateralAmount = SUSDS_MARGIN + 3998e18; // Sufficient collateral for 2 WETH borrow (double the margin + borrow amount equivalent)
+        uint256 collateralAmount = SUSDS_MARGIN + 4090e18; // Sufficient collateral for 2 WETH borrow (double the margin + borrow amount equivalent)
 
         // First, set up a leveraged position
         _setupLeveragedPosition(borrowAmount, collateralAmount);
@@ -282,7 +294,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         vm.startPrank(user);
 
         // Close only half the position
-        uint256 sellAmount = 1000e18; // Sell exactly 1000 ESUSDS (buffer)
+        uint256 sellAmount = 2500e18; // Sell exactly 2500 ESUSDS (buffer)
         uint256 buyAmount = 0.98e18; // Buy at least 0.98 WETH to repay around half the debt
 
         // Get settlement data
@@ -347,6 +359,18 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         bytes[] memory datas = new bytes[](1);
         targets[0] = address(closePositionWrapper);
         datas[0] = abi.encodeCall(closePositionWrapper.wrappedSettle, (settleData, wrapperData));
+
+        // Expect the event to be emitted
+        vm.expectEmit(true, true, true, true);
+        emit CowEvcClosePositionWrapper.CowEvcPositionClosed(
+            params.owner,
+            params.account,
+            params.borrowVault,
+            params.collateralVault,
+            params.collateralAmount,
+            params.repayAmount,
+            params.kind
+        );
 
         solver.runBatch(targets, datas);
 
@@ -420,14 +444,14 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
         uint256 borrowAmount = 1e18; // Borrow 1 WETH
-        uint256 collateralAmount = SUSDS_MARGIN + 999e18;
+        uint256 collateralAmount = SUSDS_MARGIN + 2495e18;
 
         // First, set up a leveraged position
         _setupLeveragedPosition(borrowAmount, collateralAmount);
 
         address account = address(uint160(user) ^ uint8(0x01));
 
-        uint256 sellAmount = 1002 ether;
+        uint256 sellAmount = 2510 ether;
         uint256 buyAmount = 1.001 ether;
 
         // Prepare ClosePositionParams
@@ -497,6 +521,18 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         bytes[] memory datas = new bytes[](1);
         targets[0] = address(closePositionWrapper);
         datas[0] = abi.encodeCall(closePositionWrapper.wrappedSettle, (settleData, wrapperData));
+
+        // Expect the event to be emitted
+        vm.expectEmit(true, true, true, true);
+        emit CowEvcClosePositionWrapper.CowEvcPositionClosed(
+            params.owner,
+            params.account,
+            params.borrowVault,
+            params.collateralVault,
+            params.collateralAmount,
+            params.repayAmount,
+            params.kind
+        );
 
         solver.runBatch(targets, datas);
 

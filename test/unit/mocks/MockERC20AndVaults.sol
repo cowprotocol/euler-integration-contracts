@@ -52,14 +52,14 @@ contract MockERC20 is IERC20 {
     /// @title MockVault
     /// @notice Mock ERC4626 vault for unit testing
     contract MockVault is IERC4626, MockERC20 {
-        address public immutable assetAddress;
+        address public immutable ASSET_ADDRESS;
 
         constructor(address _asset, string memory _name, string memory _symbol) MockERC20(_name, _symbol) {
-            assetAddress = _asset;
+            ASSET_ADDRESS = _asset;
         }
 
         function asset() external view override returns (address) {
-            return assetAddress;
+            return ASSET_ADDRESS;
         }
 
         function totalAssets() external view override returns (uint256) {
@@ -171,7 +171,7 @@ contract MockERC20 is IERC20 {
             debts[receiver] -= amount;
 
             // Transfer tokens from sender
-            MockERC20(assetAddress).transferFrom(msg.sender, address(this), amount);
+            require(MockERC20(ASSET_ADDRESS).transferFrom(msg.sender, address(this), amount), "transfer failed");
 
             return amount;
         }
@@ -182,7 +182,7 @@ contract MockERC20 is IERC20 {
 
         function borrow(uint256 amount, address receiver) external override returns (uint256) {
             debts[msg.sender] += amount;
-            MockERC20(assetAddress).mint(receiver, amount);
+            MockERC20(ASSET_ADDRESS).mint(receiver, amount);
             return amount;
         }
 

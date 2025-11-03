@@ -20,15 +20,15 @@ contract MockCowAuthentication is CowAuthentication {
 /// @title MockCowSettlement
 /// @notice Mock implementation of CoW Protocol settlement contract for unit testing
 contract MockCowSettlement is CowSettlement {
-    CowAuthentication public immutable auth;
+    CowAuthentication public immutable AUTH;
     bool public shouldSucceed = true;
 
     constructor(address _auth) {
-        auth = CowAuthentication(_auth);
+        AUTH = CowAuthentication(_auth);
     }
 
     function authenticator() external view override returns (CowAuthentication) {
-        return auth;
+        return AUTH;
     }
 
     function vaultRelayer() external pure override returns (address) {

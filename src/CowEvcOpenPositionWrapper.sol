@@ -51,6 +51,16 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that the pre-approved hash is no longer able to be executed because the block timestamp is too old
     error OperationDeadlineExceeded(uint256 validToTimestamp, uint256 currentTimestamp);
 
+    /// @dev Emitted when a position is opened via this wrapper
+    event CowEvcPositionOpened(
+        address indexed owner,
+        address account,
+        address indexed collateralVault,
+        address indexed borrowVault,
+        uint256 collateralAmount,
+        uint256 borrowAmount
+    );
+
     constructor(address _evc, CowSettlement _settlement) CowWrapper(_settlement) {
         EVC = IEVC(_evc);
         NONCE_NAMESPACE = uint256(uint160(address(this)));
@@ -215,6 +225,15 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
 
         // Execute all items in a single batch
         EVC.batch(items);
+
+        emit CowEvcPositionOpened(
+            params.owner,
+            params.account,
+            params.collateralVault,
+            params.borrowVault,
+            params.collateralAmount,
+            params.borrowAmount
+        );
     }
 
     function getSignedCalldata(OpenPositionParams memory params) external view returns (bytes memory) {
