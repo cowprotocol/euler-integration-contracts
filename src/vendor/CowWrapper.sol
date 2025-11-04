@@ -4,7 +4,7 @@ pragma abicoder v2;
 
 /// @title CoW Protocol Authentication Interface
 /// @author CoW DAO developers
-interface CowAuthentication {
+interface ICowAuthentication {
     /// @dev determines whether the provided address is an authenticated solver.
     /// @param prospectiveSolver the address of prospective solver.
     /// @return true when prospectiveSolver is an authenticated solver, otherwise false.
@@ -14,7 +14,7 @@ interface CowAuthentication {
 /// @title CoW Protocol Settlement Interface
 /// @notice Minimal interface for CoW Protocol's settlement contract
 /// @dev Used for type-safe calls to the settlement contract's settle function
-interface CowSettlement {
+interface ICowSettlement {
     /// @notice Trade data structure matching GPv2Settlement
     struct CowTradeData {
         uint256 sellTokenIndex;
