@@ -45,26 +45,9 @@ contract MockSettlement {
 contract TestWrapper is CowWrapper {
     string public constant name = "Test Wrapper";
 
-    // Track _wrap calls
-    struct WrapCall {
-        bytes settleData;
-        bytes wrapperData;
-    }
-
-    WrapCall[] public wrapCalls;
-
     constructor(CowSettlement settlement_) CowWrapper(settlement_) {}
 
-    function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
-        internal
-        override
-    {
-        // Record the wrap call
-        WrapCall storage call_ = wrapCalls.push();
-        call_.settleData = settleData;
-        call_.wrapperData = wrapperData;
-
-        // Call internal settle
+    function _wrap(bytes calldata settleData, bytes calldata, bytes calldata remainingWrapperData) internal override {
         _internalSettle(settleData, remainingWrapperData);
     }
 
