@@ -138,7 +138,6 @@ contract MockERC20 is IERC20 {
     contract MockBorrowVault is MockVault, IBorrowing {
         mapping(address => uint256) public debts;
         uint256 public repayAmount;
-        bool public repayAllWasCalled;
 
         constructor(address _asset, string memory _name, string memory _symbol) MockVault(_asset, _name, _symbol) {}
 
@@ -160,7 +159,6 @@ contract MockERC20 is IERC20 {
 
         function repay(uint256 amount, address receiver) external override returns (uint256) {
             if (amount == type(uint256).max) {
-                repayAllWasCalled = true;
                 amount = debts[receiver];
             }
 
@@ -174,10 +172,6 @@ contract MockERC20 is IERC20 {
             require(MockERC20(ASSET_ADDRESS).transferFrom(msg.sender, address(this), amount), "transfer failed");
 
             return amount;
-        }
-
-        function repayAllCalled() external view returns (bool) {
-            return repayAllWasCalled;
         }
 
         function borrow(uint256 amount, address receiver) external override returns (uint256) {

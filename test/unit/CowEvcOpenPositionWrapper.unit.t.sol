@@ -26,7 +26,49 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     event PreApprovedHash(address indexed owner, bytes32 indexed hash, bool approved);
     event PreApprovedHashConsumed(address indexed owner, bytes32 indexed hash);
 
-    // Helper function to decode signed calldata
+    function setUp() public {
+        mockAuth = new MockCowAuthentication();
+        mockSettlement = new MockCowSettlement(address(mockAuth));
+        mockEvc = new MockEVC();
+
+        wrapper = new CowEvcOpenPositionWrapper(address(mockEvc), CowSettlement(address(mockSettlement)));
+
+        mockAuth.setSolver(SOLVER, true);
+        mockEvc.setOnBehalfOf(address(wrapper));
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            HELPER FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    function _defaultParams() internal view returns (CowEvcOpenPositionWrapper.OpenPositionParams memory) {
+        return CowEvcOpenPositionWrapper.OpenPositionParams({
+            owner: OWNER,
+            account: ACCOUNT,
+            deadline: block.timestamp + 1 hours,
+            collateralVault: COLLATERAL_VAULT,
+            borrowVault: BORROW_VAULT,
+            collateralAmount: 1000e18,
+            borrowAmount: 500e18
+        });
+    }
+
+    function _emptySettleData() internal pure returns (bytes memory) {
+        return abi.encodeCall(
+            CowSettlement.settle,
+            (
+                new address[](0),
+                new uint256[](0),
+                new CowSettlement.CowTradeData[](0),
+                [
+                    new CowSettlement.CowInteractionData[](0),
+                    new CowSettlement.CowInteractionData[](0),
+                    new CowSettlement.CowInteractionData[](0)
+                ]
+            )
+        );
+    }
+
     function _decodeSignedCalldata(bytes memory signedCalldata) internal pure returns (IEVC.BatchItem[] memory) {
         bytes memory encodedItems = new bytes(signedCalldata.length - 4);
         for (uint256 i = 4; i < signedCalldata.length; i++) {
@@ -35,18 +77,16 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         return abi.decode(encodedItems, (IEVC.BatchItem[]));
     }
 
-    function setUp() public {
-        mockAuth = new MockCowAuthentication();
-        mockSettlement = new MockCowSettlement(address(mockAuth));
-        mockEvc = new MockEVC();
-
-        wrapper = new CowEvcOpenPositionWrapper(address(mockEvc), CowSettlement(address(mockSettlement)));
-
-        // Set solver as authenticated
-        mockAuth.setSolver(SOLVER, true);
-
-        // Set the correct onBehalfOfAccount for evcInternalSettle calls
-        mockEvc.setOnBehalfOf(address(wrapper));
+    function _assertBatchItemStructure(
+        IEVC.BatchItem memory item,
+        address expectedTarget,
+        address expectedOnBehalf,
+        bytes memory expectedData,
+        string memory errorMsg
+    ) internal pure {
+        assertEq(item.targetContract, expectedTarget, string.concat(errorMsg, ": target"));
+        assertEq(item.onBehalfOfAccount, expectedOnBehalf, string.concat(errorMsg, ": onBehalf"));
+        assertEq(item.data, expectedData, string.concat(errorMsg, ": data"));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -82,16 +122,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function test_ParseWrapperData_EmptySignature() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 1000e18,
-            borrowAmount: 500e18
-        });
-
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _defaultParams();
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         bytes memory remaining = wrapper.parseWrapperData(wrapperData);
 
@@ -99,16 +130,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     }
 
     function test_ParseWrapperData_WithSignature() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 1000e18,
-            borrowAmount: 500e18
-        });
-
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _defaultParams();
         bytes memory signature = new bytes(65);
         bytes memory wrapperData = abi.encode(params, signature);
         bytes memory remaining = wrapper.parseWrapperData(wrapperData);
@@ -117,16 +139,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     }
 
     function test_ParseWrapperData_WithExtraData() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 1000e18,
-            borrowAmount: 500e18
-        });
-
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _defaultParams();
         bytes memory signature = new bytes(0);
         bytes memory wrapperData = abi.encode(params, signature);
         bytes memory extraData = hex"deadbeef";
@@ -143,16 +156,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function test_GetApprovalHash_Consistency() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 1000e18,
-            borrowAmount: 500e18
-        });
-
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _defaultParams();
         bytes32 hash1 = wrapper.getApprovalHash(params);
         bytes32 hash2 = wrapper.getApprovalHash(params);
 
@@ -160,37 +164,13 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     }
 
     function test_GetApprovalHash_DifferentForDifferentParams() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params1 = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 1000e18,
-            borrowAmount: 500e18
-        });
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params1 = _defaultParams();
 
-        // same as params1 except owner field
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params2 = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: ACCOUNT,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 1000e18,
-            borrowAmount: 500e18
-        });
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params2 = _defaultParams();
+        params2.owner = ACCOUNT; // Change owner
 
-        // same as params1 except borrowAmount (the last) field
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params3 = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 1000e18,
-            borrowAmount: 600e18
-        });
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params3 = _defaultParams();
+        params3.borrowAmount = 600e18; // Change borrowAmount
 
         bytes32 hash1 = wrapper.getApprovalHash(params1);
         bytes32 hash2 = wrapper.getApprovalHash(params2);
@@ -201,15 +181,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     }
 
     function test_GetApprovalHash_MatchesEIP712() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 1000e18,
-            borrowAmount: 500e18
-        });
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _defaultParams();
 
         bytes32 structHash = keccak256(
             abi.encode(
@@ -234,100 +206,78 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function test_GetSignedCalldata_ReturnsCorrectStructure() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 1000e18,
-            borrowAmount: 500e18
-        });
-
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _defaultParams();
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         assertEq(items.length, 4, "Should have 4 batch items");
+
+        // Verify each batch item using vm.expectCall pattern
+        assertEq(items[0].targetContract, address(mockEvc));
+        assertEq(items[0].data, abi.encodeCall(IEVC.enableCollateral, (ACCOUNT, COLLATERAL_VAULT)));
+
+        assertEq(items[1].targetContract, address(mockEvc));
+        assertEq(items[1].data, abi.encodeCall(IEVC.enableController, (ACCOUNT, BORROW_VAULT)));
+
+        assertEq(items[2].targetContract, COLLATERAL_VAULT);
+        assertEq(items[2].onBehalfOfAccount, OWNER);
+        assertEq(items[2].data, abi.encodeCall(IERC4626.deposit, (1000e18, ACCOUNT)));
+
+        assertEq(items[3].targetContract, BORROW_VAULT);
+        assertEq(items[3].onBehalfOfAccount, ACCOUNT);
+        assertEq(items[3].data, abi.encodeCall(IBorrowing.borrow, (500e18, OWNER)));
     }
 
     function test_GetSignedCalldata_EnableCollateralItem() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 1000e18,
-            borrowAmount: 500e18
-        });
-
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _defaultParams();
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
-        assertEq(items[0].targetContract, address(mockEvc), "First item should target EVC");
-        assertEq(
-            items[0].data,
+        _assertBatchItemStructure(
+            items[0],
+            address(mockEvc),
+            address(0),
             abi.encodeCall(IEVC.enableCollateral, (ACCOUNT, COLLATERAL_VAULT)),
-            "Should enable collateral"
+            "EnableCollateral"
         );
     }
 
     function test_GetSignedCalldata_EnableControllerItem() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 1000e18,
-            borrowAmount: 500e18
-        });
-
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _defaultParams();
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
-        assertEq(items[1].targetContract, address(mockEvc), "Second item should target EVC");
-        assertEq(
-            items[1].data, abi.encodeCall(IEVC.enableController, (ACCOUNT, BORROW_VAULT)), "Should enable controller"
+        _assertBatchItemStructure(
+            items[1],
+            address(mockEvc),
+            address(0),
+            abi.encodeCall(IEVC.enableController, (ACCOUNT, BORROW_VAULT)),
+            "EnableController"
         );
     }
 
     function test_GetSignedCalldata_DepositItem() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 1000e18,
-            borrowAmount: 500e18
-        });
-
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _defaultParams();
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
-        assertEq(items[2].targetContract, COLLATERAL_VAULT, "Third item should target collateral vault");
-        assertEq(items[2].onBehalfOfAccount, OWNER, "Should deposit on behalf of owner");
-        assertEq(items[2].data, abi.encodeCall(IERC4626.deposit, (1000e18, ACCOUNT)), "Should deposit collateral");
+        _assertBatchItemStructure(
+            items[2],
+            COLLATERAL_VAULT,
+            OWNER,
+            abi.encodeCall(IERC4626.deposit, (1000e18, ACCOUNT)),
+            "Deposit"
+        );
     }
 
     function test_GetSignedCalldata_BorrowItem() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 1000e18,
-            borrowAmount: 500e18
-        });
-
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _defaultParams();
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
-        assertEq(items[3].targetContract, BORROW_VAULT, "Fourth item should target borrow vault");
-        assertEq(items[3].onBehalfOfAccount, ACCOUNT, "Should borrow on behalf of account");
-        assertEq(items[3].data, abi.encodeCall(IBorrowing.borrow, (500e18, OWNER)), "Should borrow to owner");
+        _assertBatchItemStructure(
+            items[3], BORROW_VAULT, ACCOUNT, abi.encodeCall(IBorrowing.borrow, (500e18, OWNER)), "Borrow"
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -343,24 +293,10 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     }
 
     function test_EvcInternalSettle_RequiresCorrectOnBehalfOfAccount() public {
-        bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
-            (
-                new address[](0),
-                new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
-                [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
-                ]
-            )
-        );
+        bytes memory settleData = _emptySettleData();
         bytes memory remainingWrapperData = "";
 
         mockSettlement.setSuccessfulSettle(true);
-
-        // Set incorrect onBehalfOfAccount (not address(wrapper))
         mockEvc.setOnBehalfOf(address(0x9999));
 
         vm.prank(address(mockEvc));
@@ -369,19 +305,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     }
 
     function test_EvcInternalSettle_CanBeCalledByEVC() public {
-        bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
-            (
-                new address[](0),
-                new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
-                [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
-                ]
-            )
-        );
+        bytes memory settleData = _emptySettleData();
         bytes memory remainingWrapperData = "";
 
         mockSettlement.setSuccessfulSettle(true);
@@ -403,30 +327,9 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     }
 
     function test_WrappedSettle_WithPermitSignature() public {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 1000e18,
-            borrowAmount: 500e18
-        });
-
-        bytes memory signature = new bytes(65); // Valid ECDSA signature length
-        bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
-            (
-                new address[](0),
-                new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
-                [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
-                ]
-            )
-        );
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _defaultParams();
+        bytes memory signature = new bytes(65);
+        bytes memory settleData = _emptySettleData();
         bytes memory wrapperData = abi.encode(params, signature);
         wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
@@ -437,38 +340,16 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     }
 
     function test_WrappedSettle_WithPreApprovedHash() public {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 1000e18,
-            borrowAmount: 500e18
-        });
-
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _defaultParams();
         bytes32 hash = wrapper.getApprovalHash(params);
 
         vm.prank(OWNER);
         wrapper.setPreApprovedHash(hash, true);
 
-        // Make user an operator
         mockEvc.setOperator(OWNER, address(wrapper), true);
         mockEvc.setOperator(ACCOUNT, address(wrapper), true);
 
-        bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
-            (
-                new address[](0),
-                new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
-                [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
-                ]
-            )
-        );
+        bytes memory settleData = _emptySettleData();
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
@@ -477,20 +358,12 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         vm.prank(SOLVER);
         wrapper.wrappedSettle(settleData, wrapperData);
 
-        // Verify hash was consumed
         assertFalse(wrapper.isHashPreApproved(OWNER, hash), "Hash should be consumed");
     }
 
     function test_WrappedSettle_PreApprovedHashRevertsIfDeadlineExceeded() public {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp - 1, // Deadline in the past
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 1000e18,
-            borrowAmount: 500e18
-        });
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _defaultParams();
+        params.deadline = block.timestamp - 1;
 
         bytes32 hash = wrapper.getApprovalHash(params);
 
@@ -500,19 +373,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         mockEvc.setOperator(OWNER, address(wrapper), true);
         mockEvc.setOperator(ACCOUNT, address(wrapper), true);
 
-        bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
-            (
-                new address[](0),
-                new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
-                [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
-                ]
-            )
-        );
+        bytes memory settleData = _emptySettleData();
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
@@ -530,33 +391,18 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function test_ZeroCollateralAmount() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 0, // Zero collateral
-            borrowAmount: 500e18
-        });
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _defaultParams();
+        params.collateralAmount = 0;
 
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
-        // Should still have deposit call, just with 0 amount
         assertEq(items[2].data, abi.encodeCall(IERC4626.deposit, (0, ACCOUNT)), "Should deposit 0");
     }
 
     function test_MaxBorrowAmount() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 1000e18,
-            borrowAmount: type(uint256).max
-        });
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _defaultParams();
+        params.borrowAmount = type(uint256).max;
 
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
@@ -565,20 +411,12 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     }
 
     function test_SameOwnerAndAccount() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = CowEvcOpenPositionWrapper.OpenPositionParams({
-            owner: OWNER,
-            account: OWNER, // Same as owner
-            deadline: block.timestamp + 1 hours,
-            collateralVault: COLLATERAL_VAULT,
-            borrowVault: BORROW_VAULT,
-            collateralAmount: 1000e18,
-            borrowAmount: 500e18
-        });
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _defaultParams();
+        params.account = OWNER;
 
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
-        // Should still work, but with same address
         assertEq(items[2].onBehalfOfAccount, OWNER, "Deposit should be on behalf of owner");
         assertEq(items[3].onBehalfOfAccount, OWNER, "Borrow should be on behalf of account");
     }
