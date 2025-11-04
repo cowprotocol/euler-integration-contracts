@@ -133,21 +133,21 @@ abstract contract CowWrapper is ICowWrapper {
 
     /// @notice Internal function containing the wrapper's custom logic
     /// @dev Must be implemented by concrete wrapper contracts. Should execute custom logic
-    ///      then eventually call _internalSettle() to continue the settlement chain.
+    ///      then eventually call _next() to continue the wrapped settlement chain.
     /// @param settleData ABI-encoded call to ICowSettlement.settle()
     /// @param wrapperData The wrapper data which should be consumed by this wrapper
-    /// @param remainingWrapperData Additional wrapper data. It is the reminder bytes resulting from consuming the current's wrapper data from the original `wrapperData` in the `wrappedSettle` call. This should be passed unaltered to `_internalSettle` that will call the settlement function if this remainder is empty, or delegate the settlement to the next wrapper
+    /// @param remainingWrapperData Additional wrapper data. It is the reminder bytes resulting from consuming the current's wrapper data from the original `wrapperData` in the `wrappedSettle` call. This should be passed unaltered to `_next` that will call the settlement function if this remainder is empty, or delegate the settlement to the next wrapper
     function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
         internal
         virtual;
 
-    /// @notice Continues the settlement chain by calling the next wrapper or settlement contract
+    /// @notice Continues the wrapped settlement chain by calling the next wrapper or settlement contract
     /// @dev Extracts the next target address from wrapperData and either:
     ///      - Calls ICowSettlement.settle() directly if no more wrappers remain, or
     ///      - Calls the next CowWrapper.wrappedSettle() to continue the chain
     /// @param settleData ABI-encoded call to ICowSettlement.settle()
     /// @param remainingWrapperData Remaining wrapper data starting with the next target address (20 bytes)
-    function _internalSettle(bytes calldata settleData, bytes calldata remainingWrapperData) internal {
+    function _next(bytes calldata settleData, bytes calldata remainingWrapperData) internal {
         if (remainingWrapperData.length == 0) {
             // No more wrapper data - we're calling the final settlement contract
             // Verify the settle data has the correct function selector

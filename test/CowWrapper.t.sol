@@ -46,11 +46,7 @@ contract TestWrapper is CowWrapper {
     constructor(ICowSettlement settlement_) CowWrapper(settlement_) {}
 
     function _wrap(bytes calldata settleData, bytes calldata, bytes calldata remainingWrapperData) internal override {
-        _internalSettle(settleData, remainingWrapperData);
-    }
-
-    function exposedInternalSettle(bytes calldata settleData, bytes calldata wrapperData) external {
-        _internalSettle(settleData, wrapperData);
+        _next(settleData, remainingWrapperData);
     }
 }
 
@@ -102,7 +98,7 @@ contract CowWrapperTest is Test {
         );
     }
 
-    function test_internalSettle_CallsWrapperAndThenNextSettlement() public {
+    function test_next_CallsWrapperAndThenNextSettlement() public {
         bytes memory settleData = abi.encodePacked(_createSimpleSettleData(1), hex"123456");
         bytes memory secondCallWrapperData = hex"0003098765";
         bytes memory wrapperData = abi.encodePacked(hex"00021234", address(testWrapper), secondCallWrapperData);
