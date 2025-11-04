@@ -16,7 +16,7 @@ interface ICowAuthentication {
 /// @dev Used for type-safe calls to the settlement contract's settle function
 interface ICowSettlement {
     /// @notice Trade data structure matching GPv2Settlement
-    struct CowTradeData {
+    struct Trade {
         uint256 sellTokenIndex;
         uint256 buyTokenIndex;
         address receiver;
