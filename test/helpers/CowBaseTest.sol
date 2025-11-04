@@ -24,7 +24,8 @@ import {console} from "forge-std/Test.sol";
 contract Solver {
     function runBatch(address[] memory targets, bytes[] memory datas) external {
         for (uint256 i = 0; i < targets.length; i++) {
-            targets[i].call(datas[i]);
+            (bool success,) = targets[i].call(datas[i]);
+            require(success, "Solver: call failed");
         }
     }
 }
@@ -137,17 +138,13 @@ contract CowBaseTest is EVaultTestBase {
 
     function getSwapInteraction(uint256 sellAmount) public view returns (GPv2Interaction.Data memory) {
         return GPv2Interaction.Data({
-            target: address(milkSwap),
-            value: 0,
-            callData: abi.encodeCall(MilkSwap.swap, (WETH, SUSDS, sellAmount))
+            target: address(milkSwap), value: 0, callData: abi.encodeCall(MilkSwap.swap, (WETH, SUSDS, sellAmount))
         });
     }
 
     function getDepositInteraction(uint256 buyAmount) public view returns (GPv2Interaction.Data memory) {
         return GPv2Interaction.Data({
-            target: address(SUSDS),
-            value: 0,
-            callData: abi.encodeCall(IERC20.transfer, (eSUSDS, buyAmount))
+            target: address(SUSDS), value: 0, callData: abi.encodeCall(IERC20.transfer, (eSUSDS, buyAmount))
         });
     }
 
