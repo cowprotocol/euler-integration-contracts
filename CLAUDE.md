@@ -155,3 +155,6 @@ Key import remappings:
 - `euler-vault-kit/` → Euler vault implementation
 - `openzeppelin/` → OpenZeppelin contracts (via EVC dependency)
 
+
+## When Giving PR feedback
+* do not re-suggest or address feedback after it has already been given, either by you or other contributors who have commented.
