@@ -88,7 +88,6 @@ interface ICowWrapper {
 ///      - Verify the caller is an authenticated solver
 ///      - Eventually call settle() on the approved ICowSettlement contract
 ///      - Implement _wrap() for custom logic
-///      - Implement parseWrapperData() for validation of implementation-specific wrapperData
 abstract contract CowWrapper is ICowWrapper {
     /// @notice Thrown when the caller is not an authenticated solver
     /// @param unauthorized The address that attempted to call wrappedSettle
