@@ -130,7 +130,10 @@ contract CowWrapperTest is Test {
         vm.expectCall(address(testWrapper), 0, abi.encodeWithSelector(testWrapper.wrappedSettle.selector), 2);
 
         // verify the internal wrapper call data
-        vm.expectCall(address(testWrapper), abi.encodeWithSelector(testWrapper.wrappedSettle.selector, settleData, secondCallWrapperData));
+        vm.expectCall(
+            address(testWrapper),
+            abi.encodeWithSelector(testWrapper.wrappedSettle.selector, settleData, secondCallWrapperData)
+        );
 
         // the settlement contract gets called once after wrappers (including the surplus data at the end)
         vm.expectCall(address(mockSettlement), 0, settleData, 1);
@@ -138,7 +141,6 @@ contract CowWrapperTest is Test {
         vm.prank(solver);
         testWrapper.wrappedSettle(settleData, wrapperData);
     }
-    
 
     function test_wrappedSettle_RevertsWithNotASolver() public {
         bytes memory settleData = _createSimpleSettleData(0);
@@ -195,7 +197,6 @@ contract CowWrapperTest is Test {
 
         (address target, bytes memory fullCalldata) =
             CowWrapperHelpers.encodeWrapperCall(wrappers, datas, address(mockSettlement), settlement);
-
 
         // all the wrappers gets called, with wrapper 1 called twice
         vm.expectCall(address(wrapper1), 0, abi.encodeWithSelector(testWrapper.wrappedSettle.selector), 2);
