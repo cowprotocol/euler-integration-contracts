@@ -2,8 +2,8 @@
 pragma solidity ^0.8;
 
 import {Test} from "forge-std/Test.sol";
-import {CowWrapperHelpers} from "../src/vendor/CowWrapperHelpers.sol";
-import {CowWrapper, CowAuthentication, CowSettlement} from "../src/vendor/CowWrapper.sol";
+import {CowWrapperHelpers} from "../src/CowWrapperHelpers.sol";
+import {CowWrapper, ICowAuthentication, ICowSettlement} from "../src/CowWrapper.sol";
 
 contract MockAuthenticator {
     mapping(address => bool) public solvers;
@@ -18,13 +18,13 @@ contract MockAuthenticator {
 }
 
 contract MockSettlement {
-    CowAuthentication private immutable AUTHENTICATOR;
+    ICowAuthentication private immutable AUTHENTICATOR;
 
-    constructor(CowAuthentication authenticator_) {
+    constructor(ICowAuthentication authenticator_) {
         AUTHENTICATOR = authenticator_;
     }
 
-    function authenticator() external view returns (CowAuthentication) {
+    function authenticator() external view returns (ICowAuthentication) {
         return AUTHENTICATOR;
     }
 }
@@ -33,7 +33,7 @@ contract MockWrapper is CowWrapper {
     string public constant name = "Mock Wrapper";
     uint256 public consumeBytes;
 
-    constructor(CowSettlement settlement_, uint256 consumeBytes_) CowWrapper(settlement_) {
+    constructor(ICowSettlement settlement_, uint256 consumeBytes_) CowWrapper(settlement_) {
         consumeBytes = consumeBytes_;
     }
 
@@ -53,7 +53,7 @@ contract MockWrapper is CowWrapper {
 
 contract BrokenWrapper is CowWrapper {
     string public constant name = "Broken Wrapper";
-    constructor(CowSettlement settlement_) CowWrapper(settlement_) {}
+    constructor(ICowSettlement settlement_) CowWrapper(settlement_) {}
 
     function _wrap(bytes calldata, bytes calldata, bytes calldata) internal override {
         // Not used in these tests
@@ -78,15 +78,15 @@ contract CowWrapperHelpersTest is Test {
     function setUp() public {
         wrapperAuth = new MockAuthenticator();
         solverAuth = new MockAuthenticator();
-        helpers = new CowWrapperHelpers(CowAuthentication(address(wrapperAuth)), CowAuthentication(address(solverAuth)));
+        helpers = new CowWrapperHelpers(ICowAuthentication(address(wrapperAuth)), ICowAuthentication(address(solverAuth)));
 
-        mockSettlement = new MockSettlement(CowAuthentication(address(wrapperAuth)));
+        mockSettlement = new MockSettlement(ICowAuthentication(address(wrapperAuth)));
 
         // Create mock wrappers
-        wrapper1 = new MockWrapper(CowSettlement(address(mockSettlement)), 4);
-        wrapper2 = new MockWrapper(CowSettlement(address(mockSettlement)), 8);
-        wrapper3 = new MockWrapper(CowSettlement(address(mockSettlement)), 0);
-        brokenWrapper = new BrokenWrapper(CowSettlement(address(mockSettlement)));
+        wrapper1 = new MockWrapper(ICowSettlement(address(mockSettlement)), 4);
+        wrapper2 = new MockWrapper(ICowSettlement(address(mockSettlement)), 8);
+        wrapper3 = new MockWrapper(ICowSettlement(address(mockSettlement)), 0);
+        brokenWrapper = new BrokenWrapper(ICowSettlement(address(mockSettlement)));
 
         // Add wrappers as solvers
         wrapperAuth.addSolver(address(wrapper1));
@@ -247,8 +247,8 @@ contract CowWrapperHelpersTest is Test {
     }
 
     function test_verifyAndBuildWrapperData_RevertsOnSettlementMismatch() public {
-        MockSettlement differentSettlement = new MockSettlement(CowAuthentication(address(wrapperAuth)));
-        MockWrapper differentWrapper = new MockWrapper(CowSettlement(address(differentSettlement)), 4);
+        MockSettlement differentSettlement = new MockSettlement(ICowAuthentication(address(wrapperAuth)));
+        MockWrapper differentWrapper = new MockWrapper(ICowSettlement(address(differentSettlement)), 4);
         wrapperAuth.addSolver(address(differentWrapper));
 
         CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](2);
@@ -273,7 +273,7 @@ contract CowWrapperHelpersTest is Test {
         bytes memory tooLongData = new bytes(65536);
 
         // Create a wrapper that consumes all bytes passed to it
-        MockWrapper largeWrapper = new MockWrapper(CowSettlement(address(mockSettlement)), 65536);
+        MockWrapper largeWrapper = new MockWrapper(ICowSettlement(address(mockSettlement)), 65536);
         wrapperAuth.addSolver(address(largeWrapper));
 
         CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](1);
@@ -288,7 +288,7 @@ contract CowWrapperHelpersTest is Test {
         bytes memory tooLongData = new bytes(65536);
 
         // Create a wrapper that consumes all bytes passed to it
-        MockWrapper largeWrapper = new MockWrapper(CowSettlement(address(mockSettlement)), 65536);
+        MockWrapper largeWrapper = new MockWrapper(ICowSettlement(address(mockSettlement)), 65536);
         wrapperAuth.addSolver(address(largeWrapper));
 
         CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](2);
@@ -304,7 +304,7 @@ contract CowWrapperHelpersTest is Test {
         bytes memory maxLengthData = new bytes(65535);
 
         // Create a wrapper that consumes all bytes
-        MockWrapper largeWrapper = new MockWrapper(CowSettlement(address(mockSettlement)), 65535);
+        MockWrapper largeWrapper = new MockWrapper(ICowSettlement(address(mockSettlement)), 65535);
         wrapperAuth.addSolver(address(largeWrapper));
 
         CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](1);
