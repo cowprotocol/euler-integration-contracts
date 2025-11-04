@@ -133,6 +133,14 @@ contract CowWrapperTest is Test {
         testWrapper.wrappedSettle(settleData, hex"");
     }
 
+    function test_wrappedSettle_RevertsOnInvalidSettleSelector() public {
+        bytes memory settleData = abi.encodePacked(bytes4(0xdeadbeef), hex"1234");
+        bytes memory wrapperData = hex"0000"; // Empty wrapper data, goes straight to settlement
+        vm.prank(solver);
+        vm.expectRevert(abi.encodeWithSelector(CowWrapper.InvalidSettleData.selector, settleData));
+        testWrapper.wrappedSettle(settleData, wrapperData);
+    }
+
     function test_integration_ThreeWrappersChained() public {
         // Set up a more sophisticated settlement call to make sure it all gets through as expected.
         CowWrapperHelpers.SettleCall memory settlement;

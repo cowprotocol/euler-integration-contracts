@@ -158,3 +158,4 @@ Key import remappings:
 
 ## When Giving PR feedback
 * do not re-suggest or address feedback after it has already been given, either by you or other contributors who have commented.
+* be careful not to use too many inline comments. If there are already inline comments on the same line that you want to comment on, or if the inline comment is about something that has already been suggested, don't comment.
