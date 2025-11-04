@@ -127,7 +127,8 @@ abstract contract CowWrapper is ICowWrapper {
         uint16 nextWrapperDataLen = uint16(bytes2(wrapperData[0:2]));
 
         // Delegate to the wrapper's custom logic
-        _wrap(settleData, wrapperData[2:2 + nextWrapperDataLen], wrapperData[2 + nextWrapperDataLen:]);
+        uint256 remainingWrapperDataStart = 2 + nextWrapperDataLen;
+        _wrap(settleData, wrapperData[2:remainingWrapperDataStart], wrapperData[remainingWrapperDataStart:]);
     }
 
     /// @notice Internal function containing the wrapper's custom logic
