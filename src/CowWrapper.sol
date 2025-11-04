@@ -136,7 +136,7 @@ abstract contract CowWrapper is ICowWrapper {
     ///      then eventually call _internalSettle() to continue the settlement chain.
     /// @param settleData ABI-encoded call to ICowSettlement.settle()
     /// @param wrapperData The wrapper data which should be consumed by this wrapper
-    /// @param remainingWrapperData Additional wrapper data needed by future wrappers. This should be passed unaltered to _internalSettle
+    /// @param remainingWrapperData Additional wrapper data. It is the reminder bytes resulting from consuming the current's wrapper data from the original `wrapperData` in the `wrappedSettle` call. This should be passed unaltered to `_internalSettle` that will call the settlement function if this remainder is empty, or delegate the settlement to the next wrapper
     function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
         internal
         virtual;
