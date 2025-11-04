@@ -2,7 +2,7 @@
 pragma solidity >=0.7.6 <0.9.0;
 pragma abicoder v2;
 
-/// @title CoW Protocol v2 Authentication Interface
+/// @title CoW Protocol Authentication Interface
 /// @author CoW DAO developers
 interface CowAuthentication {
     /// @dev determines whether the provided address is an authenticated solver.
