@@ -74,8 +74,9 @@ interface ICowWrapper {
     /// @notice Initiates a wrapped settlement call
     /// @dev This is the entry point for wrapped settlements. The wrapper will execute custom logic
     ///      before calling the next wrapper or settlement contract in the chain.
-    /// @param settleData ABI-encoded call to ICowSettlement.settle()
-    /// @param wrapperData Encoded chain of wrapper-specific data followed by addresses of next wrappers/settlement
+    /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data
+    /// @param wrapperData Encoded data for this wrapper and the chain of next wrappers/settlement.
+    ///                    Format: [2-byte len][wrapper-specific-data][next-address]([2-byte len][wrapper-specific-data][next-address]...)
     function wrappedSettle(bytes calldata settleData, bytes calldata wrapperData) external;
 }
 
