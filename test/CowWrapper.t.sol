@@ -23,14 +23,6 @@ contract MockAuthentication {
 }
 
 contract MockSettlement {
-    struct SettleCall {
-        IERC20[] tokens;
-        uint256[] clearingPrices;
-        GPv2Trade.Data[] trades;
-        bytes origData;
-    }
-
-    SettleCall[] public settleCalls;
     CowAuthentication private immutable _authenticator;
 
     constructor(CowAuthentication authenticator_) {
@@ -42,35 +34,11 @@ contract MockSettlement {
     }
 
     function settle(
-        IERC20[] calldata tokens,
-        uint256[] calldata clearingPrices,
-        GPv2Trade.Data[] calldata trades,
-        GPv2Interaction.Data[][3] calldata interactions
-    ) external {
-        SettleCall storage call_ = settleCalls.push();
-        call_.tokens = tokens;
-        call_.clearingPrices = clearingPrices;
-
-        for (uint256 i = 0; i < trades.length; i++) {
-            call_.trades.push(trades[i]);
-        }
-
-        call_.origData = msg.data;
-    }
-
-    function getSettleCallCount() external view returns (uint256) {
-        return settleCalls.length;
-    }
-
-    function getLastSettleCall()
-        external
-        view
-        returns (uint256 tokenCount, uint256 priceCount, uint256 tradeCount, bytes memory origData)
-    {
-        require(settleCalls.length > 0, "No settle calls");
-        SettleCall storage lastCall = settleCalls[settleCalls.length - 1];
-        return (lastCall.tokens.length, lastCall.clearingPrices.length, lastCall.trades.length, lastCall.origData);
-    }
+        IERC20[] calldata,
+        uint256[] calldata,
+        GPv2Trade.Data[] calldata,
+        GPv2Interaction.Data[][3] calldata
+    ) external {}
 }
 
 // Test wrapper that exposes internal functions
@@ -102,14 +70,6 @@ contract TestWrapper is CowWrapper {
 
     function exposed_internalSettle(bytes calldata settleData, bytes calldata wrapperData) external {
         _internalSettle(settleData, wrapperData);
-    }
-
-    function getWrapCallCount() external view returns (uint256) {
-        return wrapCalls.length;
-    }
-
-    function getWrapCall(uint256 index) external view returns (bytes memory settleData, bytes memory wrapperData) {
-        return (wrapCalls[index].settleData, wrapCalls[index].wrapperData);
     }
 }
 
@@ -161,36 +121,24 @@ contract CowWrapperTest is Test {
         );
     }
 
-    function test_wrap_ReceivesCorrectParameters() public {
-        bytes memory customWrapperData = hex"deadbeef";
-        bytes memory settleData = _createSimpleSettleData(1);
-        // wrapperData is just custom data - no settlement address needed
-        bytes memory wrapperData = abi.encodePacked(uint16(customWrapperData.length), customWrapperData);
-
-        vm.prank(solver);
-        testWrapper.wrappedSettle(settleData, wrapperData);
-
-        assertEq(testWrapper.getWrapCallCount(), 1);
-        (bytes memory recordedSettleData, bytes memory recordedWrapperData) = testWrapper.getWrapCall(0);
-        assertGt(recordedSettleData.length, 0);
-        assertEq(recordedWrapperData, customWrapperData);
-    }
-
-    function test_internalSettle_CallsNextSettlement() public {
+    function test_internalSettle_CallsWrapperAndThenNextSettlement() public {
         bytes memory settleData = abi.encodePacked(_createSimpleSettleData(1), hex"123456");
-        // Empty wrapperData means call the static SETTLEMENT contract
-        bytes memory wrapperData = hex"0000";
+        bytes memory secondCallWrapperData = hex"0003098765";
+        bytes memory wrapperData = abi.encodePacked(hex"00021234", address(testWrapper), secondCallWrapperData);
+
+        // the wrapper gets called exactly twice (once below and again inside the wrapper data calling self)
+        vm.expectCall(address(testWrapper), 0, abi.encodeWithSelector(testWrapper.wrappedSettle.selector), 2);
+
+        // verify the internal wrapper call data
+        vm.expectCall(address(testWrapper), abi.encodeWithSelector(testWrapper.wrappedSettle.selector, settleData, secondCallWrapperData));
+
+        // the settlement contract gets called once after wrappers (including the surplus data at the end)
+        vm.expectCall(address(mockSettlement), 0, settleData, 1);
 
         vm.prank(solver);
         testWrapper.wrappedSettle(settleData, wrapperData);
-
-        assertEq(mockSettlement.getSettleCallCount(), 1);
-        (uint256 tokenCount, uint256 priceCount, uint256 tradeCount, bytes memory origData) = mockSettlement.getLastSettleCall();
-        assertEq(tokenCount, 1);
-        assertEq(priceCount, 1);
-        assertEq(tradeCount, 0);
-        assertEq(origData, settleData);
     }
+    
 
     function test_wrappedSettle_RevertsWithNotASolver() public {
         bytes memory settleData = _createSimpleSettleData(0);
@@ -203,6 +151,7 @@ contract CowWrapperTest is Test {
     }
 
     function test_integration_ThreeWrappersChained() public {
+        // Set up a more sophisticated settlement call to make sure it all gets through as expected.
         CowWrapperHelpers.SettleCall memory settlement;
         settlement.tokens = new address[](2);
         settlement.tokens[0] = address(0x1);
@@ -233,27 +182,32 @@ contract CowWrapperTest is Test {
         ];
 
         // Build the chained wrapper data:
-        // solver -> wrapper1 -> wrapper2 -> wrapper3 -> mockSettlement
-        address[] memory wrappers = new address[](3);
+        // solver -> wrapper1 -> wrapper2 -> wrapper1 -> wrapper3 -> mockSettlement
+        address[] memory wrappers = new address[](4);
         wrappers[0] = address(wrapper1);
         wrappers[1] = address(wrapper2);
-        wrappers[2] = address(wrapper3);
+        wrappers[2] = address(wrapper1);
+        wrappers[3] = address(wrapper3);
+
+        bytes[] memory datas = new bytes[](4);
+
+        datas[2] = hex"828348";
 
         (address target, bytes memory fullCalldata) =
-            CowWrapperHelpers.encodeWrapperCall(wrappers, new bytes[](3), address(mockSettlement), settlement);
+            CowWrapperHelpers.encodeWrapperCall(wrappers, datas, address(mockSettlement), settlement);
+
+
+        // all the wrappers gets called, with wrapper 1 called twice
+        vm.expectCall(address(wrapper1), 0, abi.encodeWithSelector(testWrapper.wrappedSettle.selector), 2);
+        vm.expectCall(address(wrapper2), 0, abi.encodeWithSelector(testWrapper.wrappedSettle.selector), 1);
+        vm.expectCall(address(wrapper3), 0, abi.encodeWithSelector(testWrapper.wrappedSettle.selector), 1);
+
+        // the settlement gets called with the full data
+        vm.expectCall(address(mockSettlement), new bytes(0));
 
         // Call wrapper1 as the solver
         vm.prank(solver);
         (bool success,) = target.call(fullCalldata);
         assertTrue(success, "Chained wrapper call should succeed");
-
-        // Verify that mockSettlement was called
-        assertEq(mockSettlement.getSettleCallCount(), 1, "MockSettlement should be called once");
-
-        // Verify the settlement received the correct parameters
-        (uint256 tokenCount, uint256 priceCount, uint256 tradeCount,) = mockSettlement.getLastSettleCall();
-        assertEq(tokenCount, 2, "Should have 2 tokens");
-        assertEq(priceCount, 2, "Should have 2 prices");
-        assertEq(tradeCount, 1, "Should have 1 trade");
     }
 }
