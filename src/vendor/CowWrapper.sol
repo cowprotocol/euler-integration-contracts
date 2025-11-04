@@ -105,13 +105,14 @@ abstract contract CowWrapper is ICowWrapper {
     ///      validates wrapper data, then delegates to _wrap() for custom logic.
     /// @param settleData ABI-encoded call to CowSettlement.settle() containing trade data
     /// @param wrapperData Encoded data for this wrapper and the chain of next wrappers/settlement.
-    ///                    Format: [wrapper-specific-data][next-address][remaining-wrapper-data]
-    ///                    Must be at least 20 bytes to contain the next settlement target address.
+    ///                    Format: [len][wrapper-specific-data][next-address]([len][wrapper-specific-data][next-address]...)
     function wrappedSettle(bytes calldata settleData, bytes calldata wrapperData) external {
         // Revert if not a valid solver
         require(AUTHENTICATOR.isSolver(msg.sender), NotASolver(msg.sender));
 
         // Find out how long the next wrapper data is supposed to be
+        // We use 2 bytes to decode the length of the wrapper data because it allows for up to 64KB of data for each wrapper.
+        // This should be plenty of length for all identified use-cases of wrappers in the forseeable future.
         uint16 nextWrapperDataLen = uint16(bytes2(wrapperData[0:2]));
 
         // Delegate to the wrapper's custom logic
