@@ -2,7 +2,7 @@
 pragma solidity ^0.8;
 
 import {Test} from "forge-std/Test.sol";
-import {CowWrapper, ICowSettlement, ICowAuthentication} from "../src/vendor/CowWrapper.sol";
+import {CowWrapper, ICowSettlement, ICowAuthentication} from "../src/CowWrapper.sol";
 import {IERC20, GPv2Trade, GPv2Interaction} from "cow/GPv2Settlement.sol";
 import {EmptyWrapper} from "./EmptyWrapper.sol";
 

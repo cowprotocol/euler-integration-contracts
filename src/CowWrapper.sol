@@ -2,6 +2,17 @@
 pragma solidity >=0.7.6 <0.9.0;
 pragma abicoder v2;
 
+/**
+ * @title CoW Wrapper all-in-one integration file
+ * @author CoW Protocol Developers
+ * @notice This file is completely self-contained (ie no dependencies) and can be portably copied to whatever projects it is needed.
+ * It contains:
+ * * CowWrapper -- an abstract base contract which should be inherited by all wrappers
+ * * ICowWrapper -- the required interface for all wrappers
+ * * ICowSettlement -- A minimized interface and base structures for CoW Protocol settlement contract. From https://github.com/cowprotocol/contracts/blob/main/src/contracts/GPv2Settlement.sol
+ * * ICowAuthentication -- The authentication interface used by ICowSettlement. From https://github.com/cowprotocol/contracts/blob/main/src/contracts/interfaces/GPv2Authentication.sol
+ */
+
 /// @title CoW Protocol Authentication Interface
 /// @author CoW DAO developers
 interface ICowAuthentication {
@@ -105,7 +116,7 @@ abstract contract CowWrapper is ICowWrapper {
     ///      validates wrapper data, then delegates to _wrap() for custom logic.
     /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data
     /// @param wrapperData Encoded data for this wrapper and the chain of next wrappers/settlement.
-    ///                    Format: [len][wrapper-specific-data][next-address]([len][wrapper-specific-data][next-address]...)
+    ///                    Format: [2-byte len][wrapper-specific-data][next-address]([2-byte len][wrapper-specific-data][next-address]...)
     function wrappedSettle(bytes calldata settleData, bytes calldata wrapperData) external {
         // Revert if not a valid solver
         require(AUTHENTICATOR.isSolver(msg.sender), NotASolver(msg.sender));

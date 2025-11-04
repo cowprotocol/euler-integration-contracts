@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity ^0.8;
 
-import {ICowSettlement, ICowAuthentication, ICowWrapper} from "src/vendor/CowWrapper.sol";
+import {ICowSettlement, ICowAuthentication, ICowWrapper} from "src/CowWrapper.sol";
 
 library CowWrapperHelpers {
     struct SettleCall {

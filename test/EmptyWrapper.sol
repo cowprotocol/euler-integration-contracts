@@ -2,7 +2,7 @@
 pragma solidity ^0.8;
 pragma abicoder v2;
 
-import {ICowSettlement, CowWrapper} from "../src/vendor/CowWrapper.sol";
+import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
 
 contract EmptyWrapper is CowWrapper {
     string public override name = "Empty Wrapper";
