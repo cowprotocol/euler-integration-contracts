@@ -2,13 +2,11 @@
 pragma solidity ^0.8;
 
 import {Test} from "forge-std/Test.sol";
-import {CowWrapper, CowSettlement, CowAuthentication} from "../src/vendor/CowWrapper.sol";
+import {CowWrapper, ICowSettlement, ICowAuthentication} from "../src/vendor/CowWrapper.sol";
 import {IERC20, GPv2Trade, GPv2Interaction} from "cow/GPv2Settlement.sol";
 import {EmptyWrapper} from "./EmptyWrapper.sol";
 
 import {CowWrapperHelpers} from "./helpers/CowWrapperHelpers.sol";
-
-import "forge-std/console.sol";
 
 contract MockAuthentication {
     mapping(address => bool) public solvers;
@@ -23,14 +21,14 @@ contract MockAuthentication {
 }
 
 contract MockSettlement {
-    CowAuthentication private immutable _authenticator;
+    ICowAuthentication private immutable AUTHENTICATOR;
 
-    constructor(CowAuthentication authenticator_) {
-        _authenticator = authenticator_;
+    constructor(ICowAuthentication authenticator_) {
+        AUTHENTICATOR = authenticator_;
     }
 
-    function authenticator() external view returns (CowAuthentication) {
-        return _authenticator;
+    function authenticator() external view returns (ICowAuthentication) {
+        return AUTHENTICATOR;
     }
 
     function settle(
@@ -43,15 +41,15 @@ contract MockSettlement {
 
 // Test wrapper that exposes internal functions
 contract TestWrapper is CowWrapper {
-    string public constant name = "Test Wrapper";
+    string public override name = "Test Wrapper";
 
-    constructor(CowSettlement settlement_) CowWrapper(settlement_) {}
+    constructor(ICowSettlement settlement_) CowWrapper(settlement_) {}
 
     function _wrap(bytes calldata settleData, bytes calldata, bytes calldata remainingWrapperData) internal override {
         _internalSettle(settleData, remainingWrapperData);
     }
 
-    function exposed_internalSettle(bytes calldata settleData, bytes calldata wrapperData) external {
+    function exposedInternalSettle(bytes calldata settleData, bytes calldata wrapperData) external {
         _internalSettle(settleData, wrapperData);
     }
 }
@@ -69,17 +67,17 @@ contract CowWrapperTest is Test {
     function setUp() public {
         // Deploy mock contracts
         authenticator = new MockAuthentication();
-        mockSettlement = new MockSettlement(CowAuthentication(address(authenticator)));
+        mockSettlement = new MockSettlement(ICowAuthentication(address(authenticator)));
 
         solver = makeAddr("solver");
         // Add solver to the authenticator
         authenticator.addSolver(solver);
 
         // Create test wrapper and three EmptyWrapper instances with the settlement contract
-        testWrapper = new TestWrapper(CowSettlement(address(mockSettlement)));
-        wrapper1 = new EmptyWrapper(CowSettlement(address(mockSettlement)));
-        wrapper2 = new EmptyWrapper(CowSettlement(address(mockSettlement)));
-        wrapper3 = new EmptyWrapper(CowSettlement(address(mockSettlement)));
+        testWrapper = new TestWrapper(ICowSettlement(address(mockSettlement)));
+        wrapper1 = new EmptyWrapper(ICowSettlement(address(mockSettlement)));
+        wrapper2 = new EmptyWrapper(ICowSettlement(address(mockSettlement)));
+        wrapper3 = new EmptyWrapper(ICowSettlement(address(mockSettlement)));
 
         // Add all wrappers as solvers
         authenticator.addSolver(address(testWrapper));
@@ -92,15 +90,15 @@ contract CowWrapperTest is Test {
         return [new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0), new GPv2Interaction.Data[](0)];
     }
 
-    function _createSimpleSettleData(uint256 tokenCount) private pure returns (bytes memory) {
+    function _createSimpleSettleData(uint256 tokenCount) private returns (bytes memory) {
         IERC20[] memory tokens = new IERC20[](tokenCount);
         uint256[] memory clearingPrices = new uint256[](tokenCount);
         for (uint256 i = 0; i < tokenCount; i++) {
-            tokens[i] = IERC20(address(uint160(i + 1)));
+            tokens[i] = IERC20(makeAddr(string(abi.encodePacked("Settle Token #", vm.toString(i + 1)))));
             clearingPrices[i] = 100 * (i + 1);
         }
         return abi.encodeWithSelector(
-            CowSettlement.settle.selector, tokens, clearingPrices, new GPv2Trade.Data[](0), _emptyInteractions()
+            ICowSettlement.settle.selector, tokens, clearingPrices, new GPv2Trade.Data[](0), _emptyInteractions()
         );
     }
 
@@ -145,8 +143,8 @@ contract CowWrapperTest is Test {
         settlement.clearingPrices[0] = 100;
         settlement.clearingPrices[1] = 200;
 
-        settlement.trades = new CowSettlement.CowTradeData[](1);
-        settlement.trades[0] = CowSettlement.CowTradeData({
+        settlement.trades = new ICowSettlement.Trade[](1);
+        settlement.trades[0] = ICowSettlement.Trade({
             sellTokenIndex: 0,
             buyTokenIndex: 1,
             receiver: address(0x123),
@@ -161,9 +159,9 @@ contract CowWrapperTest is Test {
         });
 
         settlement.interactions = [
-            new CowSettlement.CowInteractionData[](0),
-            new CowSettlement.CowInteractionData[](0),
-            new CowSettlement.CowInteractionData[](0)
+            new ICowSettlement.Interaction[](0),
+            new ICowSettlement.Interaction[](0),
+            new ICowSettlement.Interaction[](0)
         ];
 
         // Build the chained wrapper data:

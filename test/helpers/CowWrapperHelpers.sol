@@ -1,29 +1,28 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity ^0.8;
 
-import {CowSettlement, ICowWrapper, CowAuthentication} from "src/vendor/CowWrapper.sol";
+import {ICowSettlement, ICowAuthentication, ICowWrapper} from "src/vendor/CowWrapper.sol";
 
 library CowWrapperHelpers {
     struct SettleCall {
         address[] tokens;
         uint256[] clearingPrices;
-        CowSettlement.CowTradeData[] trades;
-        CowSettlement.CowInteractionData[][3] interactions;
+        ICowSettlement.Trade[] trades;
+        ICowSettlement.Interaction[][3] interactions;
     }
 
     /**
      * @dev This function is intended for testing purposes and is not memory efficient.
      * @param wrappers Array of wrapper addresses to chain together
      * @param wrapperDatas Array of wrapper-specific data for each wrapper
-     * @param cowSettlement The settlement contract address (unused, kept for backwards compatibility)
      * @param settlement The settlement call parameters
      */
     function encodeWrapperCall(
         address[] calldata wrappers,
         bytes[] calldata wrapperDatas,
-        address cowSettlement,
+        address,
         SettleCall calldata settlement
-    ) external returns (address target, bytes memory fullCalldata) {
+    ) external pure returns (address target, bytes memory fullCalldata) {
         // Build the wrapper data chain
         bytes memory wrapperData;
         for (uint256 i = 0; i < wrappers.length; i++) {
@@ -37,7 +36,7 @@ library CowWrapperHelpers {
 
         // Build the settle calldata
         bytes memory settleData = abi.encodeWithSelector(
-            CowSettlement.settle.selector,
+            ICowSettlement.settle.selector,
             settlement.tokens,
             settlement.clearingPrices,
             settlement.trades,

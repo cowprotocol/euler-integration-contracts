@@ -2,12 +2,12 @@
 pragma solidity ^0.8;
 pragma abicoder v2;
 
-import "../src/vendor/CowWrapper.sol";
+import {ICowSettlement, CowWrapper} from "../src/vendor/CowWrapper.sol";
 
 contract EmptyWrapper is CowWrapper {
-    string public constant name = "Empty Wrapper";
+    string public override name = "Empty Wrapper";
 
-    constructor(CowSettlement settlement_) CowWrapper(settlement_) {}
+    constructor(ICowSettlement settlement_) CowWrapper(settlement_) {}
 
     function _wrap(bytes calldata settleData, bytes calldata, bytes calldata remainingWrapperData) internal override {
         _internalSettle(settleData, remainingWrapperData);
