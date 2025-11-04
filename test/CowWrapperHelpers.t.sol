@@ -51,19 +51,6 @@ contract MockWrapper is CowWrapper {
     }
 }
 
-contract BrokenWrapper is CowWrapper {
-    string public constant name = "Broken Wrapper";
-    constructor(ICowSettlement settlement_) CowWrapper(settlement_) {}
-
-    function _wrap(bytes calldata, bytes calldata, bytes calldata) internal override {
-        // Not used in these tests
-    }
-
-    function parseWrapperData(bytes calldata) external pure override returns (bytes calldata) {
-        revert("Intentionally broken");
-    }
-}
-
 contract CowWrapperHelpersTest is Test {
     CowWrapperHelpers helpers;
     MockAuthenticator wrapperAuth;
@@ -73,7 +60,6 @@ contract CowWrapperHelpersTest is Test {
     MockWrapper wrapper1;
     MockWrapper wrapper2;
     MockWrapper wrapper3;
-    BrokenWrapper brokenWrapper;
 
     function setUp() public {
         wrapperAuth = new MockAuthenticator();
@@ -86,13 +72,11 @@ contract CowWrapperHelpersTest is Test {
         wrapper1 = new MockWrapper(ICowSettlement(address(mockSettlement)), 4);
         wrapper2 = new MockWrapper(ICowSettlement(address(mockSettlement)), 8);
         wrapper3 = new MockWrapper(ICowSettlement(address(mockSettlement)), 0);
-        brokenWrapper = new BrokenWrapper(ICowSettlement(address(mockSettlement)));
 
         // Add wrappers as solvers
         wrapperAuth.addSolver(address(wrapper1));
         wrapperAuth.addSolver(address(wrapper2));
         wrapperAuth.addSolver(address(wrapper3));
-        wrapperAuth.addSolver(address(brokenWrapper));
     }
 
     function test_verifyAndBuildWrapperData_EmptyArrays() public view {
@@ -175,9 +159,12 @@ contract CowWrapperHelpersTest is Test {
 
     function test_verifyAndBuildWrapperData_RevertsOnWrapperDataMalformed() public {
         CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](1);
-        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({target: address(brokenWrapper), data: hex"deadbeef"});
+        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({target: address(wrapper1), data: hex"deadbeef"});
 
-        vm.expectRevert();
+        bytes memory errorData = hex"feab";
+        vm.mockCallRevert(address(wrapper1), abi.encodeWithSelector(wrapper1.parseWrapperData.selector), errorData);
+
+        vm.expectRevert(abi.encodeWithSelector(CowWrapperHelpers.WrapperDataMalformed.selector, 0, errorData));
         helpers.verifyAndBuildWrapperData(wrapperCalls);
     }
 
@@ -211,7 +198,7 @@ contract CowWrapperHelpersTest is Test {
 
         bytes memory result = helpers.verifyAndBuildWrapperData(wrapperCalls);
 
-        // Should contain: data[0] + target[1] + data[1] (no settlement)
+        // Should contain: data[0] + target[1] + data[1]
         bytes memory expected = abi.encodePacked(uint16(0), hex"", address(wrapper3), uint16(0), hex"");
         assertEq(result, expected);
     }
