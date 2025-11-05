@@ -2,93 +2,43 @@
 pragma solidity ^0.8;
 
 import {Test} from "forge-std/Test.sol";
-import {CowWrapper, ICowSettlement, ICowAuthentication} from "../src/CowWrapper.sol";
-import {EmptyWrapper} from "./EmptyWrapper.sol";
+import {CowWrapper, ICowSettlement, ICowAuthentication} from "../../src/CowWrapper.sol";
+import {EmptyWrapper} from "../EmptyWrapper.sol";
 
-import {CowWrapperHelpers} from "../src/CowWrapperHelpers.sol";
+import {CowWrapperHelpers} from "../../src/CowWrapperHelpers.sol";
 
-contract MockAuthentication {
-    mapping(address => bool) public solvers;
-
-    function addSolver(address solver) external {
-        solvers[solver] = true;
-    }
-
-    function isSolver(address solver) external view returns (bool) {
-        return solvers[solver];
-    }
-}
-
-contract MockSettlement {
-    ICowAuthentication private immutable AUTHENTICATOR;
-
-    constructor(ICowAuthentication authenticator_) {
-        AUTHENTICATOR = authenticator_;
-    }
-
-    function authenticator() external view returns (ICowAuthentication) {
-        return AUTHENTICATOR;
-    }
-
-    function settle(
-        address[] calldata,
-        uint256[] calldata,
-        ICowSettlement.Trade[] calldata,
-        ICowSettlement.Interaction[][3] calldata
-    ) external {}
-}
-
-// Test wrapper that exposes internal functions
-contract TestWrapper is CowWrapper {
-    string public override name = "Test Wrapper";
-
-    constructor(ICowSettlement settlement_) CowWrapper(settlement_) {}
-
-    function _wrap(bytes calldata settleData, bytes calldata, bytes calldata remainingWrapperData) internal override {
-        _next(settleData, remainingWrapperData);
-    }
-
-    function parseWrapperData(bytes calldata wrapperData)
-        external
-        pure
-        override
-        returns (bytes calldata remainingWrapperData)
-    {
-        // always pretend to consume all the wrapper data
-        return wrapperData[0:0];
-    }
-}
+import {MockCowSettlement, MockCowAuthentication, MockWrapper} from "./mocks/MockCowProtocol.sol";
 
 contract CowWrapperTest is Test {
-    MockAuthentication public authenticator;
-    MockSettlement public mockSettlement;
+    MockCowAuthentication public authenticator;
+    MockCowSettlement public mockSettlement;
     CowWrapperHelpers public helpers;
     address public solver;
 
-    TestWrapper private wrapper1;
-    TestWrapper private wrapper2;
-    TestWrapper private wrapper3;
+    MockWrapper private wrapper1;
+    MockWrapper private wrapper2;
+    MockWrapper private wrapper3;
 
     function setUp() public {
         // Deploy mock contracts
-        authenticator = new MockAuthentication();
-        mockSettlement = new MockSettlement(ICowAuthentication(address(authenticator)));
+        authenticator = new MockCowAuthentication();
+        mockSettlement = new MockCowSettlement(address(authenticator));
         helpers =
             new CowWrapperHelpers(ICowAuthentication(address(authenticator)), ICowAuthentication(address(authenticator)));
 
         solver = makeAddr("solver");
         // Add solver to the authenticator
-        authenticator.addSolver(solver);
+        authenticator.setSolver(solver, true);
 
         // Create test wrappers
-        wrapper1 = new TestWrapper(ICowSettlement(address(mockSettlement)));
-        wrapper2 = new TestWrapper(ICowSettlement(address(mockSettlement)));
-        wrapper3 = new TestWrapper(ICowSettlement(address(mockSettlement)));
+        wrapper1 = new MockWrapper(ICowSettlement(address(mockSettlement)), 65536);
+        wrapper2 = new MockWrapper(ICowSettlement(address(mockSettlement)), 65536);
+        wrapper3 = new MockWrapper(ICowSettlement(address(mockSettlement)), 65536);
 
         // Add all wrappers as solvers
-        authenticator.addSolver(address(wrapper1));
-        authenticator.addSolver(address(wrapper2));
-        authenticator.addSolver(address(wrapper3));
+        authenticator.setSolver(address(wrapper1), true);
+        authenticator.setSolver(address(wrapper2), true);
+        authenticator.setSolver(address(wrapper3), true);
     }
 
     function _emptyInteractions() private pure returns (ICowSettlement.Interaction[][3] memory) {
