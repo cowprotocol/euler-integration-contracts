@@ -39,7 +39,12 @@ contract CowWrapperTest is Test {
     }
 
     function _emptyInteractions() private pure returns (ICowSettlement.Interaction[][3] memory) {
-        return [new ICowSettlement.Interaction[](0), new ICowSettlement.Interaction[](0), new ICowSettlement.Interaction[](0)];
+        return
+            [
+                new ICowSettlement.Interaction[](0),
+                new ICowSettlement.Interaction[](0),
+                new ICowSettlement.Interaction[](0)
+            ];
     }
 
     function _createSimpleSettleData(uint256 tokenCount) private returns (bytes memory) {
