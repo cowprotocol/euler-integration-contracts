@@ -3,7 +3,7 @@ pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 
-import {CowWrapper, CowSettlement} from "./vendor/CowWrapper.sol";
+import {CowWrapper, ICowSettlement} from "./CowWrapper.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {PreApprovedHashes} from "./PreApprovedHashes.sol";
 
@@ -61,7 +61,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
         uint256 borrowAmount
     );
 
-    constructor(address _evc, CowSettlement _settlement) CowWrapper(_settlement) {
+    constructor(address _evc, ICowSettlement _settlement) CowWrapper(_settlement) {
         EVC = IEVC(_evc);
         NONCE_NAMESPACE = uint256(uint160(address(this)));
 
@@ -288,6 +288,6 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
 
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
-        _internalSettle(settleData, remainingWrapperData);
+        _next(settleData, remainingWrapperData);
     }
 }

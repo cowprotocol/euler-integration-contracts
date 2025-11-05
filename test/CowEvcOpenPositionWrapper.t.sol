@@ -6,7 +6,7 @@ import {GPv2Order, IERC20 as CowERC20} from "cow/libraries/GPv2Order.sol";
 import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcOpenPositionWrapper} from "../src/CowEvcOpenPositionWrapper.sol";
-import {CowSettlement, CowWrapper} from "../src/vendor/CowWrapper.sol";
+import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 import {PreApprovedHashes} from "../src/PreApprovedHashes.sol";
 
@@ -50,8 +50,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         GPv2Order.Data orderData;
         address[] tokens;
         uint256[] clearingPrices;
-        CowSettlement.CowTradeData[] trades;
-        CowSettlement.CowInteractionData[][3] interactions;
+        ICowSettlement.Trade[] trades;
+        ICowSettlement.Interaction[][3] interactions;
     }
 
     /// @notice Create settlement data for opening a leveraged position
@@ -86,7 +86,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         r.orderUid = getOrderUid(owner, r.orderData);
 
         // Get trade data
-        r.trades = new CowSettlement.CowTradeData[](1);
+        r.trades = new ICowSettlement.Trade[](1);
         r.trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, r.orderData.receiver, false);
 
         // Get tokens and prices
@@ -94,9 +94,9 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Setup interactions - swap WETH to SUSDS, deposit to vault, and skim
         r.interactions = [
-            new CowSettlement.CowInteractionData[](0),
-            new CowSettlement.CowInteractionData[](3),
-            new CowSettlement.CowInteractionData[](0)
+            new ICowSettlement.Interaction[](0),
+            new ICowSettlement.Interaction[](3),
+            new ICowSettlement.Interaction[](0)
         ];
         r.interactions[1][0] = getSwapInteraction(sellToken, IERC4626(buyVaultToken).asset(), sellAmount);
         r.interactions[1][1] = getDepositInteraction(buyVaultToken, buyAmount + 1 ether);
@@ -157,7 +157,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Encode settlement data
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
         );
 
@@ -329,7 +329,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Encode settlement data
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
         );
 

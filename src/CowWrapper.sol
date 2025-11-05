@@ -2,9 +2,20 @@
 pragma solidity >=0.7.6 <0.9.0;
 pragma abicoder v2;
 
+/**
+ * @title CoW Wrapper all-in-one integration file
+ * @author CoW Protocol Developers
+ * @notice This file is completely self-contained (ie no dependencies) and can be portably copied to whatever projects it is needed.
+ * It contains:
+ * * CowWrapper -- an abstract base contract which should be inherited by all wrappers
+ * * ICowWrapper -- the required interface for all wrappers
+ * * ICowSettlement -- A minimized interface and base structures for CoW Protocol settlement contract. From https://github.com/cowprotocol/contracts/blob/main/src/contracts/GPv2Settlement.sol
+ * * ICowAuthentication -- The authentication interface used by ICowSettlement. From https://github.com/cowprotocol/contracts/blob/main/src/contracts/interfaces/GPv2Authentication.sol
+ */
+
 /// @title CoW Protocol Authentication Interface
 /// @author CoW DAO developers
-interface CowAuthentication {
+interface ICowAuthentication {
     /// @dev determines whether the provided address is an authenticated solver.
     /// @param prospectiveSolver the address of prospective solver.
     /// @return true when prospectiveSolver is an authenticated solver, otherwise false.
@@ -14,9 +25,9 @@ interface CowAuthentication {
 /// @title CoW Protocol Settlement Interface
 /// @notice Minimal interface for CoW Protocol's settlement contract
 /// @dev Used for type-safe calls to the settlement contract's settle function
-interface CowSettlement {
+interface ICowSettlement {
     /// @notice Trade data structure matching GPv2Settlement
-    struct CowTradeData {
+    struct Trade {
         uint256 sellTokenIndex;
         uint256 buyTokenIndex;
         address receiver;
@@ -31,14 +42,14 @@ interface CowSettlement {
     }
 
     /// @notice Interaction data structure for pre/intra/post-settlement hooks
-    struct CowInteractionData {
+    struct Interaction {
         address target;
         uint256 value;
         bytes callData;
     }
 
     /// @notice Returns the authentication contract used by the settlement contract.
-    function authenticator() external view returns (CowAuthentication);
+    function authenticator() external view returns (ICowAuthentication);
 
     /// @notice Returns the address of the vaultRelayer, the target for approvals for funds entering the settlement contract.
     function vaultRelayer() external view returns (address);
@@ -57,8 +68,8 @@ interface CowSettlement {
     function settle(
         address[] calldata tokens,
         uint256[] calldata clearingPrices,
-        CowTradeData[] calldata trades,
-        CowInteractionData[][3] calldata interactions
+        Trade[] calldata trades,
+        Interaction[][3] calldata interactions
     ) external;
 }
 
@@ -71,13 +82,14 @@ interface ICowWrapper {
 
     /// @notice The settlement contract used by this wrapper
     /// @return The CowSettlement contract address
-    function SETTLEMENT() external view returns (CowSettlement);
+    function SETTLEMENT() external view returns (ICowSettlement);
 
     /// @notice Initiates a wrapped settlement call
     /// @dev This is the entry point for wrapped settlements. The wrapper will execute custom logic
     ///      before calling the next wrapper or settlement contract in the chain.
-    /// @param settleData ABI-encoded call to CowSettlement.settle()
-    /// @param wrapperData Encoded chain of wrapper-specific data followed by addresses of next wrappers/settlement
+    /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data
+    /// @param wrapperData Encoded data for this wrapper and the chain of next wrappers/settlement.
+    ///                    Format: [2-byte len][wrapper-specific-data][next-address]([2-byte len][wrapper-specific-data][next-address]...)
     function wrappedSettle(bytes calldata settleData, bytes calldata wrapperData) external;
 
     /// @notice Parses and validates wrapper-specific data
@@ -92,11 +104,10 @@ interface ICowWrapper {
 /// @notice Abstract base contract for creating wrapper contracts around CoW Protocol settlements
 /// @dev A wrapper enables custom pre/post-settlement and context-setting logic and can be chained with other wrappers.
 ///      Wrappers must:
-///      - Be approved by the CowAuthentication contract
+///      - Be approved by the ICowAuthentication contract
 ///      - Verify the caller is an authenticated solver
-///      - Eventually call settle() on the approved CowSettlement contract
+///      - Eventually call settle() on the approved ICowSettlement contract
 ///      - Implement _wrap() for custom logic
-///      - Implement parseWrapperData() for validation of implementation-specific wrapperData
 abstract contract CowWrapper is ICowWrapper {
     /// @notice Thrown when the caller is not an authenticated solver
     /// @param unauthorized The address that attempted to call wrappedSettle
@@ -107,15 +118,15 @@ abstract contract CowWrapper is ICowWrapper {
     error InvalidSettleData(bytes invalidSettleData);
 
     /// @notice The settlement contract
-    CowSettlement public immutable SETTLEMENT;
+    ICowSettlement public immutable SETTLEMENT;
 
     /// @notice The authentication contract used to verify solvers
     /// @dev This is derived from `SETTLEMENT.authenticator()`.
-    CowAuthentication public immutable AUTHENTICATOR;
+    ICowAuthentication public immutable AUTHENTICATOR;
 
     /// @notice Constructs a new CowWrapper
-    /// @param settlement_ The CowSettlement contract to use at the end of the wrapper chain. Also used for wrapper authentication.
-    constructor(CowSettlement settlement_) {
+    /// @param settlement_ The ICowSettlement contract to use at the end of the wrapper chain. Also used for wrapper authentication.
+    constructor(ICowSettlement settlement_) {
         SETTLEMENT = settlement_;
         AUTHENTICATOR = settlement_.authenticator();
     }
@@ -123,19 +134,21 @@ abstract contract CowWrapper is ICowWrapper {
     /// @notice Initiates a wrapped settlement call
     /// @dev Entry point for solvers to execute wrapped settlements. Verifies the caller is a solver,
     ///      validates wrapper data, then delegates to _wrap() for custom logic.
-    /// @param settleData ABI-encoded call to CowSettlement.settle() containing trade data
+    /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data
     /// @param wrapperData Encoded data for this wrapper and the chain of next wrappers/settlement.
-    ///                    Format: [wrapper-specific-data][next-address][remaining-wrapper-data]
-    ///                    Must be at least 20 bytes to contain the next settlement target address.
+    ///                    Format: [2-byte len][wrapper-specific-data][next-address]([2-byte len][wrapper-specific-data][next-address]...)
     function wrappedSettle(bytes calldata settleData, bytes calldata wrapperData) external {
         // Revert if not a valid solver
         require(AUTHENTICATOR.isSolver(msg.sender), NotASolver(msg.sender));
 
         // Find out how long the next wrapper data is supposed to be
+        // We use 2 bytes to decode the length of the wrapper data because it allows for up to 64KB of data for each wrapper.
+        // This should be plenty of length for all identified use-cases of wrappers in the forseeable future.
         uint16 nextWrapperDataLen = uint16(bytes2(wrapperData[0:2]));
 
         // Delegate to the wrapper's custom logic
-        _wrap(settleData, wrapperData[2:2 + nextWrapperDataLen], wrapperData[2 + nextWrapperDataLen:]);
+        uint256 remainingWrapperDataStart = 2 + nextWrapperDataLen;
+        _wrap(settleData, wrapperData[2:remainingWrapperDataStart], wrapperData[remainingWrapperDataStart:]);
     }
 
     /// @notice Parses and validates wrapper-specific data
@@ -151,25 +164,25 @@ abstract contract CowWrapper is ICowWrapper {
 
     /// @notice Internal function containing the wrapper's custom logic
     /// @dev Must be implemented by concrete wrapper contracts. Should execute custom logic
-    ///      then eventually call _internalSettle() to continue the settlement chain.
-    /// @param settleData ABI-encoded call to CowSettlement.settle()
+    ///      then eventually call _next() to continue the wrapped settlement chain.
+    /// @param settleData ABI-encoded call to ICowSettlement.settle()
     /// @param wrapperData The wrapper data which should be consumed by this wrapper
-    /// @param remainingWrapperData Additional wrapper data needed by future wrappers. This should be passed unaltered to _internalSettle
+    /// @param remainingWrapperData Additional wrapper data. It is the reminder bytes resulting from consuming the current's wrapper data from the original `wrapperData` in the `wrappedSettle` call. This should be passed unaltered to `_next` that will call the settlement function if this remainder is empty, or delegate the settlement to the next wrapper
     function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
         internal
         virtual;
 
-    /// @notice Continues the settlement chain by calling the next wrapper or settlement contract
+    /// @notice Continues the wrapped settlement chain by calling the next wrapper or settlement contract
     /// @dev Extracts the next target address from wrapperData and either:
-    ///      - Calls CowSettlement.settle() directly if no more wrappers remain, or
+    ///      - Calls ICowSettlement.settle() directly if no more wrappers remain, or
     ///      - Calls the next CowWrapper.wrappedSettle() to continue the chain
-    /// @param settleData ABI-encoded call to CowSettlement.settle()
+    /// @param settleData ABI-encoded call to ICowSettlement.settle()
     /// @param remainingWrapperData Remaining wrapper data starting with the next target address (20 bytes)
-    function _internalSettle(bytes calldata settleData, bytes calldata remainingWrapperData) internal {
+    function _next(bytes calldata settleData, bytes calldata remainingWrapperData) internal {
         if (remainingWrapperData.length == 0) {
             // No more wrapper data - we're calling the final settlement contract
             // Verify the settle data has the correct function selector
-            require(bytes4(settleData[:4]) == CowSettlement.settle.selector, InvalidSettleData(settleData));
+            require(bytes4(settleData[:4]) == ICowSettlement.settle.selector, InvalidSettleData(settleData));
 
             // Call the settlement contract directly with the settle data
             (bool success, bytes memory returnData) = address(SETTLEMENT).call(settleData);

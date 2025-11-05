@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8;
 
-import {CowSettlement, CowAuthentication} from "../../../src/vendor/CowWrapper.sol";
+import {ICowSettlement, ICowAuthentication, CowWrapper} from "../../../src/CowWrapper.sol";
 
 /// @title MockCowAuthentication
 /// @notice Mock implementation of CoW Protocol authenticator for unit testing
-contract MockCowAuthentication is CowAuthentication {
+contract MockCowAuthentication is ICowAuthentication {
     mapping(address => bool) public solvers;
 
     function setSolver(address solver, bool authorized) external {
@@ -19,15 +19,15 @@ contract MockCowAuthentication is CowAuthentication {
 
 /// @title MockCowSettlement
 /// @notice Mock implementation of CoW Protocol settlement contract for unit testing
-contract MockCowSettlement is CowSettlement {
-    CowAuthentication public immutable AUTH;
+contract MockCowSettlement is ICowSettlement {
+    ICowAuthentication public immutable AUTH;
     bool public shouldSucceed = true;
 
     constructor(address _auth) {
-        AUTH = CowAuthentication(_auth);
+        AUTH = ICowAuthentication(_auth);
     }
 
-    function authenticator() external view override returns (CowAuthentication) {
+    function authenticator() external view override returns (ICowAuthentication) {
         return AUTH;
     }
 
@@ -41,7 +41,7 @@ contract MockCowSettlement is CowSettlement {
 
     function setPreSignature(bytes calldata, bool) external pure override {}
 
-    function settle(address[] calldata, uint256[] calldata, CowTradeData[] calldata, CowInteractionData[][3] calldata)
+    function settle(address[] calldata, uint256[] calldata, Trade[] calldata, Interaction[][3] calldata)
         external
         view
         override
@@ -51,5 +51,28 @@ contract MockCowSettlement is CowSettlement {
 
     function setSuccessfulSettle(bool success) external {
         shouldSucceed = success;
+    }
+}
+
+contract MockWrapper is CowWrapper {
+    string public override name = "Mock Wrapper";
+    uint256 public consumeBytes;
+
+    constructor(ICowSettlement settlement_, uint256 consumeBytes_) CowWrapper(settlement_) {
+        consumeBytes = consumeBytes_;
+    }
+
+    function _wrap(bytes calldata settleData, bytes calldata, bytes calldata remainingWrapperData) internal override {
+        _next(settleData, remainingWrapperData);
+    }
+
+    function parseWrapperData(bytes calldata wrapperData)
+        external
+        view
+        override
+        returns (bytes calldata remainingWrapperData)
+    {
+        // consume up to `consumeBytes` bytes
+        return wrapperData[(consumeBytes < wrapperData.length ? consumeBytes : wrapperData.length):];
     }
 }

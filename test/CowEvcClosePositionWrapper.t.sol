@@ -7,7 +7,7 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IEVault, IERC4626, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcClosePositionWrapper} from "../src/CowEvcClosePositionWrapper.sol";
-import {CowSettlement, CowWrapper} from "../src/vendor/CowWrapper.sol";
+import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 import {PreApprovedHashes} from "../src/PreApprovedHashes.sol";
 
@@ -51,8 +51,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         GPv2Order.Data orderData;
         address[] tokens;
         uint256[] clearingPrices;
-        CowSettlement.CowTradeData[] trades;
-        CowSettlement.CowInteractionData[][3] interactions;
+        ICowSettlement.Trade[] trades;
+        ICowSettlement.Interaction[][3] interactions;
     }
 
     /// @notice Helper to set up an initial leveraged position
@@ -113,7 +113,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         r.orderUid = getOrderUid(owner, r.orderData);
 
         // Get trade data
-        r.trades = new CowSettlement.CowTradeData[](1);
+        r.trades = new ICowSettlement.Trade[](1);
         r.trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, r.orderData.receiver, true);
 
         // Get tokens and prices
@@ -127,9 +127,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Setup interactions - withdraw from vault, swap to repayment token
         r.interactions = [
-            new CowSettlement.CowInteractionData[](0),
-            new CowSettlement.CowInteractionData[](2),
-            new CowSettlement.CowInteractionData[](0)
+            new ICowSettlement.Interaction[](0),
+            new ICowSettlement.Interaction[](2),
+            new ICowSettlement.Interaction[](0)
         ];
         r.interactions[1][0] = getWithdrawInteraction(sellVaultToken, buyAmount * r.clearingPrices[1] / 1e18);
         r.interactions[1][1] = getSwapInteraction(
@@ -219,7 +219,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Encode settlement data
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
         );
 
@@ -349,7 +349,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         vm.stopPrank();
 
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
         );
         bytes memory wrapperData = abi.encode(params, permitSignature);
@@ -508,7 +508,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Encode settlement data
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
         );
 

@@ -2,7 +2,7 @@
 pragma solidity >=0.7.6 <0.9.0;
 pragma abicoder v2;
 
-import {CowAuthentication, ICowWrapper} from "./CowWrapper.sol";
+import {ICowAuthentication, ICowWrapper} from "./CowWrapper.sol";
 
 /// @title CoW Protocol Wrapper Helpers
 /// @notice Helper contract providing validation and encoding utilities for CoW Protocol wrapper chains
@@ -52,15 +52,15 @@ contract CowWrapperHelpers {
     }
 
     /// @notice The authentication contract used to verify wrapper contracts
-    CowAuthentication public immutable WRAPPER_AUTHENTICATOR;
+    ICowAuthentication public immutable WRAPPER_AUTHENTICATOR;
 
     /// @notice The authentication contract used to verify solvers
-    CowAuthentication public immutable SOLVER_AUTHENTICATOR;
+    ICowAuthentication public immutable SOLVER_AUTHENTICATOR;
 
     /// @notice Constructs a new CowWrapperHelpers contract
-    /// @param wrapperAuthenticator_ The CowAuthentication contract used to verify wrapper contracts
-    /// @param solverAuthenticator_ The CowAuthentication contract used to verify solvers
-    constructor(CowAuthentication wrapperAuthenticator_, CowAuthentication solverAuthenticator_) {
+    /// @param wrapperAuthenticator_ The ICowAuthentication contract used to verify wrapper contracts
+    /// @param solverAuthenticator_ The ICowAuthentication contract used to verify solvers
+    constructor(ICowAuthentication wrapperAuthenticator_, ICowAuthentication solverAuthenticator_) {
         WRAPPER_AUTHENTICATOR = wrapperAuthenticator_;
         SOLVER_AUTHENTICATOR = solverAuthenticator_;
     }

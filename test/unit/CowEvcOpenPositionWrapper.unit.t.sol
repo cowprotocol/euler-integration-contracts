@@ -4,7 +4,7 @@ pragma solidity ^0.8;
 import {Test} from "forge-std/Test.sol";
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {CowEvcOpenPositionWrapper} from "../../src/CowEvcOpenPositionWrapper.sol";
-import {CowSettlement} from "../../src/vendor/CowWrapper.sol";
+import {ICowSettlement} from "../../src/CowWrapper.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
@@ -40,7 +40,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         mockSettlement = new MockCowSettlement(address(mockAuth));
         mockEvc = new MockEVC();
 
-        wrapper = new CowEvcOpenPositionWrapper(address(mockEvc), CowSettlement(address(mockSettlement)));
+        wrapper = new CowEvcOpenPositionWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)));
 
         // Set solver as authenticated
         mockAuth.setSolver(SOLVER, true);
@@ -344,15 +344,15 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
 
     function test_EvcInternalSettle_RequiresCorrectOnBehalfOfAccount() public {
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 new address[](0),
                 new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -370,15 +370,15 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
 
     function test_EvcInternalSettle_CanBeCalledByEVC() public {
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 new address[](0),
                 new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -415,15 +415,15 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
 
         bytes memory signature = new bytes(65); // Valid ECDSA signature length
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 new address[](0),
                 new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -457,15 +457,15 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         mockEvc.setOperator(ACCOUNT, address(wrapper), true);
 
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 new address[](0),
                 new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -501,15 +501,15 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         mockEvc.setOperator(ACCOUNT, address(wrapper), true);
 
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 new address[](0),
                 new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
