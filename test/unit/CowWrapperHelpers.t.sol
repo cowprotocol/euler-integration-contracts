@@ -20,7 +20,8 @@ contract CowWrapperHelpersTest is Test {
     function setUp() public {
         wrapperAuth = new MockCowAuthentication();
         solverAuth = new MockCowAuthentication();
-        helpers = new CowWrapperHelpers(ICowAuthentication(address(wrapperAuth)), ICowAuthentication(address(solverAuth)));
+        helpers =
+            new CowWrapperHelpers(ICowAuthentication(address(wrapperAuth)), ICowAuthentication(address(solverAuth)));
 
         mockSettlement = new MockCowSettlement(address(wrapperAuth));
 

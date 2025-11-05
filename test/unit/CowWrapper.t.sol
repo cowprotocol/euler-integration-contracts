@@ -23,8 +23,9 @@ contract CowWrapperTest is Test {
         // Deploy mock contracts
         authenticator = new MockCowAuthentication();
         mockSettlement = new MockCowSettlement(address(authenticator));
-        helpers =
-            new CowWrapperHelpers(ICowAuthentication(address(authenticator)), ICowAuthentication(address(authenticator)));
+        helpers = new CowWrapperHelpers(
+            ICowAuthentication(address(authenticator)), ICowAuthentication(address(authenticator))
+        );
 
         solver = makeAddr("solver");
         // Add solver to the authenticator
@@ -42,7 +43,12 @@ contract CowWrapperTest is Test {
     }
 
     function _emptyInteractions() private pure returns (ICowSettlement.Interaction[][3] memory) {
-        return [new ICowSettlement.Interaction[](0), new ICowSettlement.Interaction[](0), new ICowSettlement.Interaction[](0)];
+        return
+            [
+                new ICowSettlement.Interaction[](0),
+                new ICowSettlement.Interaction[](0),
+                new ICowSettlement.Interaction[](0)
+            ];
     }
 
     function _createSimpleSettleData(uint256 tokenCount) private returns (bytes memory) {
@@ -120,7 +126,8 @@ contract CowWrapperTest is Test {
             signature: hex"aabbccddee"
         });
 
-        bytes memory settleData = abi.encodeCall(ICowSettlement.settle, (tokens, clearingPrices, trades, _emptyInteractions()));
+        bytes memory settleData =
+            abi.encodeCall(ICowSettlement.settle, (tokens, clearingPrices, trades, _emptyInteractions()));
 
         // Build the chained wrapper data:
         // solver -> wrapper1 -> wrapper2 -> wrapper1 -> wrapper3 -> mockSettlement
