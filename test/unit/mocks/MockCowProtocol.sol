@@ -3,7 +3,7 @@ pragma solidity ^0.8;
 
 import {ICowSettlement, ICowAuthentication, CowWrapper} from "../../../src/CowWrapper.sol";
 
-/// @title MockICowAuthentication
+/// @title MockCowAuthentication
 /// @notice Mock implementation of CoW Protocol authenticator for unit testing
 contract MockCowAuthentication is ICowAuthentication {
     mapping(address => bool) public solvers;
@@ -17,7 +17,7 @@ contract MockCowAuthentication is ICowAuthentication {
     }
 }
 
-/// @title MockICowSettlement
+/// @title MockCowSettlement
 /// @notice Mock implementation of CoW Protocol settlement contract for unit testing
 contract MockCowSettlement is ICowSettlement {
     ICowAuthentication public immutable AUTH;
@@ -31,22 +31,22 @@ contract MockCowSettlement is ICowSettlement {
         return AUTH;
     }
 
-    function vaultRelayer() external pure returns (address) {
+    function vaultRelayer() external pure override returns (address) {
         return address(0x7777);
     }
 
-    function domainSeparator() external pure returns (bytes32) {
+    function domainSeparator() external pure override returns (bytes32) {
         return keccak256("MockDomainSeparator");
     }
 
-    function setPreSignature(bytes calldata, bool) external pure {}
+    function setPreSignature(bytes calldata, bool) external pure override {}
 
     function settle(address[] calldata, uint256[] calldata, Trade[] calldata, Interaction[][3] calldata)
         external
         view
         override
     {
-        require(shouldSucceed, "MockICowSettlement: settle failed");
+        require(shouldSucceed, "MockCowSettlement: settle failed");
     }
 
     function setSuccessfulSettle(bool success) external {
@@ -55,7 +55,7 @@ contract MockCowSettlement is ICowSettlement {
 }
 
 contract MockWrapper is CowWrapper {
-    string public constant name = "Mock Wrapper";
+    string public override name = "Mock Wrapper";
     uint256 public consumeBytes;
 
     constructor(ICowSettlement settlement_, uint256 consumeBytes_) CowWrapper(settlement_) {
