@@ -34,7 +34,7 @@ jobs:
 
       - name: Run Forge build
         run: |
-          forge build
+          forge build --deny notes
         id: build
 
       - name: Run Forge tests
