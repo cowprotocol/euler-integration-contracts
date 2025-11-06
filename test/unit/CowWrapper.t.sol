@@ -3,15 +3,15 @@ pragma solidity ^0.8;
 
 import {Test} from "forge-std/Test.sol";
 import {CowWrapper, ICowSettlement, ICowAuthentication} from "../../src/CowWrapper.sol";
-import {EmptyWrapper} from "../EmptyWrapper.sol";
 
-import {MockWrapper, MockCowSettlement, MockCowAuthentication} from "./mocks/MockCowProtocol.sol";
+import {CowWrapperHelpers} from "../../src/CowWrapperHelpers.sol";
 
-import {CowWrapperHelpers} from "../helpers/CowWrapperHelpers.sol";
+import {MockCowSettlement, MockCowAuthentication, MockWrapper} from "./mocks/MockCowProtocol.sol";
 
 contract CowWrapperTest is Test {
     MockCowAuthentication public authenticator;
     MockCowSettlement public mockSettlement;
+    CowWrapperHelpers public helpers;
     address public solver;
 
     MockWrapper private wrapper1;
@@ -22,12 +22,15 @@ contract CowWrapperTest is Test {
         // Deploy mock contracts
         authenticator = new MockCowAuthentication();
         mockSettlement = new MockCowSettlement(address(authenticator));
+        helpers = new CowWrapperHelpers(
+            ICowAuthentication(address(authenticator)), ICowAuthentication(address(authenticator))
+        );
 
         solver = makeAddr("solver");
         // Add solver to the authenticator
         authenticator.setSolver(solver, true);
 
-        // Create test wrapper and three EmptyWrapper instances with the settlement contract
+        // Create test wrappers
         wrapper1 = new MockWrapper(ICowSettlement(address(mockSettlement)), 65536);
         wrapper2 = new MockWrapper(ICowSettlement(address(mockSettlement)), 65536);
         wrapper3 = new MockWrapper(ICowSettlement(address(mockSettlement)), 65536);
@@ -99,17 +102,16 @@ contract CowWrapperTest is Test {
     }
 
     function test_integration_ThreeWrappersChained() public {
-        // Set up a more sophisticated settlement call to make sure it all gets through as expected.
-        CowWrapperHelpers.SettleCall memory settlement;
-        settlement.tokens = new address[](2);
-        settlement.tokens[0] = address(0x1);
-        settlement.tokens[1] = address(0x2);
-        settlement.clearingPrices = new uint256[](2);
-        settlement.clearingPrices[0] = 100;
-        settlement.clearingPrices[1] = 200;
+        address[] memory tokens = new address[](2);
+        tokens[0] = address(0x1);
+        tokens[1] = address(0x2);
 
-        settlement.trades = new ICowSettlement.Trade[](1);
-        settlement.trades[0] = ICowSettlement.Trade({
+        uint256[] memory clearingPrices = new uint256[](2);
+        clearingPrices[0] = 100;
+        clearingPrices[1] = 200;
+
+        ICowSettlement.Trade[] memory trades = new ICowSettlement.Trade[](1);
+        trades[0] = ICowSettlement.Trade({
             sellTokenIndex: 0,
             buyTokenIndex: 1,
             receiver: address(0x123),
@@ -123,38 +125,29 @@ contract CowWrapperTest is Test {
             signature: hex"aabbccddee"
         });
 
-        settlement.interactions = [
-            new ICowSettlement.Interaction[](0),
-            new ICowSettlement.Interaction[](0),
-            new ICowSettlement.Interaction[](0)
-        ];
+        bytes memory settleData =
+            abi.encodeCall(ICowSettlement.settle, (tokens, clearingPrices, trades, _emptyInteractions()));
 
         // Build the chained wrapper data:
         // solver -> wrapper1 -> wrapper2 -> wrapper1 -> wrapper3 -> mockSettlement
-        address[] memory wrappers = new address[](4);
-        wrappers[0] = address(wrapper1);
-        wrappers[1] = address(wrapper2);
-        wrappers[2] = address(wrapper1);
-        wrappers[3] = address(wrapper3);
+        CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](4);
+        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({target: address(wrapper1), data: hex""});
+        wrapperCalls[1] = CowWrapperHelpers.WrapperCall({target: address(wrapper2), data: hex""});
+        wrapperCalls[2] = CowWrapperHelpers.WrapperCall({target: address(wrapper1), data: hex"828348"});
+        wrapperCalls[3] = CowWrapperHelpers.WrapperCall({target: address(wrapper3), data: hex""});
 
-        bytes[] memory datas = new bytes[](4);
-
-        datas[2] = hex"828348";
-
-        (address target, bytes memory fullCalldata) =
-            CowWrapperHelpers.encodeWrapperCall(wrappers, datas, address(mockSettlement), settlement);
+        bytes memory wrapperData = helpers.verifyAndBuildWrapperData(wrapperCalls);
 
         // all the wrappers gets called, with wrapper 1 called twice
         vm.expectCall(address(wrapper1), 0, abi.encodeWithSelector(wrapper1.wrappedSettle.selector), 2);
-        vm.expectCall(address(wrapper2), 0, abi.encodeWithSelector(wrapper1.wrappedSettle.selector), 1);
-        vm.expectCall(address(wrapper3), 0, abi.encodeWithSelector(wrapper1.wrappedSettle.selector), 1);
+        vm.expectCall(address(wrapper2), 0, abi.encodeWithSelector(wrapper2.wrappedSettle.selector), 1);
+        vm.expectCall(address(wrapper3), 0, abi.encodeWithSelector(wrapper3.wrappedSettle.selector), 1);
 
         // the settlement gets called with the full data
         vm.expectCall(address(mockSettlement), new bytes(0));
 
         // Call wrapper1 as the solver
         vm.prank(solver);
-        (bool success,) = target.call(fullCalldata);
-        assertTrue(success, "Chained wrapper call should succeed");
+        wrapper1.wrappedSettle(settleData, wrapperData);
     }
 }
