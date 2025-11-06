@@ -49,7 +49,16 @@ interface ICowSettlement {
     }
 
     /// @notice Returns the authentication contract used by the settlement contract.
-    function authenticator() external returns (ICowAuthentication);
+    function authenticator() external view returns (ICowAuthentication);
+
+    /// @notice Returns the address of the vaultRelayer, the target for approvals for funds entering the settlement contract.
+    function vaultRelayer() external view returns (address);
+
+    /// @notice Returns the domain separator for EIP-712 signing
+    function domainSeparator() external view returns (bytes32);
+
+    /// @notice Allows for approval of orders by submitting an authorized hash on-chain prior to order execution.
+    function setPreSignature(bytes calldata orderUid, bool signed) external;
 
     /// @notice Settles a batch of trades atomically
     /// @param tokens Array of token addresses involved in the settlement
@@ -70,6 +79,10 @@ interface ICowSettlement {
 interface ICowWrapper {
     /// @notice A human readable label for this wrapper. Used for display in explorer/analysis UIs
     function name() external view returns (string memory);
+
+    /// @notice The settlement contract used by this wrapper
+    /// @return The CowSettlement contract address
+    function SETTLEMENT() external view returns (ICowSettlement);
 
     /// @notice Initiates a wrapped settlement call
     /// @dev This is the entry point for wrapped settlements. The wrapper will execute custom logic
