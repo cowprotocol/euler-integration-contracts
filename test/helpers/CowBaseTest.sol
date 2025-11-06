@@ -8,7 +8,7 @@ import {EVaultTestBase} from "lib/euler-vault-kit/test/unit/evault/EVaultTestBas
 import {IEVault, IVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
-import {ICowSettlement} from "../../src/CowWrapper.sol";
+import {CowSettlement} from "../../src/vendor/CowWrapper.sol";
 
 import {MilkSwap} from "./MilkSwap.sol";
 
@@ -32,15 +32,17 @@ contract CowBaseTest is EVaultTestBase {
 
     address constant SUSDS = 0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD;
     address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address constant WBTC = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
 
     // Vaults
     address internal constant ESUSDS = 0x1e548CfcE5FCF17247E024eF06d32A01841fF404;
     address internal constant EWETH = 0xD8b27CF359b7D15710a5BE299AF6e7Bf904984C2;
+    address internal constant EWBTC = 0x998D761eC1BAdaCeb064624cc3A1d37A46C88bA4;
 
     address payable constant REAL_EVC = payable(0x0C9a3dd6b8F28529d72d7f9cE918D493519EE383);
     address internal swapVerifier = 0xae26485ACDDeFd486Fe9ad7C2b34169d360737c7;
 
-    ICowSettlement constant COW_SETTLEMENT = ICowSettlement(payable(0x9008D19f58AAbD9eD0D60971565AA8510560ab41));
+    CowSettlement constant COW_SETTLEMENT = CowSettlement(payable(0x9008D19f58AAbD9eD0D60971565AA8510560ab41));
 
     MilkSwap public milkSwap;
     address user;
@@ -73,18 +75,22 @@ contract CowBaseTest is EVaultTestBase {
 
         // Setup some liquidity for MilkSwap
         milkSwap = new MilkSwap();
-        deal(SUSDS, address(milkSwap), 10000e18); // Add SUSDS to MilkSwap
-        deal(WETH, address(milkSwap), 10000e18); // Add WETH to MilkSwap
-        milkSwap.setPrice(WETH, 1000e18); // 1 ETH = 1,000 USD
+        deal(SUSDS, address(milkSwap), 100000e18); // Add SUSDS to MilkSwap
+        deal(WETH, address(milkSwap), 100000e18); // Add WETH to MilkSwap
+        deal(WBTC, address(milkSwap), 100000e8); // Add WBTC to MilkSwap (8 decimals)
+        milkSwap.setPrice(WETH, 2500e18); // 1 ETH = 2,500 USD
         milkSwap.setPrice(SUSDS, 1e18); // 1 USDS = 1 USD
+        milkSwap.setPrice(WBTC, 100000e18 * 1e10); // 1 BTC = 100,000 USD (8 decimals)
 
         // Set the approval for MilkSwap in the settlement as a convenience
         vm.startPrank(address(COW_SETTLEMENT));
         IERC20(WETH).approve(address(milkSwap), type(uint256).max);
         IERC20(SUSDS).approve(address(milkSwap), type(uint256).max);
+        IERC20(WBTC).approve(address(milkSwap), type(uint256).max);
 
         IERC20(ESUSDS).approve(address(ESUSDS), type(uint256).max);
         IERC20(EWETH).approve(address(EWETH), type(uint256).max);
+        IERC20(EWBTC).approve(address(EWBTC), type(uint256).max);
 
         vm.stopPrank();
 
@@ -99,10 +105,12 @@ contract CowBaseTest is EVaultTestBase {
         vm.label(user, "user");
         vm.label(SUSDS, "SUSDS");
         vm.label(WETH, "WETH");
+        vm.label(WBTC, "WBTC");
         vm.label(ESUSDS, "eSUSDS");
         vm.label(EWETH, "eWETH");
-        vm.label(address(COW_SETTLEMENT), "cow settlement");
-        vm.label(address(milkSwap), "milkswap");
+        vm.label(EWBTC, "eWBTC");
+        vm.label(address(COW_SETTLEMENT), "cowSettlement");
+        vm.label(address(milkSwap), "milkSwap");
     }
 
     function getEmptySettlement()
@@ -111,18 +119,18 @@ contract CowBaseTest is EVaultTestBase {
         returns (
             IERC20[] memory tokens,
             uint256[] memory clearingPrices,
-            ICowSettlement.Trade[] memory trades,
-            ICowSettlement.Interaction[][3] memory interactions
+            CowSettlement.CowTradeData[] memory trades,
+            CowSettlement.CowInteractionData[][3] memory interactions
         )
     {
         return (
             new IERC20[](0),
             new uint256[](0),
-            new ICowSettlement.Trade[](0),
+            new CowSettlement.CowTradeData[](0),
             [
-                new ICowSettlement.Interaction[](0),
-                new ICowSettlement.Interaction[](0),
-                new ICowSettlement.Interaction[](0)
+                new CowSettlement.CowInteractionData[](0),
+                new CowSettlement.CowInteractionData[](0),
+                new CowSettlement.CowInteractionData[](0)
             ]
         );
     }
@@ -138,9 +146,9 @@ contract CowBaseTest is EVaultTestBase {
     function getSwapInteraction(address sellToken, address buyToken, uint256 sellAmount)
         public
         view
-        returns (ICowSettlement.Interaction memory)
+        returns (CowSettlement.CowInteractionData memory)
     {
-        return ICowSettlement.Interaction({
+        return CowSettlement.CowInteractionData({
             target: address(milkSwap),
             value: 0,
             callData: abi.encodeCall(MilkSwap.swap, (sellToken, buyToken, sellAmount))
@@ -151,9 +159,9 @@ contract CowBaseTest is EVaultTestBase {
     function getDepositInteraction(address vault, uint256 sellAmount)
         public
         view
-        returns (ICowSettlement.Interaction memory)
+        returns (CowSettlement.CowInteractionData memory)
     {
-        return ICowSettlement.Interaction({
+        return CowSettlement.CowInteractionData({
             target: address(IEVault(vault).asset()),
             value: 0,
             callData: abi.encodeCall(IERC20.transfer, (vault, sellAmount))
@@ -163,17 +171,17 @@ contract CowBaseTest is EVaultTestBase {
     function getWithdrawInteraction(address vault, uint256 sellAmount)
         public
         pure
-        returns (ICowSettlement.Interaction memory)
+        returns (CowSettlement.CowInteractionData memory)
     {
-        return ICowSettlement.Interaction({
+        return CowSettlement.CowInteractionData({
             target: vault,
             value: 0,
             callData: abi.encodeCall(IERC4626.withdraw, (sellAmount, address(COW_SETTLEMENT), address(COW_SETTLEMENT)))
         });
     }
 
-    function getSkimInteraction() public pure returns (ICowSettlement.Interaction memory) {
-        return ICowSettlement.Interaction({
+    function getSkimInteraction() public pure returns (CowSettlement.CowInteractionData memory) {
+        return CowSettlement.CowInteractionData({
             target: address(ESUSDS),
             value: 0,
             callData: abi.encodeCall(IVault.skim, (type(uint256).max, address(COW_SETTLEMENT)))
@@ -187,13 +195,13 @@ contract CowBaseTest is EVaultTestBase {
         address owner,
         address receiver,
         bool isBuy
-    ) public pure returns (ICowSettlement.Trade memory) {
+    ) public pure returns (CowSettlement.CowTradeData memory) {
         // Set flags for (pre-sign, FoK sell order)
         // See
         // https://github.com/cowprotocol/contracts/blob/08f8627d8427c8842ae5d29ed8b44519f7674879/src/contracts/libraries/GPv2Trade.sol#L89-L94
         uint256 flags = (3 << 5) | (isBuy ? 1 : 0); // 1100000
 
-        return ICowSettlement.Trade({
+        return CowSettlement.CowTradeData({
             sellTokenIndex: 0,
             buyTokenIndex: 1,
             receiver: receiver,
