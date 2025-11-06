@@ -5,8 +5,6 @@ import {GPv2Signing} from "cow/mixins/GPv2Signing.sol";
 import {GPv2Order} from "cow/libraries/GPv2Order.sol";
 import {GPv2Trade, IERC20} from "cow/libraries/GPv2Trade.sol";
 
-import {console} from "forge-std/Test.sol";
-
 // Vendored and adapted from CoW Protocol contrats repo with minor modifications:
 // - Use only `extractOrderUidParams`
 // - Add `extractOrder` which basically does parameter shuffling
