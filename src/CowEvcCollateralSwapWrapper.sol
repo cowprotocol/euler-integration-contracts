@@ -277,9 +277,8 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         pure
         returns (uint256 fromVaultPrice, uint256 toVaultPrice)
     {
-        (address[] memory tokens, uint256[] memory clearingPrices,,) = abi.decode(
-            settleData[4:], (address[], uint256[], ICowSettlement.Trade[], ICowSettlement.Interaction[][3])
-        );
+        (address[] memory tokens, uint256[] memory clearingPrices,,) =
+            abi.decode(settleData[4:], (address[], uint256[], ICowSettlement.Trade[], ICowSettlement.Interaction[][3]));
         for (uint256 i = 0; i < tokens.length; i++) {
             if (tokens[i] == fromVault) {
                 fromVaultPrice = clearingPrices[i];
