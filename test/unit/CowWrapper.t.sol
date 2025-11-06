@@ -3,7 +3,6 @@ pragma solidity ^0.8;
 
 import {Test} from "forge-std/Test.sol";
 import {CowWrapper, ICowSettlement, ICowAuthentication} from "../../src/CowWrapper.sol";
-import {EmptyWrapper} from "../EmptyWrapper.sol";
 
 import {CowWrapperHelpers} from "../../src/CowWrapperHelpers.sol";
 
