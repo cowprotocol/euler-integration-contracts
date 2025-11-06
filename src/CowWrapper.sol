@@ -87,8 +87,22 @@ interface ICowWrapper {
     /// @dev This is the entry point for wrapped settlements. The wrapper will execute custom logic
     ///      before calling the next wrapper or settlement contract in the chain.
     /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data
-    /// @param wrapperData Encoded data for this wrapper and the chain of next wrappers/settlement.
-    ///                    Format: [2-byte len][user-supplied wrapper specific data][next address]([2-byte len][user supplied wrapper specific data]...)
+    /// @dev SECURITY: `settleData` is NOT guaranteed to remain unchanged through the wrapper chain.
+    ///      Intermediate wrappers could modify it before passing it along. Do not rely on
+    ///      `settleData` validation for security-critical checks.
+    /// @param wrapperData Encoded wrapper chain with the following format:
+    ///        Structure: [uint16 len1][bytes data1][address wrapper2][uint16 len2][bytes data2][address wrapper3]...
+    ///
+    ///        Each wrapper in the chain consists of:
+    ///        - 2 bytes: uint16 length of wrapper-specific data
+    ///        - `length` bytes: wrapper-specific data for this wrapper
+    ///        - 20 bytes: address of next wrapper (omitted for the final wrapper)
+    ///
+    ///        The final wrapper in the chain omits the next wrapper address and calls SETTLEMENT directly.
+    ///
+    ///        Example: [0x0005][0xAABBCCDDEE][0x1234...ABCD][0x0003][0x112233]
+    ///                 ↑len   ↑data         ↑next wrapper  ↑len   ↑data (final, no next address)
+    ///
     function wrappedSettle(bytes calldata settleData, bytes calldata wrapperData) external;
 }
 
@@ -123,12 +137,7 @@ abstract contract CowWrapper is ICowWrapper {
         AUTHENTICATOR = settlement_.authenticator();
     }
 
-    /// @notice Initiates a wrapped settlement call
-    /// @dev Entry point for solvers to execute wrapped settlements. Verifies the caller is a solver,
-    ///      validates wrapper data, then delegates to _wrap() for custom logic.
-    /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data. NOTE: wrappers may read this data, but it should not be trusted for anything of great importance (ex. destination of funds) because a malicious solver can modify this data later in the chain.
-    /// @param wrapperData Encoded data for this wrapper and the chain of next wrappers/settlement.
-    ///                    Format: [2-byte len][user-supplied wrapper specific data][next address]([2-byte len][user supplied wrapper specific data]...)
+    /// @inheritdoc ICowWrapper
     function wrappedSettle(bytes calldata settleData, bytes calldata wrapperData) external {
         // Revert if not a valid solver
         require(AUTHENTICATOR.isSolver(msg.sender), NotASolver(msg.sender));
