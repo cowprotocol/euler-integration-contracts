@@ -5,7 +5,7 @@ import {GPv2Order} from "cow/libraries/GPv2Order.sol";
 
 import {EthereumVaultConnector} from "evc/EthereumVaultConnector.sol";
 import {EVaultTestBase} from "lib/euler-vault-kit/test/unit/evault/EVaultTestBase.t.sol";
-import {IEVault, IVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {IEVault, IVault, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
@@ -105,28 +105,6 @@ contract CowBaseTest is EVaultTestBase {
         vm.label(address(milkSwap), "milkswap");
     }
 
-    function getEmptySettlement()
-        public
-        pure
-        returns (
-            IERC20[] memory tokens,
-            uint256[] memory clearingPrices,
-            ICowSettlement.Trade[] memory trades,
-            ICowSettlement.Interaction[][3] memory interactions
-        )
-    {
-        return (
-            new IERC20[](0),
-            new uint256[](0),
-            new ICowSettlement.Trade[](0),
-            [
-                new ICowSettlement.Interaction[](0),
-                new ICowSettlement.Interaction[](0),
-                new ICowSettlement.Interaction[](0)
-            ]
-        );
-    }
-
     function getOrderUid(address owner, GPv2Order.Data memory orderData) public view returns (bytes memory orderUid) {
         // Generate order digest using EIP-712
         bytes32 orderDigest = GPv2Order.hash(orderData, COW_SETTLEMENT.domainSeparator());
@@ -157,18 +135,6 @@ contract CowBaseTest is EVaultTestBase {
             target: address(IEVault(vault).asset()),
             value: 0,
             callData: abi.encodeCall(IERC20.transfer, (vault, sellAmount))
-        });
-    }
-
-    function getWithdrawInteraction(address vault, uint256 sellAmount)
-        public
-        pure
-        returns (ICowSettlement.Interaction memory)
-    {
-        return ICowSettlement.Interaction({
-            target: vault,
-            value: 0,
-            callData: abi.encodeCall(IERC4626.withdraw, (sellAmount, address(COW_SETTLEMENT), address(COW_SETTLEMENT)))
         });
     }
 
