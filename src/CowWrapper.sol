@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-pragma solidity >=0.7.6 <0.9.0;
-pragma abicoder v2;
+pragma solidity >=0.8.0 <0.9.0;
 
 /**
- * @title CoW Wrapper all-in-one integration file
- * @author CoW Protocol Developers
- * @notice This file is completely self-contained (ie no dependencies) and can be portably copied to whatever projects it is needed.
+ * CoW Wrapper all-in-one integration file
+ * CoW Protocol Developers
+ * This file is completely self-contained (ie no dependencies) and can be portably copied to whatever projects it is needed.
  * It contains:
  * * CowWrapper -- an abstract base contract which should be inherited by all wrappers
  * * ICowWrapper -- the required interface for all wrappers
@@ -41,7 +40,7 @@ interface ICowSettlement {
         bytes signature;
     }
 
-    /// @notice Interaction data structure for pre/intra/post-settlement hooks
+    /// @notice Interaction data structure for pre/intra/post-settlement actions which are supplied by the solver to complete the user request
     struct Interaction {
         address target;
         uint256 value;
@@ -89,7 +88,7 @@ interface ICowWrapper {
     ///      before calling the next wrapper or settlement contract in the chain.
     /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data
     /// @param wrapperData Encoded data for this wrapper and the chain of next wrappers/settlement.
-    ///                    Format: [2-byte len][wrapper-specific-data][next-address]([2-byte len][wrapper-specific-data][next-address]...)
+    ///                    Format: [2-byte len][user-supplied wrapper specific data][next address]([2-byte len][user supplied wrapper specific data]...)
     function wrappedSettle(bytes calldata settleData, bytes calldata wrapperData) external;
 }
 
@@ -127,9 +126,9 @@ abstract contract CowWrapper is ICowWrapper {
     /// @notice Initiates a wrapped settlement call
     /// @dev Entry point for solvers to execute wrapped settlements. Verifies the caller is a solver,
     ///      validates wrapper data, then delegates to _wrap() for custom logic.
-    /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data
+    /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data. NOTE: wrappers may read this data, but it should not be trusted for anything of great importance (ex. destination of funds) because a malicious solver can modify this data later in the chain.
     /// @param wrapperData Encoded data for this wrapper and the chain of next wrappers/settlement.
-    ///                    Format: [2-byte len][wrapper-specific-data][next-address]([2-byte len][wrapper-specific-data][next-address]...)
+    ///                    Format: [2-byte len][user-supplied wrapper specific data][next address]([2-byte len][user supplied wrapper specific data]...)
     function wrappedSettle(bytes calldata settleData, bytes calldata wrapperData) external {
         // Revert if not a valid solver
         require(AUTHENTICATOR.isSolver(msg.sender), NotASolver(msg.sender));
@@ -137,7 +136,7 @@ abstract contract CowWrapper is ICowWrapper {
         // Find out how long the next wrapper data is supposed to be
         // We use 2 bytes to decode the length of the wrapper data because it allows for up to 64KB of data for each wrapper.
         // This should be plenty of length for all identified use-cases of wrappers in the forseeable future.
-        uint16 nextWrapperDataLen = uint16(bytes2(wrapperData[0:2]));
+        uint256 nextWrapperDataLen = uint16(bytes2(wrapperData[0:2]));
 
         // Delegate to the wrapper's custom logic
         uint256 remainingWrapperDataStart = 2 + nextWrapperDataLen;
