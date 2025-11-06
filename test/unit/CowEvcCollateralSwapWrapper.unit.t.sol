@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {CowEvcCollateralSwapWrapper} from "../../src/CowEvcCollateralSwapWrapper.sol";
 import {EmptyWrapper} from "../EmptyWrapper.sol";
-import {CowSettlement} from "../../src/vendor/CowWrapper.sol";
+import {ICowSettlement} from "../../src/CowWrapper.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
 import {MockERC20, MockVault} from "./mocks/MockERC20AndVaults.sol";
@@ -50,8 +50,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         mockFromVault = new MockVault(address(mockAsset), "Mock From Vault", "mFROM");
         mockToVault = new MockVault(address(mockAsset), "Mock To Vault", "mTO");
 
-        wrapper = new CowEvcCollateralSwapWrapper(address(mockEvc), CowSettlement(address(mockSettlement)));
-        emptyWrapper = new EmptyWrapper(CowSettlement(address(mockSettlement)));
+        wrapper = new CowEvcCollateralSwapWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)));
+        emptyWrapper = new EmptyWrapper(ICowSettlement(address(mockSettlement)));
 
         // Set solver as authenticated
         mockAuth.setSolver(SOLVER, true);
@@ -313,15 +313,15 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         prices[1] = 2e18;
 
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 tokens,
                 prices,
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -354,15 +354,15 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         prices[0] = 2e18;
 
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 tokens,
                 prices,
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -398,15 +398,15 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         prices[0] = 1e18;
 
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 tokens,
                 prices,
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -448,15 +448,15 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         });
 
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 new address[](0),
                 new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -485,15 +485,15 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         });
 
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 new address[](0),
                 new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -527,15 +527,15 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
 
         // Create settle data without prices (not needed for KIND_SELL)
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 new address[](0),
                 new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -581,15 +581,15 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         prices[1] = 2e18; // toVault price (2x more expensive)
 
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 tokens,
                 prices,
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -630,15 +630,15 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         mockFromVault.mint(invalidSubaccount, 2000e18);
 
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 new address[](0),
                 new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -671,15 +671,15 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         mockFromVault.mint(OWNER, 2000e18);
 
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 new address[](0),
                 new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -727,15 +727,15 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
 
         bytes memory signature = new bytes(65);
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 tokens,
                 prices,
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -776,15 +776,15 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         uint256[] memory prices = new uint256[](0);
 
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 tokens,
                 prices,
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -818,15 +818,15 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         mockEvc.setOperator(OWNER, address(wrapper), true);
 
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 new address[](0),
                 new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -906,15 +906,15 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         prices[1] = 3e18; // toVault price (3x more expensive)
 
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 tokens,
                 prices,
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -987,15 +987,15 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         });
 
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 new address[](0),
                 new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -1023,15 +1023,15 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
 
         bytes memory signature = new bytes(65);
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 new address[](0),
                 new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );
@@ -1065,15 +1065,15 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         mockEvc.setOperator(OWNER, address(wrapper), true);
 
         bytes memory settleData = abi.encodeCall(
-            CowSettlement.settle,
+            ICowSettlement.settle,
             (
                 new address[](0),
                 new uint256[](0),
-                new CowSettlement.CowTradeData[](0),
+                new ICowSettlement.Trade[](0),
                 [
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0),
-                    new CowSettlement.CowInteractionData[](0)
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
                 ]
             )
         );

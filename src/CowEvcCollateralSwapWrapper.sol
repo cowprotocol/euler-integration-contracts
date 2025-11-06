@@ -3,7 +3,7 @@ pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 
-import {CowWrapper, CowSettlement} from "./vendor/CowWrapper.sol";
+import {CowWrapper, ICowSettlement} from "./CowWrapper.sol";
 import {IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {SafeERC20Lib} from "euler-vault-kit/src/EVault/shared/lib/SafeERC20Lib.sol";
 import {PreApprovedHashes} from "./PreApprovedHashes.sol";
@@ -83,7 +83,7 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         bytes32 kind
     );
 
-    constructor(address _evc, CowSettlement _settlement) CowWrapper(_settlement) {
+    constructor(address _evc, ICowSettlement _settlement) CowWrapper(_settlement) {
         EVC = IEVC(_evc);
         NONCE_NAMESPACE = uint256(uint160(address(this)));
 
@@ -278,7 +278,7 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         returns (uint256 fromVaultPrice, uint256 toVaultPrice)
     {
         (address[] memory tokens, uint256[] memory clearingPrices,,) = abi.decode(
-            settleData[4:], (address[], uint256[], CowSettlement.CowTradeData[], CowSettlement.CowInteractionData[][3])
+            settleData[4:], (address[], uint256[], ICowSettlement.Trade[], ICowSettlement.Interaction[][3])
         );
         for (uint256 i = 0; i < tokens.length; i++) {
             if (tokens[i] == fromVault) {
@@ -335,8 +335,8 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
             );
         }
 
-        // Use GPv2Wrapper's _internalSettle to call the settlement contract
+        // Use GPv2Wrapper's _next to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
-        _internalSettle(settleData, remainingWrapperData);
+        _next(settleData, remainingWrapperData);
     }
 }
