@@ -190,6 +190,73 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         vm.stopPrank();
     }
 
+    /// @notice Helper to set up a leveraged position for any user
+    /// @dev More flexible version that accepts owner, account, and vault parameters
+    function _setupLeveragedPositionFor(
+        address owner,
+        address account,
+        address collateralAsset,
+        address collateralVault,
+        address borrowVault,
+        uint256 collateralAmount,
+        uint256 borrowAmount
+    ) internal {
+        vm.startPrank(owner);
+        IERC20(collateralAsset).approve(collateralVault, type(uint256).max);
+        EVC.enableCollateral(account, collateralVault);
+        EVC.enableController(account, borrowVault);
+        IERC4626(collateralVault).deposit(collateralAmount, account);
+        vm.stopPrank();
+
+        vm.prank(account);
+        IBorrowing(borrowVault).borrow(borrowAmount, owner);
+    }
+
+    /// @notice Setup approvals for a specific user to close their position
+    function _setupClosePositionApprovalsFor(
+        address owner,
+        address account,
+        address collateralVault,
+        address repaymentAsset
+    ) internal {
+        vm.startPrank(owner);
+
+        // Approve vault shares from subaccount
+        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
+        items[0] = IEVC.BatchItem({
+            onBehalfOfAccount: account,
+            targetContract: collateralVault,
+            value: 0,
+            data: abi.encodeCall(IERC20.approve, (address(closePositionWrapper), type(uint256).max))
+        });
+        EVC.batch(items);
+
+        // Approve vault shares for settlement
+        IEVault(collateralVault).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+
+        // Approve wrapper to spend repayment asset
+        IERC20(repaymentAsset).approve(address(closePositionWrapper), type(uint256).max);
+
+        vm.stopPrank();
+    }
+
+    /// @notice Create permit signature for any user
+    function _createPermitSignatureFor(
+        CowEvcClosePositionWrapper.ClosePositionParams memory params,
+        uint256 userPrivateKey
+    ) internal returns (bytes memory) {
+        ecdsa.setPrivateKey(userPrivateKey);
+        return ecdsa.signPermit(
+            params.owner,
+            address(closePositionWrapper),
+            uint256(uint160(address(closePositionWrapper))),
+            0,
+            params.deadline,
+            0,
+            closePositionWrapper.getSignedCalldata(params)
+        );
+    }
+
     /// @notice Create settlement data for closing a leveraged position
     /// @dev Sells vault shares to buy repayment token (WETH)
     function getClosePositionSettlement(
@@ -477,5 +544,152 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Verify the position was closed successfully
         assertEq(IEVault(EWETH).debtOf(account), 0, "User should have no debt after closing");
         assertEq(debtBefore, borrowAmount, "User should have started with debt");
+    }
+
+    /// @notice Test that the wrapper can handle being called three times in the same chain
+    /// @dev Two users close positions in the same direction (long SUSDS), one user closes opposite (long WETH)
+    function test_ClosePositionWrapper_ThreeUsers_TwoSameOneOpposite() external {
+        vm.skip(bytes(forkRpcUrl).length == 0);
+
+        // Configure vault LTVs for both directions
+        vm.startPrank(IEVault(ESUSDS).governorAdmin());
+        IEVault(ESUSDS).setLTV(EWETH, 0.9e4, 0.9e4, 0);
+        vm.stopPrank();
+
+        // Setup accounts
+        address account1 = address(uint160(user) ^ 1);
+        address account2 = address(uint160(user2) ^ 1);
+        address account3 = address(uint160(user3) ^ 1);
+
+        // Setup User1: Long SUSDS (SUSDS collateral, WETH debt). ~1 ETH debt
+        deal(SUSDS, user, 10000 ether);
+        _setupLeveragedPositionFor(user, account1, SUSDS, ESUSDS, EWETH, 3500 ether, 1 ether);
+
+        // Setup User2: Long SUSDS (SUSDS collateral, WETH debt). ~3 ETH debt
+        deal(SUSDS, user2, 10000 ether);
+        _setupLeveragedPositionFor(user2, account2, SUSDS, ESUSDS, EWETH, 10000 ether, 3 ether);
+
+        // Setup User3: Long WETH (WETH collateral, SUSDS debt). ~5000 SUSDS debt
+        deal(WETH, user3, 3 ether);
+        _setupLeveragedPositionFor(user3, account3, WETH, EWETH, ESUSDS, 3 ether, 5000 ether);
+
+        // Verify positions exist
+        assertEq(IEVault(EWETH).debtOf(account1), 1 ether, "User1 should have WETH debt");
+        assertEq(IEVault(EWETH).debtOf(account2), 3 ether, "User2 should have WETH debt");
+        assertEq(IEVault(ESUSDS).debtOf(account3), 5000 ether, "User3 should have SUSDS debt");
+
+        // Setup approvals for all users
+        _setupClosePositionApprovalsFor(user, account1, ESUSDS, WETH);
+        _setupClosePositionApprovalsFor(user2, account2, ESUSDS, WETH);
+        _setupClosePositionApprovalsFor(user3, account3, EWETH, SUSDS);
+
+        // Create params for all users
+        CowEvcClosePositionWrapper.ClosePositionParams memory params1 = CowEvcClosePositionWrapper.ClosePositionParams({
+            owner: user,
+            account: account1,
+            deadline: block.timestamp + 1 hours,
+            borrowVault: EWETH,
+            collateralVault: ESUSDS,
+            collateralAmount: 2550 ether,
+            repayAmount: 1.001 ether,
+            kind: GPv2Order.KIND_BUY
+        });
+
+        CowEvcClosePositionWrapper.ClosePositionParams memory params2 = CowEvcClosePositionWrapper.ClosePositionParams({
+            owner: user2,
+            account: account2,
+            deadline: block.timestamp + 1 hours,
+            borrowVault: EWETH,
+            collateralVault: ESUSDS,
+            collateralAmount: 7600 ether,
+            repayAmount: 3.003 ether,
+            kind: GPv2Order.KIND_BUY
+        });
+
+        CowEvcClosePositionWrapper.ClosePositionParams memory params3 = CowEvcClosePositionWrapper.ClosePositionParams({
+            owner: user3,
+            account: account3,
+            deadline: block.timestamp + 1 hours,
+            borrowVault: ESUSDS,
+            collateralVault: EWETH,
+            collateralAmount: 2.1 ether,
+            repayAmount: 5005 ether,
+            kind: GPv2Order.KIND_BUY
+        });
+
+        // Create permit signatures for all users
+        bytes memory permitSignature1 = _createPermitSignatureFor(params1, privateKey);
+        bytes memory permitSignature2 = _createPermitSignatureFor(params2, privateKey2);
+        bytes memory permitSignature3 = _createPermitSignatureFor(params3, privateKey3);
+
+        // Create settlement with all three trades
+        uint32 validTo = uint32(block.timestamp + 1 hours);
+
+        address[] memory tokens = new address[](4);
+        tokens[0] = SUSDS;
+        tokens[1] = WETH;
+        tokens[2] = ESUSDS;
+        tokens[3] = EWETH;
+
+        uint256[] memory clearingPrices = new uint256[](4);
+        clearingPrices[0] = 1 ether; // SUSDS price
+        clearingPrices[1] = 2500 ether; // WETH price
+        clearingPrices[2] = 0.99 ether; // eSUSDS price
+        clearingPrices[3] = 2495 ether; // eWETH price
+
+        ICowSettlement.Trade[] memory trades = new ICowSettlement.Trade[](3);
+        (trades[0],,) =
+            setupCowOrder(tokens, 2, 1, params1.collateralAmount, params1.repayAmount, validTo, user, user, true);
+        (trades[1],,) =
+            setupCowOrder(tokens, 2, 1, params2.collateralAmount, params2.repayAmount, validTo, user2, user2, true);
+        (trades[2],,) =
+            setupCowOrder(tokens, 3, 0, params3.collateralAmount, params3.repayAmount, validTo, user3, user3, true);
+
+        // Setup interactions
+        ICowSettlement.Interaction[][3] memory interactions;
+        interactions[0] = new ICowSettlement.Interaction[](0);
+        interactions[1] = new ICowSettlement.Interaction[](3);
+        interactions[2] = new ICowSettlement.Interaction[](0);
+
+        // We pull the money out of the euler vaults
+        interactions[1][0] = getWithdrawInteraction(
+            ESUSDS, (params1.repayAmount + params2.repayAmount) * clearingPrices[1] / clearingPrices[0]
+        );
+        interactions[1][1] = getWithdrawInteraction(EWETH, params3.repayAmount * clearingPrices[0] / clearingPrices[1]);
+
+        // We swap. We only need to swap the difference of the 3 closes (since coincidence of wants)
+        // It comes out to 5000 SUSDS needs to become WETH
+        interactions[1][2] = getSwapInteraction(SUSDS, WETH, 5000 ether);
+
+        // Encode settlement data
+        bytes memory settleData = abi.encodeCall(ICowSettlement.settle, (tokens, clearingPrices, trades, interactions));
+
+        // Chain wrapper data
+        bytes memory wrapper1Data = abi.encode(params1, permitSignature1);
+        bytes memory wrapper2Data = abi.encode(params2, permitSignature2);
+        bytes memory wrapper3Data = abi.encode(params3, permitSignature3);
+
+        bytes memory wrapperData = abi.encodePacked(
+            uint16(wrapper1Data.length),
+            wrapper1Data,
+            address(closePositionWrapper),
+            uint16(wrapper2Data.length),
+            wrapper2Data,
+            address(closePositionWrapper),
+            uint16(wrapper3Data.length),
+            wrapper3Data
+        );
+
+        // Execute wrapped settlement
+        address[] memory targets = new address[](1);
+        bytes[] memory datas = new bytes[](1);
+        targets[0] = address(closePositionWrapper);
+        datas[0] = abi.encodeCall(closePositionWrapper.wrappedSettle, (settleData, wrapperData));
+        solver.runBatch(targets, datas);
+
+        // Verify all positions closed successfully
+        assertEq(IEVault(EWETH).debtOf(account1), 0, "User1 should have no WETH debt after closing");
+        assertEq(IEVault(EWETH).debtOf(account2), 0, "User2 should have no WETH debt after closing");
+        assertEq(IEVault(ESUSDS).debtOf(account3), 0, "User3 should have no SUSDS debt after closing");
     }
 }
