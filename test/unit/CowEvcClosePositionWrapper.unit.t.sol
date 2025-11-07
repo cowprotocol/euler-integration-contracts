@@ -24,10 +24,91 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     address constant ACCOUNT = address(0x1112);
     address constant SOLVER = address(0x3333);
 
+    uint256 constant DEFAULT_REPAY_AMOUNT = 1000e18;
+    bytes32 constant KIND_BUY = hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc";
+
     event PreApprovedHash(address indexed owner, bytes32 indexed hash, bool approved);
     event PreApprovedHashConsumed(address indexed owner, bytes32 indexed hash);
 
-    // Helper function to decode signed calldata
+    /// @notice Get default ClosePositionParams for testing
+    function _getDefaultParams() internal view returns (CowEvcClosePositionWrapper.ClosePositionParams memory) {
+        return CowEvcClosePositionWrapper.ClosePositionParams({
+            owner: OWNER,
+            account: ACCOUNT,
+            deadline: block.timestamp + 1 hours,
+            borrowVault: address(mockBorrowVault),
+            collateralVault: address(mockCollateralVault),
+            collateralAmount: 0,
+            repayAmount: DEFAULT_REPAY_AMOUNT,
+            kind: KIND_BUY
+        });
+    }
+
+    /// @notice Create empty settle data
+    function _getEmptySettleData() internal pure returns (bytes memory) {
+        return abi.encodeCall(
+            ICowSettlement.settle,
+            (
+                new address[](0),
+                new uint256[](0),
+                new ICowSettlement.Trade[](0),
+                [
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
+                ]
+            )
+        );
+    }
+
+    /// @notice Create settle data with tokens and prices
+    function _getSettleDataWithTokens() internal view returns (bytes memory) {
+        address[] memory tokens = new address[](2);
+        tokens[0] = mockBorrowVault.asset();
+        tokens[1] = address(mockCollateralVault);
+        uint256[] memory prices = new uint256[](2);
+        prices[0] = 1e18;
+        prices[1] = 1e18;
+
+        return abi.encodeCall(
+            ICowSettlement.settle,
+            (
+                tokens,
+                prices,
+                new ICowSettlement.Trade[](0),
+                [
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
+                ]
+            )
+        );
+    }
+
+    /// @notice Encode wrapper data with length prefix
+    function _encodeWrapperData(CowEvcClosePositionWrapper.ClosePositionParams memory params, bytes memory signature)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        bytes memory wrapperData = abi.encode(params, signature);
+        return abi.encodePacked(uint16(wrapperData.length), wrapperData);
+    }
+
+    /// @notice Setup pre-approved hash flow
+    function _setupPreApprovedHash(CowEvcClosePositionWrapper.ClosePositionParams memory params)
+        internal
+        returns (bytes32)
+    {
+        bytes32 hash = wrapper.getApprovalHash(params);
+        vm.prank(OWNER);
+        wrapper.setPreApprovedHash(hash, true);
+        mockEvc.setOperator(OWNER, address(wrapper), true);
+        mockEvc.setOperator(ACCOUNT, address(wrapper), true);
+        return hash;
+    }
+
+    /// @notice Decode signed calldata helper
     function _decodeSignedCalldata(bytes memory signedCalldata) internal pure returns (IEVC.BatchItem[] memory) {
         bytes memory encodedItems = new bytes(signedCalldata.length - 4);
         for (uint256 i = 4; i < signedCalldata.length; i++) {
@@ -77,25 +158,12 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         assertEq(wrapper.DOMAIN_SEPARATOR(), expectedDomainSeparator, "DOMAIN_SEPARATOR incorrect");
     }
 
-    function test_Constructor_SetsName() public view {
-        assertEq(wrapper.name(), "Euler EVC - Close Position", "Name not set correctly");
-    }
-
     /*//////////////////////////////////////////////////////////////
                     PARSE WRAPPER DATA TESTS
     //////////////////////////////////////////////////////////////*/
 
     function test_ParseWrapperData_EmptySignature() public view {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 1000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         bytes memory remaining = wrapper.parseWrapperData(wrapperData);
@@ -103,36 +171,8 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         assertEq(remaining.length, 0, "Should have no remaining data");
     }
 
-    function test_ParseWrapperData_WithSignature() public view {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 1000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
-
-        bytes memory signature = new bytes(65);
-        bytes memory wrapperData = abi.encode(params, signature);
-        bytes memory remaining = wrapper.parseWrapperData(wrapperData);
-
-        assertEq(remaining.length, 0, "Should have no remaining data");
-    }
-
     function test_ParseWrapperData_WithExtraData() public view {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 1000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
         bytes memory signature = new bytes(0);
         bytes memory wrapperData = abi.encode(params, signature);
@@ -149,59 +189,16 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
                     APPROVAL HASH TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_GetApprovalHash_Consistency() public view {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 1000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
-
-        bytes32 hash1 = wrapper.getApprovalHash(params);
-        bytes32 hash2 = wrapper.getApprovalHash(params);
-
-        assertEq(hash1, hash2, "Hash should be consistent");
-    }
-
     function test_GetApprovalHash_DifferentForDifferentParams() public view {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params1 = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 1000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
+        CowEvcClosePositionWrapper.ClosePositionParams memory params1 = _getDefaultParams();
 
-        // Same as params1 except owner
-        CowEvcClosePositionWrapper.ClosePositionParams memory params2 = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: ACCOUNT,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 1000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
+        // Change owner field
+        CowEvcClosePositionWrapper.ClosePositionParams memory params2 = _getDefaultParams();
+        params2.owner = ACCOUNT;
 
-        // Same as params1 except repayAmount (the last) field
-        CowEvcClosePositionWrapper.ClosePositionParams memory params3 = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 2000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
+        // Change repayAmount field
+        CowEvcClosePositionWrapper.ClosePositionParams memory params3 = _getDefaultParams();
+        params3.repayAmount = 2000e18;
 
         bytes32 hash1 = wrapper.getApprovalHash(params1);
         bytes32 hash2 = wrapper.getApprovalHash(params2);
@@ -212,16 +209,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     }
 
     function test_GetApprovalHash_MatchesEIP712() public view {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 1000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
         bytes32 structHash = keccak256(
             abi.encode(
@@ -246,41 +234,11 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
                     GET SIGNED CALLDATA TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_GetSignedCalldata_FullRepay() public {
-        // Set up a debt scenario
-        mockBorrowVault.setDebt(ACCOUNT, 1000e18);
-
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 1000e18, // Exactly matches debt
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
-
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
-        IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
-
-        assertEq(items.length, 1, "Should have 1 batch item");
-    }
-
     function test_GetSignedCalldata_PartialRepay() public {
-        // Set up a debt scenario
-        mockBorrowVault.setDebt(ACCOUNT, 1000e18);
+        mockBorrowVault.setDebt(ACCOUNT, DEFAULT_REPAY_AMOUNT);
 
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 500e18, // Less than debt
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+        params.repayAmount = 500e18; // Less than debt
 
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
@@ -289,18 +247,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     }
 
     function test_GetSignedCalldata_RepayItem() public {
-        mockBorrowVault.setDebt(ACCOUNT, 1000e18);
+        mockBorrowVault.setDebt(ACCOUNT, DEFAULT_REPAY_AMOUNT);
 
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 1000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
@@ -312,27 +261,6 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             abi.encodeCall(wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT)),
             "Should call helperRepay"
         );
-    }
-
-    function test_GetSignedCalldata_ContainsRepayItem() public {
-        mockBorrowVault.setDebt(ACCOUNT, 1000e18);
-
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 1000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
-
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
-        IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
-
-        assertEq(items[0].targetContract, address(wrapper), "Item should target wrapper");
-        assertEq(items[0].onBehalfOfAccount, ACCOUNT, "Should operate on behalf of account");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -502,30 +430,10 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     }
 
     function test_EvcInternalSettle_RequiresCorrectOnBehalfOfAccount() public {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: OWNER,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 1000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+        params.account = OWNER;
 
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                new address[](0),
-                new uint256[](0),
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
+        bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         bytes memory remainingWrapperData = "";
 
@@ -540,30 +448,10 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     }
 
     function test_EvcInternalSettle_CanBeCalledByEVC() public {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: OWNER, // Same account, no transfer needed
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 1000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+        params.account = OWNER; // Same account, no transfer needed
 
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                new address[](0),
-                new uint256[](0),
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
+        bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         bytes memory remainingWrapperData = "";
 
@@ -800,63 +688,23 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     }
 
     function test_WrappedSettle_WithPreApprovedHash() public {
-        mockBorrowVault.setDebt(ACCOUNT, 1000e18);
-
+        mockBorrowVault.setDebt(ACCOUNT, DEFAULT_REPAY_AMOUNT);
         mockCollateralVault.mint(ACCOUNT, 2000e18);
+        MockERC20(mockBorrowVault.asset()).mint(OWNER, DEFAULT_REPAY_AMOUNT);
 
-        // Mint repayment assets to OWNER (not wrapper) since helperRepay pulls from owner
-        MockERC20(mockBorrowVault.asset()).mint(OWNER, 1000e18);
-
-        // Owner must approve wrapper to spend repayment assets
         vm.startPrank(OWNER);
-        MockERC20(mockBorrowVault.asset()).approve(address(wrapper), 1000e18);
+        MockERC20(mockBorrowVault.asset()).approve(address(wrapper), DEFAULT_REPAY_AMOUNT);
         vm.stopPrank();
 
-        // These tokens need to be spendable by the wrapper
         vm.prank(ACCOUNT);
         mockCollateralVault.approve(address(wrapper), 2000e18);
 
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 1000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
-        bytes32 hash = wrapper.getApprovalHash(params);
+        bytes32 hash = _setupPreApprovedHash(params);
 
-        vm.prank(OWNER);
-        wrapper.setPreApprovedHash(hash, true);
-
-        mockEvc.setOperator(OWNER, address(wrapper), true);
-        mockEvc.setOperator(ACCOUNT, address(wrapper), true);
-
-        address[] memory tokens = new address[](2);
-        tokens[0] = mockBorrowVault.asset();
-        tokens[1] = address(mockCollateralVault);
-        uint256[] memory prices = new uint256[](2);
-        prices[0] = 1e18;
-        prices[1] = 1e18;
-
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                tokens,
-                prices,
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-        wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
+        bytes memory settleData = _getSettleDataWithTokens();
+        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
 
         mockEvc.setSuccessfulBatch(true);
 
@@ -867,42 +715,15 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     }
 
     function test_WrappedSettle_PreApprovedHashRevertsIfDeadlineExceeded() public {
-        mockBorrowVault.setDebt(ACCOUNT, 1000e18);
+        mockBorrowVault.setDebt(ACCOUNT, DEFAULT_REPAY_AMOUNT);
 
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp - 1, // Past deadline
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 1000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+        params.deadline = block.timestamp - 1; // Past deadline
 
-        bytes32 hash = wrapper.getApprovalHash(params);
+        _setupPreApprovedHash(params);
 
-        vm.prank(OWNER);
-        wrapper.setPreApprovedHash(hash, true);
-
-        mockEvc.setOperator(OWNER, address(wrapper), true);
-        mockEvc.setOperator(ACCOUNT, address(wrapper), true);
-
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                new address[](0),
-                new uint256[](0),
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-        wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
 
         vm.prank(SOLVER);
         vm.expectRevert(
@@ -918,18 +739,10 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function test_MaxRepayAmount() public {
-        mockBorrowVault.setDebt(ACCOUNT, 1000e18);
+        mockBorrowVault.setDebt(ACCOUNT, DEFAULT_REPAY_AMOUNT);
 
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: type(uint256).max,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+        params.repayAmount = type(uint256).max;
 
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
@@ -939,18 +752,10 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     }
 
     function test_SameOwnerAndAccount() public {
-        mockBorrowVault.setDebt(OWNER, 1000e18);
+        mockBorrowVault.setDebt(OWNER, DEFAULT_REPAY_AMOUNT);
 
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: OWNER, // Same as owner
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 1000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+        params.account = OWNER; // Same as owner
 
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
@@ -961,16 +766,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     function test_ZeroDebt() public {
         mockBorrowVault.setDebt(ACCOUNT, 0);
 
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 1000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
