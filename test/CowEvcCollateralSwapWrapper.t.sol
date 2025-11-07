@@ -197,9 +197,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // Get trade data
         r.trades = new ICowSettlement.Trade[](1);
-        (r.trades[0], r.orderData, r.orderUid) = setupCowOrder(
-            r.tokens, 0, 1, sellAmount, buyAmount, validTo, owner, receiver, false
-        );
+        (r.trades[0], r.orderData, r.orderUid) =
+            setupCowOrder(r.tokens, 0, 1, sellAmount, buyAmount, validTo, owner, receiver, false);
 
         // Setup interactions - withdraw from sell vault, swap underlying assets, deposit to buy vault
         r.interactions = [
