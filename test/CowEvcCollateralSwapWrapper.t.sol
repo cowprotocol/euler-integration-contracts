@@ -20,6 +20,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     SignerECDSA internal ecdsa;
 
     uint256 constant SUSDS_MARGIN = 2000e18;
+    uint256 constant DEFAULT_SWAP_AMOUNT = 500e18;
+    uint256 constant DEFAULT_BUY_AMOUNT = 0.0045e8;
 
     function setUp() public override {
         super.setUp();
@@ -88,6 +90,88 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         uint256[] clearingPrices;
         ICowSettlement.Trade[] trades;
         ICowSettlement.Interaction[][3] interactions;
+    }
+
+    /// @notice Create default CollateralSwapParams for testing
+    function _createDefaultParams(address owner, address account)
+        internal
+        view
+        returns (CowEvcCollateralSwapWrapper.CollateralSwapParams memory)
+    {
+        return CowEvcCollateralSwapWrapper.CollateralSwapParams({
+            owner: owner,
+            account: account,
+            deadline: block.timestamp + 1 hours,
+            fromVault: ESUSDS,
+            toVault: EWBTC,
+            swapAmount: DEFAULT_SWAP_AMOUNT,
+            kind: GPv2Order.KIND_SELL
+        });
+    }
+
+    /// @notice Create permit signature for EVC operator
+    function _createPermitSignature(CowEvcCollateralSwapWrapper.CollateralSwapParams memory params)
+        internal
+        returns (bytes memory)
+    {
+        ecdsa.setPrivateKey(privateKey);
+        return ecdsa.signPermit(
+            params.owner,
+            address(collateralSwapWrapper),
+            uint256(uint160(address(collateralSwapWrapper))),
+            0,
+            params.deadline,
+            0,
+            collateralSwapWrapper.getSignedCalldata(params)
+        );
+    }
+
+    /// @notice Encode wrapper data with length prefix
+    function _encodeWrapperData(CowEvcCollateralSwapWrapper.CollateralSwapParams memory params, bytes memory signature)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        bytes memory wrapperData = abi.encode(params, signature);
+        return abi.encodePacked(uint16(wrapperData.length), wrapperData);
+    }
+
+    /// @notice Execute wrapped settlement through solver
+    function _executeWrappedSettlement(bytes memory settleData, bytes memory wrapperData) internal {
+        address[] memory targets = new address[](1);
+        bytes[] memory datas = new bytes[](1);
+        targets[0] = address(collateralSwapWrapper);
+        datas[0] = abi.encodeCall(collateralSwapWrapper.wrappedSettle, (settleData, wrapperData));
+        solver.runBatch(targets, datas);
+    }
+
+    /// @notice Setup user approvals for collateral swap on subaccount
+    function _setupSubaccountApprovals(address account, CowEvcCollateralSwapWrapper.CollateralSwapParams memory params)
+        internal
+    {
+        vm.startPrank(user);
+
+        // Approve vault shares from main account for settlement
+        IEVault(params.fromVault).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+
+        // Approve transfer of vault shares from the subaccount to wrapper
+        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
+        items[0] = IEVC.BatchItem({
+            onBehalfOfAccount: account,
+            targetContract: params.fromVault,
+            value: 0,
+            data: abi.encodeCall(IERC20.approve, (address(collateralSwapWrapper), type(uint256).max))
+        });
+        evc.batch(items);
+
+        // Set wrapper as operator for the subaccount
+        evc.setAccountOperator(account, address(collateralSwapWrapper), true);
+
+        // Pre-approve the operation hash
+        bytes32 hash = collateralSwapWrapper.getApprovalHash(params);
+        collateralSwapWrapper.setPreApprovedHash(hash, true);
+
+        vm.stopPrank();
     }
 
     /// @notice Create settlement data for swapping collateral between vaults
@@ -166,90 +250,50 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     function test_CollateralSwapWrapper_MainAccount() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
-        vm.startPrank(user);
-
         // User deposits SUSDS collateral
+        vm.startPrank(user);
         IERC20(SUSDS).approve(ESUSDS, type(uint256).max);
         uint256 depositAmount = 1000e18;
         IERC4626(ESUSDS).deposit(depositAmount, user);
 
-        uint256 sellAmount = 500e18; // Sell 500 ESUSDS
-        uint256 buyAmount = 0.0045e8; // Expect to receive ~0.0045 EWBTC (8 decimals)
+        // Create params using helper
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, user);
 
         // Get settlement data
-        SettlementData memory settlement = getCollateralSwapSettlement(
-            user,
-            user, // Receiver is user since it's main account
-            ESUSDS,
-            EWBTC,
-            sellAmount,
-            buyAmount
-        );
+        SettlementData memory settlement =
+            getCollateralSwapSettlement(user, user, ESUSDS, EWBTC, DEFAULT_SWAP_AMOUNT, DEFAULT_BUY_AMOUNT);
 
-        // User signs the order on cowswap
+        // User signs the order and approves vault shares for settlement
         COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
-
-        // User approves vault shares for settlement
         IEVault(ESUSDS).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
-
         vm.stopPrank();
 
         // Record balances before swap
         uint256 susdsBalanceBefore = IERC20(ESUSDS).balanceOf(user);
         uint256 wbtcBalanceBefore = IERC20(EWBTC).balanceOf(user);
 
-        // Prepare CollateralSwapParams
-        uint256 deadline = block.timestamp + 1 hours;
-        ecdsa.setPrivateKey(privateKey);
-
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: user,
-            account: user, // Main account
-            deadline: deadline,
-            fromVault: ESUSDS,
-            toVault: EWBTC,
-            swapAmount: sellAmount,
-            kind: GPv2Order.KIND_SELL
-        });
-
-        // Sign permit for EVC operator
-        bytes memory permitSignature = ecdsa.signPermit(
-            user,
-            address(collateralSwapWrapper),
-            uint256(uint160(address(collateralSwapWrapper))),
-            0,
-            deadline,
-            0,
-            collateralSwapWrapper.getSignedCalldata(params)
-        );
-
-        // Encode settlement data
+        // Create permit signature and encode data
+        bytes memory permitSignature = _createPermitSignature(params);
         bytes memory settleData = abi.encodeCall(
             ICowSettlement.settle,
             (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
         );
+        bytes memory wrapperData = _encodeWrapperData(params, permitSignature);
 
-        // Encode wrapper data with CollateralSwapParams
-        bytes memory wrapperData = abi.encode(params, permitSignature);
-        wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
-
-        // Execute wrapped settlement through solver
-        address[] memory targets = new address[](1);
-        bytes[] memory datas = new bytes[](1);
-        targets[0] = address(collateralSwapWrapper);
-        datas[0] = abi.encodeCall(collateralSwapWrapper.wrappedSettle, (settleData, wrapperData));
-
-        // Expect the event to be emitted
+        // Expect event emission
         vm.expectEmit(true, true, true, true);
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
             params.owner, params.account, params.fromVault, params.toVault, params.swapAmount, params.kind
         );
 
-        solver.runBatch(targets, datas);
+        // Execute wrapped settlement
+        _executeWrappedSettlement(settleData, wrapperData);
 
         // Verify the collateral was swapped successfully
         assertEq(
-            IERC20(ESUSDS).balanceOf(user), susdsBalanceBefore - sellAmount, "User should have less ESUSDS after swap"
+            IERC20(ESUSDS).balanceOf(user),
+            susdsBalanceBefore - DEFAULT_SWAP_AMOUNT,
+            "User should have less ESUSDS after swap"
         );
         assertGt(IERC20(EWBTC).balanceOf(user), wbtcBalanceBefore, "User should have more EWBTC after swap");
     }
@@ -260,97 +304,50 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         address account = address(uint160(user) ^ uint8(0x01));
 
-        uint256 sellAmount = 500e18; // Sell 500 ESUSDS
-        uint256 buyAmount = 0.0045e8; // Expect to receive ~0.0045 EWBTC (8 decimals)
-
-        // Prepare CollateralSwapParams
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: user,
-            account: account, // Subaccount
-            deadline: block.timestamp + 1 hours,
-            fromVault: ESUSDS,
-            toVault: EWBTC,
-            swapAmount: sellAmount,
-            kind: GPv2Order.KIND_SELL
-        });
-
-        vm.startPrank(user);
+        // Create params using helper
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, account);
 
         // User deposits SUSDS collateral to subaccount
+        vm.startPrank(user);
         IERC20(SUSDS).approve(ESUSDS, type(uint256).max);
         uint256 depositAmount = 1000e18;
         IERC4626(ESUSDS).deposit(depositAmount, account);
 
         // Get settlement data - receiver is the subaccount
-        SettlementData memory settlement = getCollateralSwapSettlement(
-            user,
-            account, // Receiver is subaccount
-            ESUSDS,
-            EWBTC,
-            sellAmount,
-            buyAmount
-        );
+        SettlementData memory settlement =
+            getCollateralSwapSettlement(user, account, ESUSDS, EWBTC, DEFAULT_SWAP_AMOUNT, DEFAULT_BUY_AMOUNT);
 
         // User signs the order on cowswap
         COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
-
-        // User approves vault shares for settlement (from main account)
-        IEVault(ESUSDS).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
-
-        // For subaccount, user approves transfer of vault shares from the account to main account
-        {
-            IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
-            items[0] = IEVC.BatchItem({
-                onBehalfOfAccount: account,
-                targetContract: ESUSDS,
-                value: 0,
-                data: abi.encodeCall(IERC20.approve, (address(collateralSwapWrapper), type(uint256).max))
-            });
-            evc.batch(items);
-        }
-
-        // User approves the wrapper to be operator (both of the main account and the subaccount)
-        evc.setAccountOperator(account, address(collateralSwapWrapper), true);
-
-        // User pre-approves the hash for the wrapper operation
-        bytes32 hash = collateralSwapWrapper.getApprovalHash(params);
-        collateralSwapWrapper.setPreApprovedHash(hash, true);
-
         vm.stopPrank();
+
+        // Setup subaccount approvals and pre-approved hash
+        _setupSubaccountApprovals(account, params);
 
         // Record balances before swap
         uint256 susdsBalanceBefore = IERC20(ESUSDS).balanceOf(account);
         uint256 wbtcBalanceBefore = IERC20(EWBTC).balanceOf(account);
 
-        // Encode settlement data
+        // Encode settlement and wrapper data (empty signature for pre-approved hash)
         bytes memory settleData = abi.encodeCall(
             ICowSettlement.settle,
             (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
         );
+        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
 
-        // Encode wrapper data with CollateralSwapParams
-        bytes memory signature = new bytes(0); // Empty signature for pre-approved hash
-        bytes memory wrapperData = abi.encode(params, signature);
-        wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
-
-        // Execute wrapped settlement through solver
-        address[] memory targets = new address[](1);
-        bytes[] memory datas = new bytes[](1);
-        targets[0] = address(collateralSwapWrapper);
-        datas[0] = abi.encodeCall(collateralSwapWrapper.wrappedSettle, (settleData, wrapperData));
-
-        // Expect the event to be emitted
+        // Expect event emission
         vm.expectEmit(true, true, true, true);
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
             params.owner, params.account, params.fromVault, params.toVault, params.swapAmount, params.kind
         );
 
-        solver.runBatch(targets, datas);
+        // Execute wrapped settlement
+        _executeWrappedSettlement(settleData, wrapperData);
 
         // Verify the collateral was swapped successfully
         assertEq(
             IERC20(ESUSDS).balanceOf(account),
-            susdsBalanceBefore - sellAmount,
+            susdsBalanceBefore - DEFAULT_SWAP_AMOUNT,
             "Subaccount should have less ESUSDS after swap"
         );
         assertGt(IERC20(EWBTC).balanceOf(account), wbtcBalanceBefore, "Subaccount should have more EWBTC after swap");
@@ -385,15 +382,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
     /// @notice Test parseWrapperData function
     function test_CollateralSwapWrapper_ParseWrapperData() external view {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: user,
-            account: address(uint160(user) ^ uint8(0x01)),
-            deadline: block.timestamp + 1 hours,
-            fromVault: ESUSDS,
-            toVault: EWBTC,
-            swapAmount: 1000e18,
-            kind: GPv2Order.KIND_SELL
-        });
+        address account = address(uint160(user) ^ uint8(0x01));
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, account);
 
         bytes memory signature = new bytes(0);
         bytes memory wrapperData = abi.encode(params, signature);
@@ -418,86 +408,42 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         uint256 sellAmount = 1000 ether + 2500 ether; // Sell 3500 ESUSDS
         uint256 buyAmount = 0.0325e8; // Expect to receive ~0.0325 EWBTC (8 decimals)
 
-        // Prepare CollateralSwapParams
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: user,
-            account: account,
-            deadline: block.timestamp + 1 hours,
-            fromVault: ESUSDS,
-            toVault: EWBTC,
-            swapAmount: sellAmount,
-            kind: GPv2Order.KIND_SELL
-        });
-
-        // Now swap some collateral from SUSDS to WBTC (add more WBTC collateral)
-        vm.startPrank(user);
+        // Create params using helper
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, account);
+        params.swapAmount = sellAmount; // Override swap amount for this test
 
         // Get settlement data
-        SettlementData memory settlement = getCollateralSwapSettlement(
-            user,
-            account, // Receiver is subaccount
-            ESUSDS,
-            EWBTC,
-            sellAmount,
-            buyAmount
-        );
+        SettlementData memory settlement =
+            getCollateralSwapSettlement(user, account, ESUSDS, EWBTC, sellAmount, buyAmount);
 
         // User signs the order on cowswap
+        vm.startPrank(user);
         COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
-
-        // User approves vault shares for settlement
-        IEVault(ESUSDS).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
-
-        // For subaccount, user approves transfer of vault shares from the account
-        {
-            IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
-            items[0] = IEVC.BatchItem({
-                onBehalfOfAccount: account,
-                targetContract: ESUSDS,
-                value: 0,
-                data: abi.encodeCall(IERC20.approve, (address(collateralSwapWrapper), type(uint256).max))
-            });
-            evc.batch(items);
-        }
-
-        // User approves the wrapper to be operator (both of the main account and the subaccount)
-        evc.setAccountOperator(account, address(collateralSwapWrapper), true);
-
-        // User pre-approves the hash for the wrapper operation
-        bytes32 hash = collateralSwapWrapper.getApprovalHash(params);
-        collateralSwapWrapper.setPreApprovedHash(hash, true);
-
         vm.stopPrank();
+
+        // Setup subaccount approvals and pre-approved hash
+        _setupSubaccountApprovals(account, params);
 
         // Record balances and debt before swap
         uint256 susdsBalanceBefore = IERC20(ESUSDS).balanceOf(account);
         uint256 wbtcBalanceBefore = IERC20(EWBTC).balanceOf(account);
         uint256 debtBefore = IEVault(EWETH).debtOf(account);
 
-        // Encode settlement data
+        // Encode settlement and wrapper data (empty signature for pre-approved hash)
         bytes memory settleData = abi.encodeCall(
             ICowSettlement.settle,
             (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
         );
+        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
 
-        // Encode wrapper data with CollateralSwapParams
-        bytes memory signature = new bytes(0); // Empty signature for pre-approved hash
-        bytes memory wrapperData = abi.encode(params, signature);
-        wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
-
-        // Execute wrapped settlement through solver
-        address[] memory targets = new address[](1);
-        bytes[] memory datas = new bytes[](1);
-        targets[0] = address(collateralSwapWrapper);
-        datas[0] = abi.encodeCall(collateralSwapWrapper.wrappedSettle, (settleData, wrapperData));
-
-        // Expect the event to be emitted
+        // Expect event emission
         vm.expectEmit(true, true, true, true);
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
             params.owner, params.account, params.fromVault, params.toVault, params.swapAmount, params.kind
         );
 
-        solver.runBatch(targets, datas);
+        // Execute wrapped settlement
+        _executeWrappedSettlement(settleData, wrapperData);
 
         // Verify the collateral was swapped successfully while maintaining debt
         assertEq(

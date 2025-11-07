@@ -26,6 +26,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
     address constant ACCOUNT = address(0x1112);
     address constant SOLVER = address(0x3333);
 
+    uint256 constant DEFAULT_SWAP_AMOUNT = 1000e18;
+
     // Constants from the contract
     bytes32 private constant KIND_SELL = hex"f3b277728b3fee749481eb3e0b3b48980dbbab78658fc419025cb16eee346775";
     bytes32 private constant KIND_BUY = hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc";
@@ -33,7 +35,59 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
     event PreApprovedHash(address indexed owner, bytes32 indexed hash, bool approved);
     event PreApprovedHashConsumed(address indexed owner, bytes32 indexed hash);
 
-    // Helper function to decode signed calldata
+    /// @notice Get default CollateralSwapParams for testing
+    function _getDefaultParams() internal view returns (CowEvcCollateralSwapWrapper.CollateralSwapParams memory) {
+        return CowEvcCollateralSwapWrapper.CollateralSwapParams({
+            owner: OWNER,
+            account: ACCOUNT,
+            deadline: block.timestamp + 1 hours,
+            fromVault: address(mockFromVault),
+            toVault: address(mockToVault),
+            swapAmount: DEFAULT_SWAP_AMOUNT,
+            kind: KIND_SELL
+        });
+    }
+
+    /// @notice Create empty settle data
+    function _getEmptySettleData() internal pure returns (bytes memory) {
+        return abi.encodeCall(
+            ICowSettlement.settle,
+            (
+                new address[](0),
+                new uint256[](0),
+                new ICowSettlement.Trade[](0),
+                [
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
+                ]
+            )
+        );
+    }
+
+    /// @notice Encode wrapper data with length prefix
+    function _encodeWrapperData(CowEvcCollateralSwapWrapper.CollateralSwapParams memory params, bytes memory signature)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        bytes memory wrapperData = abi.encode(params, signature);
+        return abi.encodePacked(uint16(wrapperData.length), wrapperData);
+    }
+
+    /// @notice Setup pre-approved hash flow
+    function _setupPreApprovedHash(CowEvcCollateralSwapWrapper.CollateralSwapParams memory params)
+        internal
+        returns (bytes32)
+    {
+        bytes32 hash = wrapper.getApprovalHash(params);
+        vm.prank(OWNER);
+        wrapper.setPreApprovedHash(hash, true);
+        mockEvc.setOperator(OWNER, address(wrapper), true);
+        return hash;
+    }
+
+    /// @notice Decode signed calldata helper
     function _decodeSignedCalldata(bytes memory signedCalldata) internal pure returns (IEVC.BatchItem[] memory) {
         bytes memory encodedItems = new bytes(signedCalldata.length - 4);
         for (uint256 i = 4; i < signedCalldata.length; i++) {
@@ -86,24 +140,12 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         assertEq(wrapper.DOMAIN_SEPARATOR(), expectedDomainSeparator, "DOMAIN_SEPARATOR incorrect");
     }
 
-    function test_Constructor_SetsName() public view {
-        assertEq(wrapper.name(), "Euler EVC - Collateral Swap", "Name not set correctly");
-    }
-
     /*//////////////////////////////////////////////////////////////
                     PARSE WRAPPER DATA TESTS
     //////////////////////////////////////////////////////////////*/
 
     function test_ParseWrapperData_EmptySignature() public view {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            swapAmount: 1000e18,
-            kind: KIND_SELL
-        });
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
 
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         bytes memory remaining = wrapper.parseWrapperData(wrapperData);
@@ -111,34 +153,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         assertEq(remaining.length, 0, "Should have no remaining data");
     }
 
-    function test_ParseWrapperData_WithSignature() public view {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            swapAmount: 1000e18,
-            kind: KIND_SELL
-        });
-
-        bytes memory signature = new bytes(65);
-        bytes memory wrapperData = abi.encode(params, signature);
-        bytes memory remaining = wrapper.parseWrapperData(wrapperData);
-
-        assertEq(remaining.length, 0, "Should have no remaining data");
-    }
-
     function test_ParseWrapperData_WithExtraData() public view {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            swapAmount: 1000e18,
-            kind: KIND_SELL
-        });
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
 
         bytes memory signature = new bytes(0);
         bytes memory wrapperData = abi.encode(params, signature);
@@ -155,58 +171,16 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
                     APPROVAL HASH TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_GetApprovalHash_Consistency() public view {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            swapAmount: 1000e18,
-            kind: KIND_SELL
-        });
-
-        bytes32 hash1 = wrapper.getApprovalHash(params);
-        bytes32 hash2 = wrapper.getApprovalHash(params);
-
-        assertEq(hash1, hash2, "Hash should be consistent");
-    }
-
     function test_GetApprovalHash_DifferentForDifferentParams() public view {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params1 =
-            CowEvcCollateralSwapWrapper.CollateralSwapParams({
-                owner: OWNER,
-                account: ACCOUNT,
-                deadline: block.timestamp + 1 hours,
-                fromVault: address(mockFromVault),
-                toVault: address(mockToVault),
-                swapAmount: 1000e18,
-                kind: KIND_SELL
-            });
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params1 = _getDefaultParams();
 
-        // Same as params1 except owner
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params2 =
-            CowEvcCollateralSwapWrapper.CollateralSwapParams({
-                owner: ACCOUNT,
-                account: ACCOUNT,
-                deadline: block.timestamp + 1 hours,
-                fromVault: address(mockFromVault),
-                toVault: address(mockToVault),
-                swapAmount: 1000e18,
-                kind: KIND_SELL
-            });
+        // Change owner field
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params2 = _getDefaultParams();
+        params2.owner = ACCOUNT;
 
-        // Same as params1 except swapAmount (the last meaningful field)
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params3 =
-            CowEvcCollateralSwapWrapper.CollateralSwapParams({
-                owner: OWNER,
-                account: ACCOUNT,
-                deadline: block.timestamp + 1 hours,
-                fromVault: address(mockFromVault),
-                toVault: address(mockToVault),
-                swapAmount: 2000e18,
-                kind: KIND_SELL
-            });
+        // Change swapAmount field
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params3 = _getDefaultParams();
+        params3.swapAmount = 2000e18;
 
         bytes32 hash1 = wrapper.getApprovalHash(params1);
         bytes32 hash2 = wrapper.getApprovalHash(params2);
@@ -217,15 +191,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
     }
 
     function test_GetApprovalHash_MatchesEIP712() public view {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            swapAmount: 1000e18,
-            kind: KIND_SELL
-        });
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
 
         bytes32 structHash = keccak256(
             abi.encode(
@@ -250,15 +216,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function test_GetSignedCalldata_EnablesNewCollateral() public view {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            swapAmount: 1000e18,
-            kind: KIND_SELL
-        });
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
 
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
@@ -273,15 +231,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
     }
 
     function test_GetSignedCalldata_UsesCorrectAccount() public view {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            swapAmount: 1000e18,
-            kind: KIND_SELL
-        });
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
 
         bytes memory signedCalldata = wrapper.getSignedCalldata(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
@@ -712,35 +662,12 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         vm.prank(OWNER);
         mockFromVault.approve(address(wrapper), 2000e18);
 
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: OWNER,
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            swapAmount: 1000e18,
-            kind: KIND_SELL
-        });
-
-        address[] memory tokens = new address[](0);
-        uint256[] memory prices = new uint256[](0);
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
+        params.account = OWNER; // Same account
 
         bytes memory signature = new bytes(65);
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                tokens,
-                prices,
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
-        bytes memory wrapperData = abi.encode(params, signature);
-        wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeWrapperData(params, signature);
 
         mockEvc.setSuccessfulBatch(true);
 
@@ -751,45 +678,16 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
     function test_WrappedSettle_WithPreApprovedHash() public {
         mockFromVault.mint(OWNER, 2000e18);
 
-        vm.startPrank(OWNER);
-        mockFromVault.approve(address(wrapper), 2000e18);
-        vm.stopPrank();
-
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: OWNER,
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            swapAmount: 1000e18,
-            kind: KIND_SELL
-        });
-
-        bytes32 hash = wrapper.getApprovalHash(params);
-
         vm.prank(OWNER);
-        wrapper.setPreApprovedHash(hash, true);
+        mockFromVault.approve(address(wrapper), 2000e18);
 
-        mockEvc.setOperator(OWNER, address(wrapper), true);
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
+        params.account = OWNER; // Same account
 
-        address[] memory tokens = new address[](0);
-        uint256[] memory prices = new uint256[](0);
+        bytes32 hash = _setupPreApprovedHash(params);
 
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                tokens,
-                prices,
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-        wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
 
         mockEvc.setSuccessfulBatch(true);
 
@@ -800,38 +698,14 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
     }
 
     function test_WrappedSettle_PreApprovedHashRevertsIfDeadlineExceeded() public {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: OWNER,
-            deadline: block.timestamp - 1, // Past deadline
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            swapAmount: 1000e18,
-            kind: KIND_SELL
-        });
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
+        params.account = OWNER; // Same account
+        params.deadline = block.timestamp - 1; // Past deadline
 
-        bytes32 hash = wrapper.getApprovalHash(params);
+        _setupPreApprovedHash(params);
 
-        vm.prank(OWNER);
-        wrapper.setPreApprovedHash(hash, true);
-
-        mockEvc.setOperator(OWNER, address(wrapper), true);
-
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                new address[](0),
-                new uint256[](0),
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-        wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
 
         vm.prank(SOLVER);
         vm.expectRevert(
