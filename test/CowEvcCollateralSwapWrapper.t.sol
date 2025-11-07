@@ -27,7 +27,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         super.setUp();
 
         // Deploy the collateral swap wrapper
-        collateralSwapWrapper = new CowEvcCollateralSwapWrapper(address(evc), COW_SETTLEMENT);
+        collateralSwapWrapper = new CowEvcCollateralSwapWrapper(address(EVC), COW_SETTLEMENT);
 
         // Add wrapper as a solver
         GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
@@ -36,7 +36,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         allowList.addSolver(address(collateralSwapWrapper));
         vm.stopPrank();
 
-        ecdsa = new SignerECDSA(evc);
+        ecdsa = new SignerECDSA(EVC);
 
         // sUSDS is not currently a collateral for WETH borrow, fix it
         vm.startPrank(IEVault(EWETH).governorAdmin());
@@ -68,8 +68,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         IERC20(SUSDS).approve(ESUSDS, type(uint256).max);
 
         // Enable collateral and controller on the account
-        evc.enableCollateral(account, ESUSDS);
-        evc.enableController(account, EWETH);
+        EVC.enableCollateral(account, ESUSDS);
+        EVC.enableController(account, EWETH);
 
         // Deposit collateral to the account, and add the approximate amount after swapping the borrowed collateral
         IERC4626(ESUSDS).deposit(collateralAmount + borrowAmount * 2500e18 / 0.99e18, account);
@@ -162,10 +162,10 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             value: 0,
             data: abi.encodeCall(IERC20.approve, (address(collateralSwapWrapper), type(uint256).max))
         });
-        evc.batch(items);
+        EVC.batch(items);
 
         // Set wrapper as operator for the subaccount
-        evc.setAccountOperator(account, address(collateralSwapWrapper), true);
+        EVC.setAccountOperator(account, address(collateralSwapWrapper), true);
 
         // Pre-approve the operation hash
         bytes32 hash = collateralSwapWrapper.getApprovalHash(params);
@@ -183,31 +183,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         address buyVaultToken,
         uint256 sellAmount,
         uint256 buyAmount
-    ) public view returns (SettlementData memory r) {
+    ) public returns (SettlementData memory r) {
         uint32 validTo = uint32(block.timestamp + 1 hours);
-
-        // Create order data - using KIND_SELL to sell exact amount of collateral
-        r.orderData = GPv2Order.Data({
-            sellToken: CowERC20(sellVaultToken),
-            buyToken: CowERC20(buyVaultToken),
-            receiver: receiver,
-            sellAmount: sellAmount,
-            buyAmount: buyAmount,
-            validTo: validTo,
-            appData: bytes32(0),
-            feeAmount: 0,
-            kind: GPv2Order.KIND_SELL,
-            partiallyFillable: false,
-            sellTokenBalance: GPv2Order.BALANCE_ERC20,
-            buyTokenBalance: GPv2Order.BALANCE_ERC20
-        });
-
-        // Get order UID
-        r.orderUid = getOrderUid(owner, r.orderData);
-
-        // Get trade data
-        r.trades = new ICowSettlement.Trade[](1);
-        r.trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, r.orderData.receiver, false);
 
         // Get tokens and prices
         r.tokens = new address[](2);
@@ -217,6 +194,12 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         r.clearingPrices = new uint256[](2);
         r.clearingPrices[0] = milkSwap.prices(IERC4626(sellVaultToken).asset());
         r.clearingPrices[1] = milkSwap.prices(IERC4626(buyVaultToken).asset()) * 1 ether / 0.98 ether;
+
+        // Get trade data
+        r.trades = new ICowSettlement.Trade[](1);
+        (r.trades[0], r.orderData, r.orderUid) = setupCowOrder(
+            r.tokens, 0, 1, sellAmount, buyAmount, validTo, owner, receiver, false
+        );
 
         // Setup interactions - withdraw from sell vault, swap underlying assets, deposit to buy vault
         r.interactions = [
@@ -250,12 +233,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     function test_CollateralSwapWrapper_MainAccount() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
-        // User deposits SUSDS collateral
-        vm.startPrank(user);
-        IERC20(SUSDS).approve(ESUSDS, type(uint256).max);
-        uint256 depositAmount = 1000e18;
-        IERC4626(ESUSDS).deposit(depositAmount, user);
-
         // Create params using helper
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, user);
 
@@ -263,8 +240,15 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         SettlementData memory settlement =
             getCollateralSwapSettlement(user, user, ESUSDS, EWBTC, DEFAULT_SWAP_AMOUNT, DEFAULT_BUY_AMOUNT);
 
-        // User signs the order and approves vault shares for settlement
-        COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
+        // User deposits SUSDS collateral
+        vm.startPrank(user);
+        IERC20(SUSDS).approve(ESUSDS, type(uint256).max);
+        uint256 depositAmount = 1000e18;
+        IERC4626(ESUSDS).deposit(depositAmount, user);
+
+        // User signs the order and approves vault shares for settlement (already done in setupCowOrder)
+
+        // Approve spending of the ESUSDS to repay debt
         IEVault(ESUSDS).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
         vm.stopPrank();
 
@@ -307,18 +291,18 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Create params using helper
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, account);
 
+        // Get settlement data - receiver is the subaccount
+        SettlementData memory settlement =
+            getCollateralSwapSettlement(user, account, ESUSDS, EWBTC, DEFAULT_SWAP_AMOUNT, DEFAULT_BUY_AMOUNT);
+
         // User deposits SUSDS collateral to subaccount
         vm.startPrank(user);
         IERC20(SUSDS).approve(ESUSDS, type(uint256).max);
         uint256 depositAmount = 1000e18;
         IERC4626(ESUSDS).deposit(depositAmount, account);
 
-        // Get settlement data - receiver is the subaccount
-        SettlementData memory settlement =
-            getCollateralSwapSettlement(user, account, ESUSDS, EWBTC, DEFAULT_SWAP_AMOUNT, DEFAULT_BUY_AMOUNT);
+        // User signs the order on cowswap (already done in setupCowOrder)
 
-        // User signs the order on cowswap
-        COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
         vm.stopPrank();
 
         // Setup subaccount approvals and pre-approved hash
@@ -416,10 +400,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         SettlementData memory settlement =
             getCollateralSwapSettlement(user, account, ESUSDS, EWBTC, sellAmount, buyAmount);
 
-        // User signs the order on cowswap
-        vm.startPrank(user);
-        COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
-        vm.stopPrank();
+        // User signs the order on cowswap (already done in setupCowOrder)
 
         // Setup subaccount approvals and pre-approved hash
         _setupSubaccountApprovals(account, params);

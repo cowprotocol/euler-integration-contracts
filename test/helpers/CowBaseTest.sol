@@ -2,9 +2,11 @@
 pragma solidity ^0.8;
 
 import {GPv2Order} from "cow/libraries/GPv2Order.sol";
+import {GPv2Trade} from "cow/libraries/GPv2Trade.sol";
+import {IERC20 as CowERC20} from "cow/interfaces/IERC20.sol";
 
 import {EthereumVaultConnector} from "evc/EthereumVaultConnector.sol";
-import {EVaultTestBase} from "lib/euler-vault-kit/test/unit/evault/EVaultTestBase.t.sol";
+import {Test} from "forge-std/Test.sol";
 import {IEVault, IVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
@@ -22,7 +24,7 @@ contract Solver {
     }
 }
 
-contract CowBaseTest is EVaultTestBase {
+contract CowBaseTest is Test {
     uint256 mainnetFork;
     uint256 constant BLOCK_NUMBER = 22546006;
     string forkRpcUrl = vm.envOr("FORK_RPC_URL", string(""));
@@ -39,19 +41,23 @@ contract CowBaseTest is EVaultTestBase {
     address internal constant EWETH = 0xD8b27CF359b7D15710a5BE299AF6e7Bf904984C2;
     address internal constant EWBTC = 0x998D761eC1BAdaCeb064624cc3A1d37A46C88bA4;
 
-    address payable constant REAL_EVC = payable(0x0C9a3dd6b8F28529d72d7f9cE918D493519EE383);
     address internal swapVerifier = 0xae26485ACDDeFd486Fe9ad7C2b34169d360737c7;
 
     ICowSettlement constant COW_SETTLEMENT = ICowSettlement(payable(0x9008D19f58AAbD9eD0D60971565AA8510560ab41));
 
+    EthereumVaultConnector constant EVC = EthereumVaultConnector(payable(0x0C9a3dd6b8F28529d72d7f9cE918D493519EE383));
+
     MilkSwap public milkSwap;
     address user;
-    uint256 privateKey = 123;
+    address user2;
+    address user3;
+    uint256 privateKey;
+    uint256 privateKey2;
+    uint256 privateKey3;
 
     Solver internal solver;
 
-    function setUp() public virtual override {
-        super.setUp();
+    function setUp() public virtual {
         solver = new Solver();
 
         if (bytes(forkRpcUrl).length == 0) {
@@ -61,9 +67,11 @@ contract CowBaseTest is EVaultTestBase {
         mainnetFork = vm.createSelectFork(forkRpcUrl);
         vm.rollFork(BLOCK_NUMBER);
 
-        evc = EthereumVaultConnector(REAL_EVC);
+        (user, privateKey) = makeAddrAndKey("user");
 
-        user = vm.addr(privateKey);
+        // Certain specialized tests could use these additional users
+        (user2, privateKey2) = makeAddrAndKey("user 2");
+        (user3, privateKey3) = makeAddrAndKey("user 3");
 
         // Add wrapper and our fake solver as solver
         GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
@@ -81,6 +89,12 @@ contract CowBaseTest is EVaultTestBase {
         milkSwap.setPrice(WETH, 2500e18); // 1 ETH = 2,500 USD
         milkSwap.setPrice(SUSDS, 1e18); // 1 USDS = 1 USD
         milkSwap.setPrice(WBTC, 100000e18 * 1e10); // 1 BTC = 100,000 USD (8 decimals)
+
+        // deal small amount to the settlement contract that serve as buffer (just makes tests easier...)
+        deal(SUSDS, address(COW_SETTLEMENT), 100e18);
+        deal(WETH, address(COW_SETTLEMENT), 100e18);
+        deal(ESUSDS, address(COW_SETTLEMENT), 100e18);
+        deal(EWETH, address(COW_SETTLEMENT), 100e18);
 
         // Set the approval for MilkSwap in the settlement as a convenience
         vm.startPrank(address(COW_SETTLEMENT));
@@ -109,8 +123,11 @@ contract CowBaseTest is EVaultTestBase {
         vm.label(ESUSDS, "eSUSDS");
         vm.label(EWETH, "eWETH");
         vm.label(EWBTC, "eWBTC");
-        vm.label(address(COW_SETTLEMENT), "cowSettlement");
-        vm.label(address(milkSwap), "milkSwap");
+        vm.label(address(COW_SETTLEMENT), "CoW");
+        vm.label(address(COW_SETTLEMENT.authenticator()), "CoW Auth");
+        vm.label(address(COW_SETTLEMENT.authenticator()), "CoW Vault Relayer");
+        vm.label(address(EVC), "EVC");
+        vm.label(address(milkSwap), "MilkSwap");
     }
 
     function getEmptySettlement()
@@ -180,30 +197,33 @@ contract CowBaseTest is EVaultTestBase {
         });
     }
 
-    function getSkimInteraction() public pure returns (ICowSettlement.Interaction memory) {
+    function getSkimInteraction(address vault) public pure returns (ICowSettlement.Interaction memory) {
         return ICowSettlement.Interaction({
-            target: address(ESUSDS),
+            target: address(vault),
             value: 0,
             callData: abi.encodeCall(IVault.skim, (type(uint256).max, address(COW_SETTLEMENT)))
         });
     }
 
-    function getTradeData(
+    function setupCowOrder(
+        address[] memory tokens,
+        uint256 sellTokenIndex,
+        uint256 buyTokenIndex,
         uint256 sellAmount,
         uint256 buyAmount,
         uint32 validTo,
         address owner,
         address receiver,
         bool isBuy
-    ) public pure returns (ICowSettlement.Trade memory) {
+    ) public returns (ICowSettlement.Trade memory trade, GPv2Order.Data memory order, bytes memory orderId) {
         // Set flags for (pre-sign, FoK sell order)
         // See
         // https://github.com/cowprotocol/contracts/blob/08f8627d8427c8842ae5d29ed8b44519f7674879/src/contracts/libraries/GPv2Trade.sol#L89-L94
         uint256 flags = (3 << 5) | (isBuy ? 1 : 0); // 1100000
 
-        return ICowSettlement.Trade({
-            sellTokenIndex: 0,
-            buyTokenIndex: 1,
+        trade = ICowSettlement.Trade({
+            sellTokenIndex: sellTokenIndex,
+            buyTokenIndex: buyTokenIndex,
             receiver: receiver,
             sellAmount: sellAmount,
             buyAmount: buyAmount,
@@ -214,6 +234,28 @@ contract CowBaseTest is EVaultTestBase {
             executedAmount: 0,
             signature: abi.encodePacked(owner)
         });
+
+        // Extract order from trade (manually applying GPv2Trade.extractOrder logic)
+        order = GPv2Order.Data({
+            sellToken: CowERC20(tokens[trade.sellTokenIndex]),
+            buyToken: CowERC20(tokens[trade.buyTokenIndex]),
+            receiver: trade.receiver,
+            sellAmount: trade.sellAmount,
+            buyAmount: trade.buyAmount,
+            validTo: trade.validTo,
+            appData: trade.appData,
+            feeAmount: trade.feeAmount,
+            kind: isBuy ? GPv2Order.KIND_BUY : GPv2Order.KIND_SELL,
+            partiallyFillable: false, // FoK orders are not partially fillable
+            sellTokenBalance: GPv2Order.BALANCE_ERC20,
+            buyTokenBalance: GPv2Order.BALANCE_ERC20
+        });
+
+        orderId = getOrderUid(owner, order);
+
+        // we basically always want to sign the order id
+        vm.prank(owner);
+        COW_SETTLEMENT.setPreSignature(orderId, true);
     }
 
     function getTokensAndPrices() public pure returns (address[] memory tokens, uint256[] memory clearingPrices) {
@@ -222,7 +264,7 @@ contract CowBaseTest is EVaultTestBase {
         tokens[1] = ESUSDS;
 
         clearingPrices = new uint256[](2);
-        clearingPrices[0] = 999; // WETH price (if it was against SUSD then 1000)
+        clearingPrices[0] = 2495; // WETH price (if it was against SUSD then 2500)
         clearingPrices[1] = 1; // eSUSDS price
     }
 }

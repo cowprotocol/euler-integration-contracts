@@ -48,7 +48,7 @@ contract MockEVC {
             onBehalfOf = previousOnBehalfOf;
 
             if (!success) {
-                assembly {
+                assembly ("memory-safe") {
                     revert(add(reason, 0x20), mload(reason))
                 }
             }
