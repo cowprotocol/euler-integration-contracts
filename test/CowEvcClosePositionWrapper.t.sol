@@ -28,7 +28,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         super.setUp();
 
         // Deploy the new close position wrapper
-        closePositionWrapper = new CowEvcClosePositionWrapper(address(evc), COW_SETTLEMENT);
+        closePositionWrapper = new CowEvcClosePositionWrapper(address(EVC), COW_SETTLEMENT);
 
         // Add wrapper as a solver
         GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
@@ -37,7 +37,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         allowList.addSolver(address(closePositionWrapper));
         vm.stopPrank();
 
-        ecdsa = new SignerECDSA(evc);
+        ecdsa = new SignerECDSA(EVC);
 
         // sUSDS is not currently a collateral for WETH borrow, fix it
         vm.startPrank(IEVault(EWETH).governorAdmin());
@@ -87,7 +87,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             value: 0,
             data: abi.encodeCall(IERC20.approve, (address(closePositionWrapper), type(uint256).max))
         });
-        evc.batch(items);
+        EVC.batch(items);
 
         // Approve vault shares for settlement
         IEVault(ESUSDS).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
@@ -103,8 +103,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         vm.startPrank(user);
 
         // Set operators
-        evc.setAccountOperator(user, address(closePositionWrapper), true);
-        evc.setAccountOperator(account, address(closePositionWrapper), true);
+        EVC.setAccountOperator(user, address(closePositionWrapper), true);
+        EVC.setAccountOperator(account, address(closePositionWrapper), true);
 
         // Pre-approve hash
         closePositionWrapper.setPreApprovedHash(hash, true);
@@ -117,7 +117,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             value: 0,
             data: abi.encodeCall(IERC20.approve, (address(closePositionWrapper), type(uint256).max))
         });
-        evc.batch(items);
+        EVC.batch(items);
 
         // Approve vault shares for settlement
         IEVault(ESUSDS).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
@@ -175,8 +175,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         IERC20(SUSDS).approve(ESUSDS, type(uint256).max);
 
         // Enable collateral and controller on the account
-        evc.enableCollateral(account, ESUSDS);
-        evc.enableController(account, EWETH);
+        EVC.enableCollateral(account, ESUSDS);
+        EVC.enableController(account, EWETH);
 
         // Deposit collateral to the account
         IERC4626(ESUSDS).deposit(collateralAmount, account);
@@ -199,31 +199,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         address buyToRepayToken,
         uint256 sellAmount,
         uint256 buyAmount
-    ) public view returns (SettlementData memory r) {
+    ) public returns (SettlementData memory r) {
         uint32 validTo = uint32(block.timestamp + 1 hours);
-
-        // Create order data - using KIND_BUY because we want exact buyAmount to repay
-        r.orderData = GPv2Order.Data({
-            sellToken: CowERC20(sellVaultToken),
-            buyToken: CowERC20(buyToRepayToken),
-            receiver: receiver,
-            sellAmount: sellAmount,
-            buyAmount: buyAmount,
-            validTo: validTo,
-            appData: bytes32(0),
-            feeAmount: 0,
-            kind: GPv2Order.KIND_BUY,
-            partiallyFillable: false,
-            sellTokenBalance: GPv2Order.BALANCE_ERC20,
-            buyTokenBalance: GPv2Order.BALANCE_ERC20
-        });
-
-        // Get order UID
-        r.orderUid = getOrderUid(owner, r.orderData);
-
-        // Get trade data
-        r.trades = new ICowSettlement.Trade[](1);
-        r.trades[0] = getTradeData(sellAmount, buyAmount, validTo, owner, r.orderData.receiver, true);
 
         // Get tokens and prices
         r.tokens = new address[](2);
@@ -233,6 +210,11 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         r.clearingPrices = new uint256[](2);
         r.clearingPrices[0] = milkSwap.prices(IERC4626(sellVaultToken).asset());
         r.clearingPrices[1] = milkSwap.prices(buyToRepayToken);
+
+        // Get trade data
+        r.trades = new ICowSettlement.Trade[](1);
+        (r.trades[0], r.orderData, r.orderUid) =
+            setupCowOrder(r.tokens, 0, 1, sellAmount, buyAmount, validTo, owner, receiver, true);
 
         // Setup interactions - withdraw from vault, swap to repayment token
         r.interactions = [
@@ -269,9 +251,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         SettlementData memory settlement =
             getClosePositionSettlement(user, user, ESUSDS, WETH, DEFAULT_SELL_AMOUNT, DEFAULT_BUY_AMOUNT);
 
-        // User signs order
-        vm.prank(user);
-        COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
+        // User signs order (already done in setupCowOrder)
 
         // Setup approvals
         _setupClosePositionApprovals(account);
@@ -361,9 +341,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Get settlement data
         SettlementData memory settlement = getClosePositionSettlement(user, user, ESUSDS, WETH, sellAmount, buyAmount);
 
-        // User signs order
-        vm.prank(user);
-        COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
+        // User signs order (already done in setupCowOrder)
 
         // Setup approvals
         _setupClosePositionApprovals(account);
@@ -469,9 +447,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         bytes32 hash = closePositionWrapper.getApprovalHash(params);
         _setupPreApprovedFlow(account, hash);
 
-        // User signs order
-        vm.prank(user);
-        COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
+        // User signs order (already done in setupCowOrder)
 
         // Record balances before closing
         uint256 debtBefore = IEVault(EWETH).debtOf(account);
