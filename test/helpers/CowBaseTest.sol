@@ -92,9 +92,11 @@ contract CowBaseTest is Test {
 
         // deal small amount to the settlement contract that serve as buffer (just makes tests easier...)
         deal(SUSDS, address(COW_SETTLEMENT), 100e18);
-        deal(WETH, address(COW_SETTLEMENT), 100e18);
+        deal(WETH, address(COW_SETTLEMENT), 0.05e18);
+        deal(WBTC, address(COW_SETTLEMENT), 0.001e8);
         deal(ESUSDS, address(COW_SETTLEMENT), 100e18);
-        deal(EWETH, address(COW_SETTLEMENT), 100e18);
+        deal(EWETH, address(COW_SETTLEMENT), 0.05e18);
+        deal(EWBTC, address(COW_SETTLEMENT), 0.001e8);
 
         // Set the approval for MilkSwap in the settlement as a convenience
         vm.startPrank(address(COW_SETTLEMENT));
