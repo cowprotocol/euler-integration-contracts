@@ -91,12 +91,12 @@ contract CowBaseTest is Test {
         milkSwap.setPrice(WBTC, 100000e18 * 1e10); // 1 BTC = 100,000 USD (8 decimals)
 
         // deal small amount to the settlement contract that serve as buffer (just makes tests easier...)
-        deal(SUSDS, address(COW_SETTLEMENT), 100e18);
-        deal(WETH, address(COW_SETTLEMENT), 0.05e18);
-        deal(WBTC, address(COW_SETTLEMENT), 0.001e8);
-        deal(ESUSDS, address(COW_SETTLEMENT), 100e18);
-        deal(EWETH, address(COW_SETTLEMENT), 0.05e18);
-        deal(EWBTC, address(COW_SETTLEMENT), 0.001e8);
+        deal(SUSDS, address(COW_SETTLEMENT), 200e18);
+        deal(WETH, address(COW_SETTLEMENT), 0.1e18);
+        deal(WBTC, address(COW_SETTLEMENT), 0.002e8);
+        deal(ESUSDS, address(COW_SETTLEMENT), 200e18);
+        deal(EWETH, address(COW_SETTLEMENT), 0.1e18);
+        deal(EWBTC, address(COW_SETTLEMENT), 0.002e8);
 
         // Set the approval for MilkSwap in the settlement as a convenience
         vm.startPrank(address(COW_SETTLEMENT));
