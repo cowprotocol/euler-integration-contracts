@@ -95,6 +95,46 @@ forge snapshot
 - `SignerECDSA.sol`: ECDSA signature utilities for tests
 - `EmptyWrapper.sol`: Minimal wrapper for testing wrapper chaining
 
+### Writing CoW Protocol Settlement Tests
+
+When creating settlement tests, especially multi-user scenarios:
+
+**1. Leverage Coincidence of Wants**
+- CoW Protocol nets out opposing trades within a settlement
+- Only swap the NET difference between opposing directions
+- Example: If User1+User2 need 10k SUSDS worth of WETH and User3 provides 5k SUSDS worth of WETH, only swap the 5k SUSDS difference
+- Don't create separate swaps for each direction - calculate the minimal swaps needed
+
+**2. Proper Price Ratio Calculations**
+- Use `clearingPrices[tokenIndex]` in withdrawal/swap calculations
+- Calculate amounts based on what the settlement actually needs: `amount * clearingPrices[buyToken] / clearingPrices[sellToken]`
+- Ensure the math balances: withdrawals + swaps must provide exactly what's needed for all trades
+
+**3. Logical Token Array Ordering**
+- Organize tokens in a readable order: base assets first (SUSDS, WETH), then vault tokens (ESUSDS, EWETH)
+- Consistent ordering makes trade setup less error-prone
+- Use meaningful comments to clarify token indices
+
+**4. Realistic Trade Amounts**
+- Fine-tune amounts so withdrawals, swaps, and repayments balance properly
+- The numbers need to actually work for the settlement to succeed
+- Test will fail if amounts don't align with vault balances and clearing prices
+
+**5. Simplified Interaction Design**
+- Keep interactions minimal and purposeful - only include what's needed
+- Common pattern: withdrawals from vaults → net swaps → implicit transfers via settlement
+- Avoid redundant operations
+
+**6. Helper Functions for DRY Tests**
+- Create parameterized helpers like `_setupLeveragedPositionFor()` instead of repeating setup code
+- Use helpers for approvals (`_setupClosePositionApprovalsFor()`) and signatures (`_createPermitSignatureFor()`)
+- This significantly reduces test length and improves maintainability
+
+**7. Clear Explanatory Comments**
+- Explain the economic logic, not just the technical operations
+- Examples: "We only need to swap the difference" or "Coincidence of wants between User1/User2 and User3"
+- Help readers understand why the settlement is structured this way
+
 ## Important Implementation Details
 
 ### Security Considerations

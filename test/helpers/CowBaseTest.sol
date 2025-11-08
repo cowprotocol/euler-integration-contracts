@@ -87,10 +87,10 @@ contract CowBaseTest is Test {
         milkSwap.setPrice(SUSDS, 1e18); // 1 USDS = 1 USD
 
         // deal small amount to the settlement contract that serve as buffer (just makes tests easier...)
-        deal(SUSDS, address(COW_SETTLEMENT), 100e18);
-        deal(WETH, address(COW_SETTLEMENT), 100e18);
-        deal(ESUSDS, address(COW_SETTLEMENT), 100e18);
-        deal(EWETH, address(COW_SETTLEMENT), 100e18);
+        deal(SUSDS, address(COW_SETTLEMENT), 200e18);
+        deal(WETH, address(COW_SETTLEMENT), 0.2e18);
+        deal(ESUSDS, address(COW_SETTLEMENT), 200e18);
+        deal(EWETH, address(COW_SETTLEMENT), 0.2e18);
 
         // Set the approval for MilkSwap in the settlement as a convenience
         vm.startPrank(address(COW_SETTLEMENT));

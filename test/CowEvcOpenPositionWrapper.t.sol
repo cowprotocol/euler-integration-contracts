@@ -497,12 +497,12 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         // Deposit SUSDS to eSUSDS vault for both user1 and user2
         interactions[1][1] = getDepositInteraction(ESUSDS, 10000 ether);
         // Deposit WETH to eWETH vault
-        interactions[1][2] = getDepositInteraction(ESUSDS, 2 ether);
+        interactions[1][2] = getDepositInteraction(EWETH, 2 ether);
 
         // Skim eSUSDS vault
-        interactions[1][3] = getSkimInteraction(tokens[2]);
+        interactions[1][3] = getSkimInteraction(ESUSDS);
         // Skim eWETH vault
-        interactions[1][4] = getSkimInteraction(tokens[3]);
+        interactions[1][4] = getSkimInteraction(EWETH);
 
         // Encode settlement data
         bytes memory settleData = abi.encodeCall(ICowSettlement.settle, (tokens, clearingPrices, trades, interactions));
