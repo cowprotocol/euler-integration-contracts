@@ -2,7 +2,6 @@
 pragma solidity ^0.8;
 
 import {GPv2Order} from "cow/libraries/GPv2Order.sol";
-import {GPv2Trade} from "cow/libraries/GPv2Trade.sol";
 import {IERC20 as CowERC20} from "cow/interfaces/IERC20.sol";
 
 import {EthereumVaultConnector} from "evc/EthereumVaultConnector.sol";
@@ -251,5 +250,20 @@ contract CowBaseTest is Test {
 
         vm.prank(account);
         IBorrowing(borrowVault).borrow(borrowAmount, address(1));
+    }
+
+    /// @notice Encode wrapper data with length prefix
+    /// @dev Takes already abi.encoded params and signature
+    function encodeWrapperData(bytes memory paramsAndSignature) internal pure returns (bytes memory) {
+        return abi.encodePacked(uint16(paramsAndSignature.length), paramsAndSignature);
+    }
+
+    /// @notice Execute wrapped settlement through solver
+    function executeWrappedSettlement(address wrapper, bytes memory settleData, bytes memory wrapperData) internal {
+        address[] memory targets = new address[](1);
+        bytes[] memory datas = new bytes[](1);
+        targets[0] = wrapper;
+        datas[0] = abi.encodeWithSignature("wrappedSettle(bytes,bytes)", settleData, wrapperData);
+        solver.runBatch(targets, datas);
     }
 }
