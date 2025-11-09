@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8;
 
-import {GPv2Order, IERC20 as CowERC20} from "cow/libraries/GPv2Order.sol";
+import {GPv2Order} from "cow/libraries/GPv2Order.sol";
 
-import {IEVault, IERC4626, IERC20, IVault} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcOpenPositionWrapper} from "../src/CowEvcOpenPositionWrapper.sol";
 import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
