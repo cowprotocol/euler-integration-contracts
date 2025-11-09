@@ -121,6 +121,28 @@ contract CowBaseTest is Test {
         vm.label(address(milkSwap), "MilkSwap");
     }
 
+    function getEmptySettlement()
+        public
+        pure
+        returns (
+            IERC20[] memory tokens,
+            uint256[] memory clearingPrices,
+            ICowSettlement.Trade[] memory trades,
+            ICowSettlement.Interaction[][3] memory interactions
+        )
+    {
+        return (
+            new IERC20[](0),
+            new uint256[](0),
+            new ICowSettlement.Trade[](0),
+            [
+                new ICowSettlement.Interaction[](0),
+                new ICowSettlement.Interaction[](0),
+                new ICowSettlement.Interaction[](0)
+            ]
+        );
+    }
+
     function getOrderUid(address owner, GPv2Order.Data memory orderData) public view returns (bytes memory orderUid) {
         // Generate order digest using EIP-712
         bytes32 orderDigest = GPv2Order.hash(orderData, COW_SETTLEMENT.domainSeparator());
@@ -151,6 +173,18 @@ contract CowBaseTest is Test {
             target: address(IEVault(vault).asset()),
             value: 0,
             callData: abi.encodeCall(IERC20.transfer, (vault, sellAmount))
+        });
+    }
+
+    function getWithdrawInteraction(address vault, uint256 sellAmount)
+        public
+        pure
+        returns (ICowSettlement.Interaction memory)
+    {
+        return ICowSettlement.Interaction({
+            target: vault,
+            value: 0,
+            callData: abi.encodeCall(IERC4626.withdraw, (sellAmount, address(COW_SETTLEMENT), address(COW_SETTLEMENT)))
         });
     }
 
@@ -223,6 +257,33 @@ contract CowBaseTest is Test {
         clearingPrices = new uint256[](2);
         clearingPrices[0] = 2495; // WETH price (if it was against SUSD then 2500)
         clearingPrices[1] = 1; // eSUSDS price
+    }
+
+    /// @notice Helper to set up a leveraged position for any user
+    /// @dev More flexible version that accepts owner, account, and vault parameters
+    /// The proceeds of the `borrow` are *NOT* deposited in the account for convienience of setup.
+    /// So make sure that `collateralAmount` is margin + borrowValue if that is something you care about.
+    function setupLeveragedPositionFor(
+        address owner,
+        address account,
+        address collateralVault,
+        address borrowVault,
+        uint256 collateralAmount,
+        uint256 borrowAmount
+    ) internal {
+        address collateralAsset = address(IEVault(collateralVault).asset());
+
+        deal(collateralAsset, owner, collateralAmount);
+
+        vm.startPrank(owner);
+        IERC20(collateralAsset).approve(collateralVault, type(uint256).max);
+        EVC.enableCollateral(account, collateralVault);
+        EVC.enableController(account, borrowVault);
+        IERC4626(collateralVault).deposit(collateralAmount, account);
+        vm.stopPrank();
+
+        vm.prank(account);
+        IBorrowing(borrowVault).borrow(borrowAmount, address(1));
     }
 
     /// @notice Encode wrapper data with length prefix
