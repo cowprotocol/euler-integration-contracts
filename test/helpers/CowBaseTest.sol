@@ -7,7 +7,7 @@ import {IERC20 as CowERC20} from "cow/interfaces/IERC20.sol";
 
 import {EthereumVaultConnector} from "evc/EthereumVaultConnector.sol";
 import {Test} from "forge-std/Test.sol";
-import {IEVault, IVault, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {IEVault, IVault, IBorrowing, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
@@ -224,5 +224,32 @@ contract CowBaseTest is Test {
         clearingPrices = new uint256[](2);
         clearingPrices[0] = 2495; // WETH price (if it was against SUSD then 2500)
         clearingPrices[1] = 1; // eSUSDS price
+    }
+
+    /// @notice Helper to set up a leveraged position for any user
+    /// @dev More flexible version that accepts owner, account, and vault parameters
+    /// The proceeds of the `borrow` are *NOT* deposited in the account for convienience of setup.
+    /// So make sure that `collateralAmount` is margin + borrowValue if that is something you care about.
+    function setupLeveragedPositionFor(
+        address owner,
+        address account,
+        address collateralVault,
+        address borrowVault,
+        uint256 collateralAmount,
+        uint256 borrowAmount
+    ) internal {
+        address collateralAsset = address(IEVault(collateralVault).asset());
+
+        deal(collateralAsset, owner, collateralAmount);
+
+        vm.startPrank(owner);
+        IERC20(collateralAsset).approve(collateralVault, type(uint256).max);
+        EVC.enableCollateral(account, collateralVault);
+        EVC.enableController(account, borrowVault);
+        IERC4626(collateralVault).deposit(collateralAmount, account);
+        vm.stopPrank();
+
+        vm.prank(account);
+        IBorrowing(borrowVault).borrow(borrowAmount, address(1));
     }
 }
