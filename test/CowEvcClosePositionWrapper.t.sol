@@ -4,7 +4,7 @@ pragma solidity ^0.8;
 import {GPv2Order, IERC20 as CowERC20} from "cow/libraries/GPv2Order.sol";
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
-import {IEVault, IERC4626, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcClosePositionWrapper} from "../src/CowEvcClosePositionWrapper.sol";
 import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
@@ -164,54 +164,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         solver.runBatch(targets, datas);
     }
 
-    /// @notice Helper to set up an initial leveraged position
-    /// @dev This creates a position that can then be closed in the tests
-    function _setupLeveragedPosition(uint256 borrowAmount, uint256 collateralAmount) internal {
-        address account = address(uint160(user) ^ uint8(0x01));
-
-        vm.startPrank(user);
-
-        // User approves SUSDS vault for deposit
-        IERC20(SUSDS).approve(ESUSDS, type(uint256).max);
-
-        // Enable collateral and controller on the account
-        EVC.enableCollateral(account, ESUSDS);
-        EVC.enableController(account, EWETH);
-
-        // Deposit collateral to the account
-        IERC4626(ESUSDS).deposit(collateralAmount, account);
-
-        vm.stopPrank();
-
-        // Borrow assets from the account (needs to be called with account as onBehalfOf)
-        vm.startPrank(account);
-        IBorrowing(EWETH).borrow(borrowAmount, address(this));
-
-        vm.stopPrank();
-    }
-
-    /// @notice Helper to set up a leveraged position for any user
-    /// @dev More flexible version that accepts owner, account, and vault parameters
-    function _setupLeveragedPositionFor(
-        address owner,
-        address account,
-        address collateralAsset,
-        address collateralVault,
-        address borrowVault,
-        uint256 collateralAmount,
-        uint256 borrowAmount
-    ) internal {
-        vm.startPrank(owner);
-        IERC20(collateralAsset).approve(collateralVault, type(uint256).max);
-        EVC.enableCollateral(account, collateralVault);
-        EVC.enableController(account, borrowVault);
-        IERC4626(collateralVault).deposit(collateralAmount, account);
-        vm.stopPrank();
-
-        vm.prank(account);
-        IBorrowing(borrowVault).borrow(borrowAmount, owner);
-    }
-
     /// @notice Setup approvals for a specific user to close their position
     function _setupClosePositionApprovalsFor(
         address owner,
@@ -302,10 +254,10 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 borrowAmount = 1e18;
         uint256 collateralAmount = SUSDS_MARGIN + 2495e18;
 
-        // First, set up a leveraged position
-        _setupLeveragedPosition(borrowAmount, collateralAmount);
-
         address account = address(uint160(user) ^ uint8(0x01));
+
+        // First, set up a leveraged position
+        setupLeveragedPositionFor(user, account, ESUSDS, EWETH, collateralAmount, borrowAmount);
 
         // Verify position exists
         uint256 debtBefore = IEVault(EWETH).debtOf(account);
@@ -394,10 +346,10 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 sellAmount = 2500e18;
         uint256 buyAmount = 0.98e18;
 
-        // First, set up a leveraged position
-        _setupLeveragedPosition(borrowAmount, collateralAmount);
-
         address account = address(uint160(user) ^ uint8(0x01));
+
+        // First, set up a leveraged position
+        setupLeveragedPositionFor(user, account, ESUSDS, EWETH, collateralAmount, borrowAmount);
 
         // Create params with custom amounts and KIND_SELL
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
@@ -498,10 +450,10 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 borrowAmount = 1e18;
         uint256 collateralAmount = SUSDS_MARGIN + 2495e18;
 
-        // First, set up a leveraged position
-        _setupLeveragedPosition(borrowAmount, collateralAmount);
-
         address account = address(uint160(user) ^ uint8(0x01));
+
+        // First, set up a leveraged position
+        setupLeveragedPositionFor(user, account, ESUSDS, EWETH, collateralAmount, borrowAmount);
 
         // Create params using helper
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
@@ -562,16 +514,13 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         address account3 = address(uint160(user3) ^ 1);
 
         // Setup User1: Long SUSDS (SUSDS collateral, WETH debt). ~1 ETH debt
-        deal(SUSDS, user, 10000 ether);
-        _setupLeveragedPositionFor(user, account1, SUSDS, ESUSDS, EWETH, 3500 ether, 1 ether);
+        setupLeveragedPositionFor(user, account1, ESUSDS, EWETH, 3500 ether, 1 ether);
 
         // Setup User2: Long SUSDS (SUSDS collateral, WETH debt). ~3 ETH debt
-        deal(SUSDS, user2, 10000 ether);
-        _setupLeveragedPositionFor(user2, account2, SUSDS, ESUSDS, EWETH, 10000 ether, 3 ether);
+        setupLeveragedPositionFor(user2, account2, ESUSDS, EWETH, 10000 ether, 3 ether);
 
         // Setup User3: Long WETH (WETH collateral, SUSDS debt). ~5000 SUSDS debt
-        deal(WETH, user3, 3 ether);
-        _setupLeveragedPositionFor(user3, account3, WETH, EWETH, ESUSDS, 3 ether, 5000 ether);
+        setupLeveragedPositionFor(user3, account3, EWETH, ESUSDS, 3 ether, 5000 ether);
 
         // Verify positions exist
         assertEq(IEVault(EWETH).debtOf(account1), 1 ether, "User1 should have WETH debt");
