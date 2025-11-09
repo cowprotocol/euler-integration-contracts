@@ -106,25 +106,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         );
     }
 
-    /// @notice Encode wrapper data with length prefix
-    function _encodeWrapperData(CowEvcOpenPositionWrapper.OpenPositionParams memory params, bytes memory signature)
-        internal
-        pure
-        returns (bytes memory)
-    {
-        bytes memory wrapperData = abi.encode(params, signature);
-        return abi.encodePacked(uint16(wrapperData.length), wrapperData);
-    }
-
-    /// @notice Execute wrapped settlement through solver
-    function _executeWrappedSettlement(bytes memory settleData, bytes memory wrapperData) internal {
-        address[] memory targets = new address[](1);
-        bytes[] memory datas = new bytes[](1);
-        targets[0] = address(openPositionWrapper);
-        datas[0] = abi.encodeCall(openPositionWrapper.wrappedSettle, (settleData, wrapperData));
-        solver.runBatch(targets, datas);
-    }
-
     /// @notice Verify position was opened successfully
     function _verifyPositionOpened(
         address account,
@@ -204,7 +185,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             ICowSettlement.settle,
             (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
         );
-        bytes memory wrapperData = _encodeWrapperData(params, permitSignature);
+        bytes memory wrapperData = encodeWrapperData(abi.encode(params, permitSignature));
 
         // Expect event emission
         vm.expectEmit(true, true, true, true);
@@ -218,7 +199,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         );
 
         // Execute wrapped settlement
-        _executeWrappedSettlement(settleData, wrapperData);
+        executeWrappedSettlement(address(openPositionWrapper), settleData, wrapperData);
 
         // Verify position was created successfully
         _verifyPositionOpened(account, DEFAULT_BUY_AMOUNT + SUSDS_MARGIN, DEFAULT_BORROW_AMOUNT, 1 ether);
@@ -320,7 +301,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             ICowSettlement.settle,
             (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
         );
-        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
+        bytes memory wrapperData = encodeWrapperData(abi.encode(params, new bytes(0)));
 
         // Expect event emission
         vm.expectEmit(true, true, true, true);
@@ -334,7 +315,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         );
 
         // Execute wrapped settlement
-        _executeWrappedSettlement(settleData, wrapperData);
+        executeWrappedSettlement(address(openPositionWrapper), settleData, wrapperData);
 
         // Verify the position was created successfully
         _verifyPositionOpened(account, DEFAULT_BUY_AMOUNT + SUSDS_MARGIN, DEFAULT_BORROW_AMOUNT, 1 ether);
