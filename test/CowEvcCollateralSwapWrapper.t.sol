@@ -496,20 +496,23 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         vm.label(account3, "account 3");
 
         // Setup User1: Long SUSDS (SUSDS collateral, WETH debt). 1 ETH debt
-        _setupLeveragedPositionFor(user, account1, ESUSDS, EWETH, 3500 ether, 1 ether);
+        _setupLeveragedPositionFor(user, account1, ESUSDS, EWETH, 2750 ether, 1 ether);
 
         // Setup User2: Long SUSDS (SUSDS collateral, WETH debt). 3 ETH debt
-        _setupLeveragedPositionFor(user2, account2, ESUSDS, EWETH, 10000 ether, 3 ether);
+        _setupLeveragedPositionFor(user2, account2, ESUSDS, EWETH, 8500 ether, 3 ether);
 
         // Setup User3: Long WBTC (WETH collateral, WBTC debt). 2 ETH debt
         _setupLeveragedPositionFor(user3, account3, EWBTC, EWETH, 0.075e8, 2 ether);
 
         // Verify positions exist
-        assertEq(IEVault(EWETH).debtOf(account1), 1 ether, "User1 should have WETH debt");
-        assertEq(IEVault(EWETH).debtOf(account2), 3 ether, "User2 should have WETH debt");
-        assertEq(IEVault(EWETH).debtOf(account3), 2 ether, "User3 should have WETH debt");
+        assertEq(IEVault(EWETH).debtOf(account1), 1 ether, "Account 1 should have WETH debt");
+        assertEq(IEVault(EWETH).debtOf(account2), 3 ether, "Account 2 should have WETH debt");
+        assertEq(IEVault(EWETH).debtOf(account3), 2 ether, "Account 3 should have WETH debt");
 
-        // TODO: verify collaterals
+        // Verify collaterals
+        assertApproxEqRel(IEVault(ESUSDS).balanceOf(account1), 2750 ether, 0.01 ether, "Account 1 should have SUSDS collateral");
+        assertApproxEqRel(IEVault(ESUSDS).balanceOf(account2), 8500 ether, 0.01 ether, "Account 2 should have SUSDS collateral");
+        assertApproxEqRel(IEVault(EWBTC).balanceOf(account3), 0.075e8, 0.01 ether, "Account 3 should have WBTC collateral");
 
         // Create params for all users
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params1 =
@@ -620,6 +623,14 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         assertEq(IEVault(EWETH).debtOf(account2), 3 ether, "User2 should have WETH debt");
         assertEq(IEVault(EWETH).debtOf(account3), 2 ether, "User3 should have WETH debt");
 
-        // TODO: check collaterals
+        // Verify original collaterals
+        assertApproxEqRel(IEVault(ESUSDS).balanceOf(account1), 2250 ether, 0.01 ether, "Account 1 should have less SUSDS collateral");
+        assertApproxEqRel(IEVault(ESUSDS).balanceOf(account2), 8000 ether, 0.01 ether, "Account 2 should have less SUSDS collateral");
+        assertApproxEqRel(IEVault(EWBTC).balanceOf(account3), 0.055e8, 0.01 ether, "Account 3 should have less WBTC collateral");
+
+        // Verify new collaterals
+        assertApproxEqRel(IEVault(EWBTC).balanceOf(account1), 0.005e8, 0.01 ether, "Account 1 should have some WBTC collateral");
+        assertEq(IEVault(EWBTC).balanceOf(account2), 0.005e8, "Account 2 should have some WBTC collateral");
+        assertEq(IEVault(ESUSDS).balanceOf(account3), 2000 ether, "Account 3 should have some SUSD collateral");
     }
 }
