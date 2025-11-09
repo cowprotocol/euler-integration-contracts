@@ -88,12 +88,15 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     function _setupLeveragedPositionFor(
         address owner,
         address account,
-        address collateralAsset,
         address collateralVault,
         address borrowVault,
         uint256 collateralAmount,
         uint256 borrowAmount
     ) internal {
+        address collateralAsset = address(IEVault(collateralVault).asset());
+
+        deal(collateralAsset, owner, collateralAmount);
+
         vm.startPrank(owner);
         IERC20(collateralAsset).approve(collateralVault, type(uint256).max);
         EVC.enableCollateral(account, collateralVault);
@@ -185,9 +188,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     }
 
     /// @notice Setup user approvals for collateral swap on subaccount
-    function _setupSubaccountApprovals(CowEvcCollateralSwapWrapper.CollateralSwapParams memory params)
-        internal
-    {
+    function _setupSubaccountApprovals(CowEvcCollateralSwapWrapper.CollateralSwapParams memory params) internal {
         vm.startPrank(params.owner);
 
         // Approve vault shares from main account for settlement
@@ -480,10 +481,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
         // Configure vault LTVs for both directions
-        vm.startPrank(IEVault(ESUSDS).governorAdmin());
-        IEVault(ESUSDS).setLTV(EWETH, 0.9e4, 0.9e4, 0);
-        IEVault(ESUSDS).setLTV(EWBTC, 0.9e4, 0.9e4, 0);
-        vm.stopPrank();
         vm.startPrank(IEVault(EWETH).governorAdmin());
         IEVault(EWETH).setLTV(ESUSDS, 0.9e4, 0.9e4, 0);
         IEVault(EWETH).setLTV(EWBTC, 0.9e4, 0.9e4, 0);
@@ -494,53 +491,59 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         address account2 = address(uint160(user2) ^ 1);
         address account3 = address(uint160(user3) ^ 1);
 
-        // Setup User1: Long SUSDS (SUSDS collateral, WETH debt). ~1 ETH debt
-        deal(SUSDS, user, 10000 ether);
-        _setupLeveragedPositionFor(user, account1, SUSDS, ESUSDS, EWETH, 3500 ether, 1 ether);
+        vm.label(account1, "account 1");
+        vm.label(account2, "account 2");
+        vm.label(account3, "account 3");
 
-        // Setup User2: Long SUSDS (SUSDS collateral, WETH debt). ~3 ETH debt
-        deal(SUSDS, user2, 10000 ether);
-        _setupLeveragedPositionFor(user2, account2, SUSDS, ESUSDS, EWETH, 10000 ether, 3 ether);
+        // Setup User1: Long SUSDS (SUSDS collateral, WETH debt). 1 ETH debt
+        _setupLeveragedPositionFor(user, account1, ESUSDS, EWETH, 3500 ether, 1 ether);
 
-        // Setup User3: Long WETH (WETH collateral, SUSDS debt). ~5000 SUSDS debt
-        deal(WETH, user3, 3 ether);
-        _setupLeveragedPositionFor(user3, account3, WETH, EWETH, ESUSDS, 3 ether, 5000 ether);
+        // Setup User2: Long SUSDS (SUSDS collateral, WETH debt). 3 ETH debt
+        _setupLeveragedPositionFor(user2, account2, ESUSDS, EWETH, 10000 ether, 3 ether);
+
+        // Setup User3: Long WBTC (WETH collateral, WBTC debt). 2 ETH debt
+        _setupLeveragedPositionFor(user3, account3, EWBTC, EWETH, 0.075e8, 2 ether);
 
         // Verify positions exist
         assertEq(IEVault(EWETH).debtOf(account1), 1 ether, "User1 should have WETH debt");
         assertEq(IEVault(EWETH).debtOf(account2), 3 ether, "User2 should have WETH debt");
-        assertEq(IEVault(ESUSDS).debtOf(account3), 5000 ether, "User3 should have SUSDS debt");
+        assertEq(IEVault(EWETH).debtOf(account3), 2 ether, "User3 should have WETH debt");
+
+        // TODO: verify collaterals
 
         // Create params for all users
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params1 = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: user,
-            account: account1,
-            deadline: block.timestamp + 1 hours,
-            fromVault: ESUSDS,
-            toVault: EWETH,
-            swapAmount: 1000 ether,
-            kind: GPv2Order.KIND_SELL
-        });
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params1 =
+            CowEvcCollateralSwapWrapper.CollateralSwapParams({
+                owner: user,
+                account: account1,
+                deadline: block.timestamp + 1 hours,
+                fromVault: ESUSDS,
+                toVault: EWBTC,
+                swapAmount: 500 ether,
+                kind: GPv2Order.KIND_SELL
+            });
 
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params2 = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: user2,
-            account: account2,
-            deadline: block.timestamp + 1 hours,
-            fromVault: ESUSDS,
-            toVault: EWBTC,
-            swapAmount: 0.005e8, // about 500 ESUSDS
-            kind: GPv2Order.KIND_BUY
-        });
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params2 =
+            CowEvcCollateralSwapWrapper.CollateralSwapParams({
+                owner: user2,
+                account: account2,
+                deadline: block.timestamp + 1 hours,
+                fromVault: ESUSDS,
+                toVault: EWBTC,
+                swapAmount: 0.005e8, // about 500 ESUSDS
+                kind: GPv2Order.KIND_BUY
+            });
 
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params3 = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: user3,
-            account: account3,
-            deadline: block.timestamp + 1 hours,
-            fromVault: EWETH,
-            toVault: ESUSDS,
-            swapAmount: 1000 ether,
-            kind: GPv2Order.KIND_BUY
-        });
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params3 =
+            CowEvcCollateralSwapWrapper.CollateralSwapParams({
+                owner: user3,
+                account: account3,
+                deadline: block.timestamp + 1 hours,
+                fromVault: EWBTC,
+                toVault: ESUSDS,
+                swapAmount: 2000 ether,
+                kind: GPv2Order.KIND_BUY
+            });
 
         // Create permit signatures for all users
         bytes memory permitSignature1 = _createPermitSignatureFor(params1, privateKey);
@@ -555,23 +558,18 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Create settlement with all three trades
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
-        address[] memory tokens = new address[](3);
+        address[] memory tokens = new address[](2);
         tokens[0] = ESUSDS;
-        tokens[1] = EWETH;
-        tokens[2] = EWBTC;
+        tokens[1] = EWBTC;
 
-        uint256[] memory clearingPrices = new uint256[](3);
+        uint256[] memory clearingPrices = new uint256[](2);
         clearingPrices[0] = 1 ether; // eSUSDS price
-        clearingPrices[1] = 2500 ether; // eWETH price
-        clearingPrices[2] = 100000 ether * 1e10; // eWBTC price
+        clearingPrices[1] = 100000 ether * 1e10; // eWBTC price
 
         ICowSettlement.Trade[] memory trades = new ICowSettlement.Trade[](3);
-        (trades[0],,) =
-            setupCowOrder(tokens, 0, 1, params1.swapAmount, 0, validTo, user, account1, false);
-        (trades[1],,) =
-            setupCowOrder(tokens, 0, 2, 1e24, params2.swapAmount, validTo, user2, account2, true);
-        (trades[2],,) =
-            setupCowOrder(tokens, 1, 0, 1e24, params3.swapAmount, validTo, user3, account3, true);
+        (trades[0],,) = setupCowOrder(tokens, 0, 1, params1.swapAmount, 0, validTo, user, account1, false);
+        (trades[1],,) = setupCowOrder(tokens, 0, 1, 1e24, params2.swapAmount, validTo, user2, account2, true);
+        (trades[2],,) = setupCowOrder(tokens, 1, 0, 1e24, params3.swapAmount, validTo, user3, account3, true);
 
         // Setup interactions
         ICowSettlement.Interaction[][3] memory interactions;
@@ -579,21 +577,17 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         interactions[1] = new ICowSettlement.Interaction[](4);
         interactions[2] = new ICowSettlement.Interaction[](0);
 
-        // We pull the money out of the euler vaults (we only need to withdraw for the BTC exchange)
-        interactions[1][0] = getWithdrawInteraction(
-            ESUSDS, 500 ether
-        );
-        // we dont need to withdraw the WETH vault because we already have the WETH to direct exchange
-        //interactions[1][1] = getWithdrawInteraction(EWETH, );
+        // We pull the money out of the euler vaults
+        interactions[1][0] = getWithdrawInteraction(EWBTC, 0.01e8);
 
-        // We swap. Since WETH <> SUSD trades are already coincidence of wants, we trade only the SUSD -> WBTC trade
-        interactions[1][1] = getSwapInteraction(SUSDS, WBTC, 500 ether);
+        // We swap all of the WBTC we need
+        interactions[1][1] = getSwapInteraction(WBTC, SUSDS, 0.01e8);
 
         // We deposit back into WBTC
-        interactions[1][2] = getDepositInteraction(EWBTC, 0.005e8);
+        interactions[1][2] = getDepositInteraction(ESUSDS, 1000 ether);
 
         // We "skim" to get the tokens
-        interactions[1][3] = getSkimInteraction(EWBTC);
+        interactions[1][3] = getSkimInteraction(ESUSDS);
 
         // Encode settlement data
         bytes memory settleData = abi.encodeCall(ICowSettlement.settle, (tokens, clearingPrices, trades, interactions));
@@ -624,7 +618,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Verify all positions closed successfully
         assertEq(IEVault(EWETH).debtOf(account1), 1 ether, "User1 should have WETH debt");
         assertEq(IEVault(EWETH).debtOf(account2), 3 ether, "User2 should have WETH debt");
-        assertEq(IEVault(ESUSDS).debtOf(account3), 5000 ether, "User3 should have SUSDS debt");
+        assertEq(IEVault(EWETH).debtOf(account3), 2 ether, "User3 should have WETH debt");
 
         // TODO: check collaterals
     }
