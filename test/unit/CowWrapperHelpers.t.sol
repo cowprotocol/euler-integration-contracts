@@ -258,7 +258,7 @@ contract CowWrapperHelpersTest is Test {
 
         // Verify the length prefix is correct (first 2 bytes)
         bytes2 lengthPrefix;
-        assembly {
+        assembly ("memory-safe") {
             lengthPrefix := mload(add(result, 32))
         }
         assertEq(uint16(lengthPrefix), 65535);
