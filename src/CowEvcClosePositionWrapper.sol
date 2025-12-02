@@ -36,27 +36,13 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     /// @dev The marker value for a sell order for computing the order struct
     /// hash. This allows the EIP-712 compatible wallets to display a
     /// descriptive string for the order kind (instead of 0 or 1).
-    ///
-    /// This value is pre-computed from the following expression:
-    /// ```
-    /// keccak256("sell")
-    /// ```
-    bytes32 private constant KIND_SELL = hex"f3b277728b3fee749481eb3e0b3b48980dbbab78658fc419025cb16eee346775";
+    bytes32 private constant KIND_SELL = keccak256("sell");
 
     /// @dev The OrderKind marker value for a buy order for computing the order
     /// struct hash.
-    ///
-    /// This value is pre-computed from the following expression:
-    /// ```
-    /// keccak256("buy")
-    /// ```
-    bytes32 private constant KIND_BUY = hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc";
+    bytes32 private constant KIND_BUY = keccak256("buy");
 
-    /// @dev The domain separator used for signing orders that gets mixed in
-    /// making signatures for different domains incompatible. This domain
-    /// separator is computed following the EIP-712 standard and has replay
-    /// protection mixed in so that signed orders are only valid for specific
-    /// this contract.
+    /// @dev Used by EIP-712 signing to prevent signatures from being replayed
     bytes32 public immutable DOMAIN_SEPARATOR;
 
     //// @dev The EVC nonce namespace to use when calling `EVC.permit` to authorize this contract.
@@ -92,6 +78,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     );
 
     constructor(address _evc, ICowSettlement _settlement) CowWrapper(_settlement) {
+        require(_evc.code.length > 0, "EVC address is invalid");
         EVC = IEVC(_evc);
         NONCE_NAMESPACE = uint256(uint160(address(this)));
 
@@ -100,50 +87,33 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     }
 
     /**
-     * @notice A command to close a debt position against an euler vault by repaying debt and returning collateral.
+     * @notice The information necessary to close a debt position against an euler vault by repaying debt and returning collateral
      * @dev This structure is used, combined with domain separator, to indicate a pre-approved hash.
      * the `deadline` is used for deduplication checking, so be careful to ensure this value is unique.
      */
-
     struct ClosePositionParams {
-        /**
-         * @dev The ethereum address that has permission to operate upon the account
-         */
+        /// @dev The ethereum address that has permission to operate upon the account
         address owner;
 
-        /**
-         * @dev The subaccount to close the position on. Learn more about Euler subaccounts https://evc.wtf/docs/concepts/internals/sub-accounts
-         */
+        /// @dev The subaccount to close the position on. Learn more about Euler subaccounts https://evc.wtf/docs/concepts/internals/sub-accounts
         address account;
 
-        /**
-         * @dev A date by which this operation must be completed
-         */
+        /// @dev A date by which this operation must be completed
         uint256 deadline;
 
-        /**
-         * @dev The Euler vault from which debt was borrowed
-         */
+        /// @dev The Euler vault from which debt was borrowed
         address borrowVault;
 
-        /**
-         * @dev The Euler vault used as collateral
-         */
+        /// @dev The Euler vault used as collateral
         address collateralVault;
 
-        /**
-         * @dev
-         */
+        /// @dev The amount of collateral to swap from the collateral vault
         uint256 collateralAmount;
 
-        /**
-         * @dev The amount of debt to repay. If greater than the actual debt, the full debt is repaid
-         */
+        /// @dev The amount of debt to repay. If greater than the actual debt, the full debt is repaid
         uint256 repayAmount;
 
-        /**
-         * @dev Whether the `collateralAmount` or `repayAmount` is the exact amount. Either `GPv2Order.KIND_BUY` or `GPv2Order.KIND_SELL`
-         */
+        /// @dev Whether the `collateralAmount` or `repayAmount` is the exact amount. Either `GPv2Order.KIND_BUY` or `GPv2Order.KIND_SELL`
         bytes32 kind;
     }
 
@@ -197,10 +167,10 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     }
 
     function getSignedCalldata(ClosePositionParams memory params) external view returns (bytes memory) {
-        return abi.encodeCall(IEVC.batch, _getSignedCalldata(params));
+        return abi.encodeCall(IEVC.batch, _encodeSignedBatchItems(params));
     }
 
-    function _getSignedCalldata(ClosePositionParams memory params)
+    function _encodeSignedBatchItems(ClosePositionParams memory params)
         internal
         view
         returns (IEVC.BatchItem[] memory items)
@@ -257,7 +227,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         (params, signature,) = _parseClosePositionParams(wrapperData);
 
         // Check if the signed calldata hash is pre-approved
-        IEVC.BatchItem[] memory signedItems = _getSignedCalldata(params);
+        IEVC.BatchItem[] memory signedItems = _encodeSignedBatchItems(params);
         bool isPreApproved = signature.length == 0 && _consumePreApprovedHash(params.owner, _getApprovalHash(params));
 
         // Calculate the number of items needed
@@ -292,7 +262,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
                         uint256(NONCE_NAMESPACE),
                         EVC.getNonce(bytes19(bytes20(params.owner)), NONCE_NAMESPACE),
                         params.deadline,
-                        0,
+                        0, // value field (no ETH transferred to the EVC)
                         abi.encodeCall(EVC.batch, signedItems),
                         signature
                     )
@@ -370,6 +340,8 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         // Additionally, we don't transfer this collateral directly to the settlement contract because the settlement contract
         // requires receiving of funds from the user's wallet, and cannot be put in the contract in advance.
         if (params.owner != params.account) {
+            // Subaccounts in the EVC can be any account that shares the highest 19 bits as the owner.
+            // Here we briefly verify that the subaccount address has been specified as expected.
             require(
                 bytes19(bytes20(params.owner)) == bytes19(bytes20(params.account)),
                 SubaccountMustBeControlledByOwner(params.account, params.owner)
