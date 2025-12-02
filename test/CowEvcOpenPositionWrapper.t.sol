@@ -13,8 +13,6 @@ import {PreApprovedHashes} from "../src/PreApprovedHashes.sol";
 import {CowBaseTest} from "./helpers/CowBaseTest.sol";
 import {SignerECDSA} from "./helpers/SignerECDSA.sol";
 
-import "forge-std/console.sol";
-
 /// @title E2E Test for CowEvcOpenPositionWrapper
 /// @notice Tests the full flow of opening a leveraged position using the new wrapper contract
 contract CowEvcOpenPositionWrapperTest is CowBaseTest {
@@ -252,8 +250,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         address account = address(uint160(user) ^ 1);
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
         bytes32 hash = openPositionWrapper.getApprovalHash(params);
-
-        console.logBytes(abi.encodeCall(CowEvcOpenPositionWrapper.getApprovalHash, (params)));
 
         // Initially hash should not be approved
         assertEq(openPositionWrapper.preApprovedHashes(user, hash), 0, "Hash should not be approved initially");
