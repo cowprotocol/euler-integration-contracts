@@ -32,11 +32,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     /// @dev The EIP-712 domain version used for computing the domain separator.
     bytes32 private constant DOMAIN_VERSION = keccak256("1");
 
-    /// @dev The domain separator used for signing orders that gets mixed in
-    /// making signatures for different domains incompatible. This domain
-    /// separator is computed following the EIP-712 standard and has replay
-    /// protection mixed in so that signed orders are only valid for specific
-    /// this contract.
+    /// @dev Used by EIP-712 signing to prevent signatures from being replayed
     bytes32 public immutable DOMAIN_SEPARATOR;
 
     //// @dev The EVC nonce namespace to use when calling `EVC.permit` to authorize this contract.
@@ -62,6 +58,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     );
 
     constructor(address _evc, ICowSettlement _settlement) CowWrapper(_settlement) {
+        require(_evc.code.length > 0, "EVC address is invalid");
         EVC = IEVC(_evc);
         NONCE_NAMESPACE = uint256(uint160(address(this)));
 
@@ -70,44 +67,30 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     }
 
     /**
-     * @notice A command to open a debt position against an euler vault using collateral as backing.
+     * @notice The information necessary to open a debt position against an euler vault using collateral as backing.
      * @dev This structure is used, combined with domain separator, to indicate a pre-approved hash.
      * the `deadline` is used for deduplication checking, so be careful to ensure this value is unique.
      */
     struct OpenPositionParams {
-        /**
-         * @dev The ethereum address that has permission to operate upon the account
-         */
+        /// @dev The ethereum address that has permission to operate upon the account
         address owner;
 
-        /**
-         * @dev The subaccount to open the position on. Learn more about Euler subaccounts https://evc.wtf/docs/concepts/internals/sub-accounts
-         */
+        /// @dev The subaccount to open the position on. Learn more about Euler subaccounts https://evc.wtf/docs/concepts/internals/sub-accounts
         address account;
 
-        /**
-         * @dev A date by which this operation must be completed
-         */
+        /// @dev A date by which this operation must be completed
         uint256 deadline;
 
-        /**
-         * @dev The Euler vault to use as collateral
-         */
+        /// @dev The Euler vault to use as collateral
         address collateralVault;
 
-        /**
-         * @dev The Euler vault to use as leverage
-         */
+        /// @dev The Euler vault to use as leverage
         address borrowVault;
 
-        /**
-         * @dev The amount of collateral to import as margin. Set this to `0` if the vault already has margin collateral.
-         */
+        /// @dev The amount of collateral to import as margin. Set this to `0` if the vault already has margin collateral.
         uint256 collateralAmount;
 
-        /**
-         * @dev The amount of debt to take out. The borrowed tokens will be converted to `collateralVault` tokens and deposited into the account.
-         */
+        /// @dev The amount of debt to take out. The borrowed tokens will be converted to `collateralVault` tokens and deposited into the account.
         uint256 borrowAmount;
     }
 
@@ -173,7 +156,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
         (params, signature,) = _parseOpenPositionParams(wrapperData);
 
         // Check if the signed calldata hash is pre-approved
-        IEVC.BatchItem[] memory signedItems = _getSignedCalldata(params);
+        IEVC.BatchItem[] memory signedItems = _encodeSignedBatchItems(params);
         bool isPreApproved = signature.length == 0 && _consumePreApprovedHash(params.owner, _getApprovalHash(params));
 
         // Build the EVC batch items for opening a position
@@ -197,7 +180,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
                         uint256(NONCE_NAMESPACE),
                         EVC.getNonce(bytes19(bytes20(params.owner)), NONCE_NAMESPACE),
                         params.deadline,
-                        0,
+                        0, // value field (no ETH transferred to the EVC)
                         abi.encodeCall(EVC.batch, signedItems),
                         signature
                     )
@@ -237,10 +220,10 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     }
 
     function getSignedCalldata(OpenPositionParams memory params) external view returns (bytes memory) {
-        return abi.encodeCall(IEVC.batch, _getSignedCalldata(params));
+        return abi.encodeCall(IEVC.batch, _encodeSignedBatchItems(params));
     }
 
-    function _getSignedCalldata(OpenPositionParams memory params)
+    function _encodeSignedBatchItems(OpenPositionParams memory params)
         internal
         view
         returns (IEVC.BatchItem[] memory items)
