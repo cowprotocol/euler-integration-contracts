@@ -136,6 +136,9 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         });
         EVC.batch(items);
 
+        // Approve transfer of any remaining vault shares from the wrapper back to the subaccount
+        IEVault(params.fromVault).approve(address(collateralSwapWrapper), type(uint256).max);
+
         // Set wrapper as operator for the subaccount
         EVC.setAccountOperator(params.account, address(collateralSwapWrapper), true);
 

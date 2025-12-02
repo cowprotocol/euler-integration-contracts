@@ -114,6 +114,10 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
 
         // Set the correct onBehalfOfAccount for evcInternalSwap calls
         mockEvc.setOnBehalfOf(address(wrapper));
+
+        vm.label(OWNER, "OWNER");
+        vm.label(ACCOUNT, "ACCOUNT");
+        vm.label(SOLVER, "SOLVER");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -285,94 +289,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         // If we get here, prices were found successfully
     }
 
-    function test_FindRatePrices_MissingFromVaultPrice() public {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            swapAmount: 1000e18,
-            kind: KIND_BUY
-        });
-
-        // Only include toVault in tokens, not fromVault
-        address[] memory tokens = new address[](1);
-        tokens[0] = address(mockToVault);
-
-        uint256[] memory prices = new uint256[](1);
-        prices[0] = 2e18;
-
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                tokens,
-                prices,
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-
-        vm.prank(address(mockEvc));
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                CowEvcCollateralSwapWrapper.PricesNotFoundInSettlement.selector,
-                address(mockFromVault),
-                address(mockToVault)
-            )
-        );
-        wrapper.evcInternalSwap(settleData, wrapperData, "");
-    }
-
-    function test_FindRatePrices_MissingToVaultPrice() public {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            swapAmount: 1000e18,
-            kind: KIND_BUY
-        });
-
-        // Only include fromVault in tokens, not toVault
-        address[] memory tokens = new address[](1);
-        tokens[0] = address(mockFromVault);
-
-        uint256[] memory prices = new uint256[](1);
-        prices[0] = 1e18;
-
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                tokens,
-                prices,
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-
-        vm.prank(address(mockEvc));
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                CowEvcCollateralSwapWrapper.PricesNotFoundInSettlement.selector,
-                address(mockFromVault),
-                address(mockToVault)
-            )
-        );
-        wrapper.evcInternalSwap(settleData, wrapperData, "");
-    }
-
     /*//////////////////////////////////////////////////////////////
                     EVC INTERNAL SWAP TESTS
     //////////////////////////////////////////////////////////////*/
@@ -517,8 +433,11 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         // Give account some from vault tokens
         mockFromVault.mint(ACCOUNT, 3000e18);
 
-        // These tokens need to be spendable by the wrapper
+        // These tokens need to be spendable by the wrapper, and the owner needs to permit the wrapper to send any funds back that are unspent
         vm.prank(ACCOUNT);
+        mockFromVault.approve(address(wrapper), 3000e18);
+
+        vm.prank(OWNER);
         mockFromVault.approve(address(wrapper), 3000e18);
 
         // Create settle data with prices for KIND_BUY calculation
@@ -551,10 +470,12 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         vm.prank(address(mockEvc));
         wrapper.evcInternalSwap(settleData, wrapperData, remainingWrapperData);
 
-        // For KIND_BUY: transferAmount = swapAmount * toVaultPrice / fromVaultPrice
-        // transferAmount = 1000e18 * 2e18 / 1e18 = 2000e18
-        assertEq(mockFromVault.balanceOf(ACCOUNT), 1000e18, "Account balance should decrease by 2000e18");
-        assertEq(mockFromVault.balanceOf(OWNER), 2000e18, "Owner should receive calculated amount");
+        // For KIND_BUY: we transfer everything, and then transfer any unspent funds back
+        // this means that the balance of the main account should not change
+        assertEq(mockFromVault.balanceOf(ACCOUNT), 3000e18, "Account balance should not have changed");
+        assertEq(mockFromVault.balanceOf(OWNER), 0, "Owner should receive calculated amount");
+
+        // try this call again, but this time spend some of the tokens
     }
 
     function test_EvcInternalSwap_SubaccountMustBeControlledByOwner() public {
@@ -753,55 +674,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         assertEq(items.length, 1, "Should have 1 item with max swap amount");
-    }
-
-    function test_KindBuy_WithDifferentPrices() public {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            swapAmount: 500e18,
-            kind: KIND_BUY
-        });
-
-        mockFromVault.mint(ACCOUNT, 3000e18);
-        vm.prank(ACCOUNT);
-        mockFromVault.approve(address(wrapper), 3000e18);
-
-        // toVault is 3x more expensive than fromVault
-        address[] memory tokens = new address[](2);
-        tokens[0] = address(mockFromVault);
-        tokens[1] = address(mockToVault);
-
-        uint256[] memory prices = new uint256[](2);
-        prices[0] = 1e18; // fromVault price
-        prices[1] = 3e18; // toVault price (3x more expensive)
-
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                tokens,
-                prices,
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-
-        mockSettlement.setSuccessfulSettle(true);
-
-        vm.prank(address(mockEvc));
-        wrapper.evcInternalSwap(settleData, wrapperData, "");
-
-        // For KIND_BUY: transferAmount = 500e18 * 3e18 / 1e18 = 1500e18
-        assertEq(mockFromVault.balanceOf(ACCOUNT), 1500e18, "Account balance should decrease by 1500e18");
-        assertEq(mockFromVault.balanceOf(OWNER), 1500e18, "Owner should receive 1500e18");
     }
 
     function test_DifferentVaults() public {

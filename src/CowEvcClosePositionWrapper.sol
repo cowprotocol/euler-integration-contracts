@@ -51,6 +51,8 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Close Position";
 
+    uint256 private immutable PARAMS_SIZE;
+
     /// @dev Indicates that the current operation cannot be completed with the given msgSender
     error Unauthorized(address msgSender);
 
@@ -79,6 +81,20 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
 
     constructor(address _evc, ICowSettlement _settlement) CowWrapper(_settlement) {
         require(_evc.code.length > 0, "EVC address is invalid");
+        PARAMS_SIZE =
+        abi.encode(
+            ClosePositionParams({
+                owner: address(0),
+                account: address(0),
+                deadline: 0,
+                borrowVault: address(0),
+                collateralVault: address(0),
+                collateralAmount: 0,
+                repayAmount: 0,
+                kind: bytes32(0)
+            })
+        )
+        .length;
         EVC = IEVC(_evc);
         NONCE_NAMESPACE = uint256(uint160(address(this)));
 
@@ -86,11 +102,9 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
             keccak256(abi.encode(DOMAIN_TYPE_HASH, DOMAIN_NAME, DOMAIN_VERSION, block.chainid, address(this)));
     }
 
-    /**
-     * @notice The information necessary to close a debt position against an euler vault by repaying debt and returning collateral
-     * @dev This structure is used, combined with domain separator, to indicate a pre-approved hash.
-     * the `deadline` is used for deduplication checking, so be careful to ensure this value is unique.
-     */
+    /// @notice The information necessary to close a debt position against an euler vault by repaying debt and returning collateral
+    /// @dev This structure is used, combined with domain separator, to indicate a pre-approved hash.
+    /// the `deadline` is used for deduplication checking, so be careful to ensure this value is unique.
     struct ClosePositionParams {
         /// @dev The ethereum address that has permission to operate upon the account
         address owner;
@@ -119,7 +133,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
 
     function _parseClosePositionParams(bytes calldata wrapperData)
         internal
-        pure
+        view
         returns (ClosePositionParams memory params, bytes memory signature, bytes calldata remainingWrapperData)
     {
         (params, signature) = abi.decode(wrapperData, (ClosePositionParams, bytes));
@@ -128,11 +142,10 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         // Structure:
         // - 32 bytes: offset to params (0x40)
         // - 32 bytes: offset to signature
-        // - 256 bytes: params data (8 fields × 32 bytes)
+        // - x bytes: params data (computed size in constructor to prevent errors)
         // - 32 bytes: signature length
         // - N bytes: signature data (padded to 32-byte boundary)
-        // We can just math this out
-        uint256 consumed = 256 + 64 + ((signature.length + 31) & ~uint256(31));
+        uint256 consumed = PARAMS_SIZE + 64 + ((signature.length + 31) & ~uint256(31));
 
         remainingWrapperData = wrapperData[consumed:];
     }
@@ -147,8 +160,9 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     function _getApprovalHash(ClosePositionParams memory params) internal view returns (bytes32 digest) {
         bytes32 structHash;
         bytes32 separator = DOMAIN_SEPARATOR;
+        uint256 paramsSize = PARAMS_SIZE;
         assembly ("memory-safe") {
-            structHash := keccak256(params, 256)
+            structHash := keccak256(params, paramsSize)
             let ptr := mload(0x40)
             mstore(ptr, "\x19\x01")
             mstore(add(ptr, 0x02), separator)
@@ -159,7 +173,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
 
     function parseWrapperData(bytes calldata wrapperData)
         external
-        pure
+        view
         override
         returns (bytes calldata remainingWrapperData)
     {

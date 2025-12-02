@@ -47,6 +47,7 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Collateral Swap";
 
+    /// @dev The size of the CollateralSwapParams struct. Its computed in the constructor so it can be used as a constant later.
     uint256 private immutable PARAMS_SIZE;
 
     /// @dev Indicates that the current operation cannot be completed with the given msgSender
@@ -73,15 +74,19 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
 
     constructor(address _evc, ICowSettlement _settlement) CowWrapper(_settlement) {
         require(_evc.code.length > 0, "EVC address is invalid");
-        PARAMS_SIZE = abi.encode(CollateralSwapParams({
-            owner: address(0),
-            account: address(0),
-            deadline: 0,
-            fromVault: address(0),
-            toVault: address(0),
-            swapAmount: 0,
-            kind: bytes32(0)
-        })).length;
+        PARAMS_SIZE =
+        abi.encode(
+            CollateralSwapParams({
+                owner: address(0),
+                account: address(0),
+                deadline: 0,
+                fromVault: address(0),
+                toVault: address(0),
+                swapAmount: 0,
+                kind: bytes32(0)
+            })
+        )
+        .length;
         EVC = IEVC(_evc);
         NONCE_NAMESPACE = uint256(uint160(address(this)));
 
@@ -155,6 +160,7 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         }
     }
 
+    /// @inheritdoc CowWrapper
     function parseWrapperData(bytes calldata wrapperData)
         external
         view
@@ -164,6 +170,9 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         (,, remainingWrapperData) = _parseCollateralSwapParams(wrapperData);
     }
 
+    /// @notice Helper function to compute the `data` field needed for the `EVC.permit` call executed by this function
+    /// @param params The CollateralSwapParams needed to construct the permit
+    /// @return The `data` field of the EVC.permit call which should be signed
     function getSignedCalldata(CollateralSwapParams memory params) external view returns (bytes memory) {
         return abi.encodeCall(IEVC.batch, _encodeSignedBatchItems(params));
     }
@@ -255,23 +264,6 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         );
     }
 
-    function _findRatePrices(bytes calldata settleData, address fromVault, address toVault)
-        internal
-        pure
-        returns (uint256 fromVaultPrice, uint256 toVaultPrice)
-    {
-        (address[] memory tokens, uint256[] memory clearingPrices,,) =
-            abi.decode(settleData[4:], (address[], uint256[], ICowSettlement.Trade[], ICowSettlement.Interaction[][3]));
-        for (uint256 i = 0; i < tokens.length; i++) {
-            if (tokens[i] == fromVault) {
-                fromVaultPrice = clearingPrices[i];
-            } else if (tokens[i] == toVault) {
-                toVaultPrice = clearingPrices[i];
-            }
-        }
-        require(fromVaultPrice != 0 && toVaultPrice != 0, PricesNotFoundInSettlement(fromVault, toVault));
-    }
-
     /// @notice Internal swap function called by EVC
     function evcInternalSwap(
         bytes calldata settleData,
@@ -298,6 +290,7 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         // contract deployed to the subaccount address, transferring to the owner's account is the only option.
         // Additionally, we don't transfer this collateral directly to the settlement contract because the settlement contract
         // requires receiving of funds from the user's wallet, and cannot be put in the contract in advance.
+        uint256 balanceBefore;
         if (params.owner != params.account) {
             // Subaccounts in the EVC can be any account that shares the highest 19 bits as the owner.
             // Here we briefly verify that the subaccount address has been specified as expected.
@@ -309,9 +302,9 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
             uint256 transferAmount = params.swapAmount;
 
             if (params.kind == KIND_BUY) {
-                (uint256 fromVaultPrice, uint256 toVaultPrice) =
-                    _findRatePrices(settleData, params.fromVault, params.toVault);
-                transferAmount = params.swapAmount * toVaultPrice / fromVaultPrice;
+                // transfer as much as we can (we will send the remainder back later)
+                transferAmount = IERC20(params.fromVault).balanceOf(params.account);
+                balanceBefore = IERC20(params.fromVault).balanceOf(params.owner);
             }
 
             SafeERC20Lib.safeTransferFrom(
@@ -322,5 +315,16 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         // Use GPv2Wrapper's _next to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
         _next(settleData, remainingWrapperData);
+
+        if (params.kind == KIND_BUY) {
+            // return any remainder to the subaccount
+            uint256 balanceAfter = IERC20(params.fromVault).balanceOf(params.owner);
+
+            if (balanceAfter > balanceBefore) {
+                SafeERC20Lib.safeTransferFrom(
+                    IERC20(params.fromVault), params.owner, params.account, balanceAfter - balanceBefore, address(0)
+                );
+            }
+        }
     }
 }
