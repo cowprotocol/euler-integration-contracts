@@ -83,23 +83,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         });
     }
 
-    /// @notice Create permit signature for EVC operator
-    function _createPermitSignature(CowEvcCollateralSwapWrapper.CollateralSwapParams memory params)
-        internal
-        returns (bytes memory)
-    {
-        ecdsa.setPrivateKey(privateKey);
-        return ecdsa.signPermit(
-            params.owner,
-            address(collateralSwapWrapper),
-            uint256(uint160(address(collateralSwapWrapper))),
-            0,
-            params.deadline,
-            0,
-            collateralSwapWrapper.getSignedCalldata(params)
-        );
-    }
-
     /// @notice Create permit signature for any user
     function _createPermitSignatureFor(
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params,
@@ -245,7 +228,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         uint256 wbtcBalanceBefore = IERC20(EWBTC).balanceOf(user);
 
         // Create permit signature and encode data
-        bytes memory permitSignature = _createPermitSignature(params);
+        bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
         bytes memory settleData = abi.encodeCall(
             ICowSettlement.settle,
             (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
