@@ -103,15 +103,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
     /// @param params The ClosePositionParams to hash
     /// @return The hash of the signed calldata for these params
     function getApprovalHash(ClosePositionParams memory params) external view returns (bytes32) {
-        return _getApprovalHash(params);
-    }
-
-    function _getApprovalHash(ClosePositionParams memory params) internal view returns (bytes32 digest) {
-        bytes32 paramsMemoryLocation;
-        assembly ("memory-safe") {
-            paramsMemoryLocation := params
-        }
-        return _getApprovalHash(paramsMemoryLocation);
+        return _getApprovalHash(memoryLocation(params));
     }
 
     function parseWrapperData(bytes calldata wrapperData)
@@ -124,14 +116,16 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
     }
 
     function getSignedCalldata(ClosePositionParams memory params) external view returns (bytes memory) {
-        return abi.encodeCall(IEVC.batch, _encodeSignedBatchItems(params));
+        return abi.encodeCall(IEVC.batch, _encodeSignedBatchItems(memoryLocation(params)));
     }
 
-    function _encodeSignedBatchItems(ClosePositionParams memory params)
+    function _encodeSignedBatchItems(ParamsLocation paramsLocation)
         internal
         view
+        override
         returns (IEVC.BatchItem[] memory items)
     {
+        ClosePositionParams memory params = paramsFromMemory(paramsLocation);
         items = new IEVC.BatchItem[](1);
 
         // 1. Repay debt and return remaining assets
@@ -183,63 +177,16 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         bytes memory signature;
         (params, signature,) = _parseClosePositionParams(wrapperData);
 
-        // Check if the signed calldata hash is pre-approved
-        IEVC.BatchItem[] memory signedItems = _encodeSignedBatchItems(params);
-        bool isPreApproved = signature.length == 0 && _consumePreApprovedHash(params.owner, _getApprovalHash(params));
-
-        // Calculate the number of items needed
-        uint256 baseItemCount = 2;
-        uint256 itemCount = isPreApproved ? baseItemCount - 1 + signedItems.length : baseItemCount;
-
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](itemCount);
-        uint256 itemIndex = 0;
-
-        // Build the EVC batch items for closing a position
-        // 1. Settlement call
-        bytes memory callbackData =
-            abi.encodeCall(this.evcInternalSettle, (settleData, wrapperData, remainingWrapperData));
-        expectedEvcInternalSettleCallHash = keccak256(callbackData);
-        items[itemIndex++] = IEVC.BatchItem({
-            onBehalfOfAccount: address(this), targetContract: address(this), value: 0, data: callbackData
-        });
-
-        // 2. There are two ways this contract can be executed: either the user approves this contract as
-        // an operator and supplies a pre-approved hash for the operation to take, or they submit a permit hash
-        // for this specific instance
-        if (!isPreApproved) {
-            items[itemIndex] = IEVC.BatchItem({
-                onBehalfOfAccount: address(0),
-                targetContract: address(EVC),
-                value: 0,
-                data: abi.encodeCall(
-                    IEVC.permit,
-                    (
-                        params.owner,
-                        address(this),
-                        uint256(NONCE_NAMESPACE),
-                        EVC.getNonce(bytes19(bytes20(params.owner)), NONCE_NAMESPACE),
-                        params.deadline,
-                        0, // value field (no ETH transferred to the EVC)
-                        abi.encodeCall(EVC.batch, signedItems),
-                        signature
-                    )
-                )
-            });
-        } else {
-            require(params.deadline >= block.timestamp, OperationDeadlineExceeded(params.deadline, block.timestamp));
-            // copy the operations to execute. we can operate on behalf of the user directly
-            uint256 signedItemIndex = 0;
-            for (; itemIndex < itemCount; itemIndex++) {
-                items[itemIndex] = signedItems[signedItemIndex++];
-            }
-        }
-
-        // 3. Account status check (automatically done by EVC at end of batch)
-        // For more info, see: https://evc.wtf/docs/concepts/internals/account-status-checks
-        // No explicit item needed - EVC handles this
-
-        // Execute all items in a single batch
-        EVC.batch(items);
+        _invokeEvc(
+            settleData,
+            wrapperData,
+            remainingWrapperData,
+            memoryLocation(params),
+            signature,
+            params.owner,
+            params.deadline,
+            SettlementTiming.Before
+        );
 
         emit CowEvcPositionClosed(
             params.owner,
@@ -314,5 +261,17 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
     /// @inheritdoc CowEvcBaseWrapper
     function domainVersion() internal pure override returns (string memory) {
         return "1";
+    }
+
+    function memoryLocation(ClosePositionParams memory params) internal pure returns (ParamsLocation location) {
+        assembly ("memory-safe") {
+            location := params
+        }
+    }
+
+    function paramsFromMemory(ParamsLocation location) internal pure returns (ClosePositionParams memory params) {
+        assembly {
+            params := location
+        }
     }
 }

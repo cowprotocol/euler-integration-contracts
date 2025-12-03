@@ -9,6 +9,9 @@ import {PreApprovedHashes} from "./PreApprovedHashes.sol";
 /// @title CowEvcBaseWrapper
 /// @notice Shared components for implementing Euler wrappers.
 abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
+    /// @dev location in memory of the parameters describing the wrapper implementation.
+    type ParamsLocation is bytes32;
+
     IEVC public immutable EVC;
 
     /// @dev The EIP-712 domain type hash used for computing the domain
@@ -51,6 +54,11 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Used to ensure that the EVC is calling back this contract with the correct data
     bytes32 internal transient expectedEvcInternalSettleCallHash;
 
+    enum SettlementTiming {
+        Before,
+        After
+    }
+
     constructor(address _evc, ICowSettlement _settlement) CowWrapper(_settlement) {
         require(_evc.code.length > 0, "EVC address is invalid");
         EVC = IEVC(_evc);
@@ -63,11 +71,17 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
             keccak256(abi.encode(DOMAIN_TYPE_HASH, domainNameHash, domainVersionHash, block.chainid, address(this)));
     }
 
+    function _encodeSignedBatchItems(ParamsLocation paramsLocation)
+        internal
+        view
+        virtual
+        returns (IEVC.BatchItem[] memory items);
+
     /// @dev This function makes strong assumptions on the memory layout of the struct in memory.
     /// It assumes:
     ///  - The struct itself doesn't contain any dynamic-length types.
     ///  - The struct is encoded in memory with zero padding.
-    function _getApprovalHash(bytes32 paramsMemoryLocation) internal view returns (bytes32 digest) {
+    function _getApprovalHash(ParamsLocation paramsMemoryLocation) internal view returns (bytes32 digest) {
         bytes32 structHash;
         bytes32 separator = DOMAIN_SEPARATOR;
         uint256 paramsSize = PARAMS_SIZE;
@@ -91,6 +105,79 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         require(expectedEvcInternalSettleCallHash == keccak256(msg.data), InvalidCallback());
         expectedEvcInternalSettleCallHash = bytes32(0);
         _evcInternalSettle(settleData, wrapperData, remainingWrapperData);
+    }
+
+    function _invokeEvc(
+        bytes calldata settleData,
+        bytes calldata wrapperData,
+        bytes calldata remainingWrapperData,
+        ParamsLocation paramMemoryLocation,
+        bytes memory signature,
+        address owner,
+        uint256 deadline,
+        SettlementTiming timing
+    ) internal {
+        bool isPreApproved = signature.length == 0
+            && _consumePreApprovedHash(owner, _getApprovalHash(paramMemoryLocation));
+        IEVC.BatchItem[] memory signedItems = _encodeSignedBatchItems(paramMemoryLocation);
+
+        // Build the EVC batch items for swapping collateral
+        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](isPreApproved ? signedItems.length + 1 : 2);
+
+        uint256 itemIndex = 0;
+
+        bytes memory callbackData =
+            abi.encodeCall(CowEvcBaseWrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData));
+        expectedEvcInternalSettleCallHash = keccak256(callbackData);
+
+        if (timing == SettlementTiming.Before) {
+            items[itemIndex++] = IEVC.BatchItem({
+                onBehalfOfAccount: address(this), targetContract: address(this), value: 0, data: callbackData
+            });
+        }
+
+        // There are two ways this contract can be executed: either the user approves this contract as
+        // an operator and supplies a pre-approved hash for the operation to take, or they submit a permit hash
+        // for this specific instance
+        if (!isPreApproved) {
+            items[itemIndex++] = IEVC.BatchItem({
+                onBehalfOfAccount: address(0),
+                targetContract: address(EVC),
+                value: 0,
+                data: abi.encodeCall(
+                    IEVC.permit,
+                    (
+                        owner,
+                        address(this),
+                        uint256(NONCE_NAMESPACE),
+                        EVC.getNonce(bytes19(bytes20(owner)), NONCE_NAMESPACE),
+                        deadline,
+                        0, // value field (no ETH transferred to the EVC)
+                        abi.encodeCall(EVC.batch, signedItems),
+                        signature
+                    )
+                )
+            });
+        } else {
+            require(deadline >= block.timestamp, OperationDeadlineExceeded(deadline, block.timestamp));
+            // copy the operations to execute. we can operate on behalf of the user directly
+            for (uint256 i; i < signedItems.length; i++) {
+                items[itemIndex++] = signedItems[i];
+            }
+        }
+
+        if (timing == SettlementTiming.After) {
+            items[itemIndex++] = IEVC.BatchItem({
+                onBehalfOfAccount: address(this), targetContract: address(this), value: 0, data: callbackData
+            });
+        }
+
+        // 3. Account status check (automatically done by EVC at end of batch)
+        // For more info, see: https://evc.wtf/docs/concepts/internals/account-status-checks
+        // No explicit item needed - EVC handles this
+
+        // Execute all items in a single batch
+        EVC.batch(items);
     }
 
     function _evcInternalSettle(

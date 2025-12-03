@@ -94,15 +94,7 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
     /// @param params The CollateralSwapParams to hash
     /// @return The hash of the signed calldata for these params
     function getApprovalHash(CollateralSwapParams memory params) external view returns (bytes32) {
-        return _getApprovalHash(params);
-    }
-
-    function _getApprovalHash(CollateralSwapParams memory params) internal view returns (bytes32 digest) {
-        bytes32 paramsMemoryLocation;
-        assembly ("memory-safe") {
-            paramsMemoryLocation := params
-        }
-        return _getApprovalHash(paramsMemoryLocation);
+        return _getApprovalHash(memoryLocation(params));
     }
 
     /// @inheritdoc CowWrapper
@@ -119,14 +111,16 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
     /// @param params The CollateralSwapParams needed to construct the permit
     /// @return The `data` field of the EVC.permit call which should be signed
     function getSignedCalldata(CollateralSwapParams memory params) external view returns (bytes memory) {
-        return abi.encodeCall(IEVC.batch, _encodeSignedBatchItems(params));
+        return abi.encodeCall(IEVC.batch, _encodeSignedBatchItems(memoryLocation(params)));
     }
 
-    function _encodeSignedBatchItems(CollateralSwapParams memory params)
+    function _encodeSignedBatchItems(ParamsLocation paramsLocation)
         internal
         view
+        override
         returns (IEVC.BatchItem[] memory items)
     {
+        CollateralSwapParams memory params = paramsFromMemory(paramsLocation);
         items = new IEVC.BatchItem[](1);
 
         // Enable the destination collateral vault for the account
@@ -150,59 +144,16 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         bytes memory signature;
         (params, signature,) = _parseCollateralSwapParams(wrapperData);
 
-        // Check if the signed calldata hash is pre-approved
-        IEVC.BatchItem[] memory signedItems = _encodeSignedBatchItems(params);
-        bool isPreApproved = signature.length == 0 && _consumePreApprovedHash(params.owner, _getApprovalHash(params));
-
-        // Build the EVC batch items for swapping collateral
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](isPreApproved ? signedItems.length + 1 : 2);
-
-        uint256 itemIndex = 0;
-
-        // 1. There are two ways this contract can be executed: either the user approves this contract as
-        // an operator and supplies a pre-approved hash for the operation to take, or they submit a permit hash
-        // for this specific instance
-        if (!isPreApproved) {
-            items[itemIndex++] = IEVC.BatchItem({
-                onBehalfOfAccount: address(0),
-                targetContract: address(EVC),
-                value: 0,
-                data: abi.encodeCall(
-                    IEVC.permit,
-                    (
-                        params.owner,
-                        address(this),
-                        uint256(NONCE_NAMESPACE),
-                        EVC.getNonce(bytes19(bytes20(params.owner)), NONCE_NAMESPACE),
-                        params.deadline,
-                        0, // value field (no ETH transferred to the EVC)
-                        abi.encodeCall(EVC.batch, signedItems),
-                        signature
-                    )
-                )
-            });
-        } else {
-            require(params.deadline >= block.timestamp, OperationDeadlineExceeded(params.deadline, block.timestamp));
-            // copy the operations to execute. we can operate on behalf of the user directly
-            for (; itemIndex < signedItems.length; itemIndex++) {
-                items[itemIndex] = signedItems[itemIndex];
-            }
-        }
-
-        // 2. Settlement call
-        bytes memory callbackData =
-            abi.encodeCall(CowEvcBaseWrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData));
-        expectedEvcInternalSettleCallHash = keccak256(callbackData);
-        items[itemIndex] = IEVC.BatchItem({
-            onBehalfOfAccount: address(this), targetContract: address(this), value: 0, data: callbackData
-        });
-
-        // 3. Account status check (automatically done by EVC at end of batch)
-        // For more info, see: https://evc.wtf/docs/concepts/internals/account-status-checks
-        // No explicit item needed - EVC handles this
-
-        // Execute all items in a single batch
-        EVC.batch(items);
+        _invokeEvc(
+            settleData,
+            wrapperData,
+            remainingWrapperData,
+            memoryLocation(params),
+            signature,
+            params.owner,
+            params.deadline,
+            SettlementTiming.After
+        );
 
         emit CowEvcCollateralSwapped(
             params.owner, params.account, params.fromVault, params.toVault, params.swapAmount, params.kind
@@ -267,5 +218,17 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
     /// @inheritdoc CowEvcBaseWrapper
     function domainVersion() internal pure override returns (string memory) {
         return "1";
+    }
+
+    function memoryLocation(CollateralSwapParams memory params) internal pure returns (ParamsLocation location) {
+        assembly ("memory-safe") {
+            location := params
+        }
+    }
+
+    function paramsFromMemory(ParamsLocation location) internal pure returns (CollateralSwapParams memory params) {
+        assembly {
+            params := location
+        }
     }
 }
