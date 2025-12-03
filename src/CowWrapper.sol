@@ -90,7 +90,7 @@ interface ICowWrapper {
     /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data
     /// @param wrapperData Encoded data for this wrapper and the chain of next wrappers/settlement.
     ///                    Format: [2-byte len][wrapper-specific-data][next-address]([2-byte len][wrapper-specific-data][next-address]...)
-    function wrappedSettle(bytes calldata settleData, bytes calldata wrapperData) external;
+    function wrappedSettle(bytes calldata settleData, bytes calldata chainedWrapperData) external;
 
     /// @notice Parses and validates wrapper-specific data
     /// @dev Used by CowWrapperHelpers to validate wrapper data before execution.
