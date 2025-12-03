@@ -257,10 +257,7 @@ contract CowWrapperHelpersTest is Test {
         bytes memory result = helpers.verifyAndBuildWrapperData(wrapperCalls);
 
         // Verify the length prefix is correct (first 2 bytes)
-        bytes2 lengthPrefix;
-        assembly {
-            lengthPrefix := mload(add(result, 32))
-        }
+        bytes2 lengthPrefix = abi.decode(result, (bytes2));
         assertEq(uint16(lengthPrefix), 65535);
     }
 }
