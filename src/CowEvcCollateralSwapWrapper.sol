@@ -16,6 +16,12 @@ import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
 ///      3. Execute settlement to swap collateral (new collateral is deposited directly into user's account)
 ///      All operations are atomic within EVC batch
 contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
+    /// @dev The EIP-712 domain name used for computing the domain separator.
+    bytes32 constant DOMAIN_NAME = keccak256("CowEvcCollateralSwapWrapper");
+
+    /// @dev The EIP-712 domain version used for computing the domain separator.
+    bytes32 constant DOMAIN_VERSION = keccak256("1");
+
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Collateral Swap";
 
@@ -29,7 +35,9 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         bytes32 kind
     );
 
-    constructor(address _evc, ICowSettlement _settlement) CowEvcBaseWrapper(_evc, _settlement) {
+    constructor(address _evc, ICowSettlement _settlement)
+        CowEvcBaseWrapper(_evc, _settlement, DOMAIN_NAME, DOMAIN_VERSION)
+    {
         PARAMS_SIZE =
         abi.encode(
             CollateralSwapParams({
@@ -208,16 +216,6 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
                 );
             }
         }
-    }
-
-    /// @inheritdoc CowEvcBaseWrapper
-    function domainName() internal pure override returns (string memory) {
-        return "CowEvcCollateralSwapWrapper";
-    }
-
-    /// @inheritdoc CowEvcBaseWrapper
-    function domainVersion() internal pure override returns (string memory) {
-        return "1";
     }
 
     function memoryLocation(CollateralSwapParams memory params) internal pure returns (ParamsLocation location) {

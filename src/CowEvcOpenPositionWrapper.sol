@@ -19,6 +19,12 @@ import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
 /// swap should be the `owner` (not this contract). Furthermore, the buyAmountIn should
 /// be the same as `maxRepayAmount`.
 contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
+    /// @dev The EIP-712 domain name used for computing the domain separator.
+    bytes32 constant DOMAIN_NAME = keccak256("CowEvcOpenPositionWrapper");
+
+    /// @dev The EIP-712 domain version used for computing the domain separator.
+    bytes32 constant DOMAIN_VERSION = keccak256("1");
+
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Open Position";
 
@@ -32,7 +38,9 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
         uint256 borrowAmount
     );
 
-    constructor(address _evc, ICowSettlement _settlement) CowEvcBaseWrapper(_evc, _settlement) {
+    constructor(address _evc, ICowSettlement _settlement)
+        CowEvcBaseWrapper(_evc, _settlement, DOMAIN_NAME, DOMAIN_VERSION)
+    {
         PARAMS_SIZE =
         abi.encode(
             OpenPositionParams({
@@ -193,16 +201,6 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
         _next(settleData, remainingWrapperData);
-    }
-
-    /// @inheritdoc CowEvcBaseWrapper
-    function domainName() internal pure override returns (string memory) {
-        return "CowEvcOpenPositionWrapper";
-    }
-
-    /// @inheritdoc CowEvcBaseWrapper
-    function domainVersion() internal pure override returns (string memory) {
-        return "1";
     }
 
     function memoryLocation(OpenPositionParams memory params) internal pure returns (ParamsLocation location) {

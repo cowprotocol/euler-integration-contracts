@@ -59,16 +59,14 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         After
     }
 
-    constructor(address _evc, ICowSettlement _settlement) CowWrapper(_settlement) {
+    constructor(address _evc, ICowSettlement _settlement, bytes32 _domainName, bytes32 _domainVersion)
+        CowWrapper(_settlement)
+    {
         require(_evc.code.length > 0, "EVC address is invalid");
         EVC = IEVC(_evc);
-        // forge-lint: disable-next-line(asm-keccak256)
-        bytes32 domainNameHash = keccak256(bytes(domainName()));
-        // forge-lint: disable-next-line(asm-keccak256)
-        bytes32 domainVersionHash = keccak256(bytes(domainVersion()));
         NONCE_NAMESPACE = uint256(uint160(address(this)));
         DOMAIN_SEPARATOR =
-            keccak256(abi.encode(DOMAIN_TYPE_HASH, domainNameHash, domainVersionHash, block.chainid, address(this)));
+            keccak256(abi.encode(DOMAIN_TYPE_HASH, _domainName, _domainVersion, block.chainid, address(this)));
     }
 
     function _encodeSignedBatchItems(ParamsLocation paramsLocation)
@@ -185,10 +183,4 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         bytes calldata wrapperData,
         bytes calldata remainingWrapperData
     ) internal virtual;
-
-    /// @return The EIP-712 domain name used for computing the domain separator.
-    function domainName() internal pure virtual returns (string memory);
-
-    /// @return The EIP-712 domain version used for computing the domain separator.
-    function domainVersion() internal pure virtual returns (string memory);
 }

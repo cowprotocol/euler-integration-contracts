@@ -20,6 +20,12 @@ import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
 /// If a full close is being performed, leave a small buffer for intrest accumultation, and the dust will
 /// be returned to the owner's wallet.
 contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
+    /// @dev The EIP-712 domain name used for computing the domain separator.
+    bytes32 constant DOMAIN_NAME = keccak256("CowEvcClosePositionWrapper");
+
+    /// @dev The EIP-712 domain version used for computing the domain separator.
+    bytes32 constant DOMAIN_VERSION = keccak256("1");
+
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Close Position";
 
@@ -34,7 +40,9 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         bytes32 kind
     );
 
-    constructor(address _evc, ICowSettlement _settlement) CowEvcBaseWrapper(_evc, _settlement) {
+    constructor(address _evc, ICowSettlement _settlement)
+        CowEvcBaseWrapper(_evc, _settlement, DOMAIN_NAME, DOMAIN_VERSION)
+    {
         PARAMS_SIZE =
         abi.encode(
             ClosePositionParams({
@@ -251,16 +259,6 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
                 );
             }
         }
-    }
-
-    /// @inheritdoc CowEvcBaseWrapper
-    function domainName() internal pure override returns (string memory) {
-        return "CowEvcClosePositionWrapper";
-    }
-
-    /// @inheritdoc CowEvcBaseWrapper
-    function domainVersion() internal pure override returns (string memory) {
-        return "1";
     }
 
     function memoryLocation(ClosePositionParams memory params) internal pure returns (ParamsLocation location) {
