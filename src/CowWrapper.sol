@@ -151,11 +151,7 @@ abstract contract CowWrapper is ICowWrapper {
         _wrap(settleData, wrapperData[2:remainingWrapperDataStart], wrapperData[remainingWrapperDataStart:]);
     }
 
-    /// @notice Parses and validates wrapper-specific data
-    /// @dev Must be implemented by concrete wrapper contracts. Used for pre-execution validation.
-    ///      The implementation should consume its wrapper-specific data and return the remainder.
-    /// @param wrapperData The full wrapper data to parse
-    /// @return remainingWrapperData The portion of wrapper data not consumed by this wrapper
+    /// @inheritdoc ICowWrapper
     function parseWrapperData(bytes calldata wrapperData)
         external
         view
