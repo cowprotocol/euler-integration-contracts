@@ -9,10 +9,19 @@ import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
 import {MockERC20, MockVault, MockBorrowVault} from "./mocks/MockERC20AndVaults.sol";
 
+// this is required because foundry doesn't have a cheatcode for override any transient storage.
+contract TestableClosePositionWrapper is CowEvcClosePositionWrapper {
+    constructor(address _evc, ICowSettlement _settlement) CowEvcClosePositionWrapper(_evc, _settlement) {}
+
+    function setExpectedEvcInternalSettleCall(bytes memory call) external {
+        expectedEvcInternalSettleCallHash = keccak256(call);
+    }
+}
+
 /// @title Unit tests for CowEvcClosePositionWrapper
 /// @notice Comprehensive unit tests focusing on isolated functionality testing with mocks
 contract CowEvcClosePositionWrapperUnitTest is Test {
-    CowEvcClosePositionWrapper public wrapper;
+    TestableClosePositionWrapper public wrapper;
     MockEVC public mockEvc;
     MockCowSettlement public mockSettlement;
     MockCowAuthentication public mockAuth;
@@ -125,7 +134,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         mockCollateralVault = new MockVault(address(mockAsset), "Mock Collateral", "mCOL");
         mockBorrowVault = new MockBorrowVault(address(mockAsset), "Mock Borrow", "mBOR");
 
-        wrapper = new CowEvcClosePositionWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)));
+        wrapper = new TestableClosePositionWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)));
 
         // Set solver as authenticated
         mockAuth.setSolver(SOLVER, true);
@@ -429,7 +438,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
 
-    function test_EvcInternalSettle_RequiresCorrectOnBehalfOfAccount() public {
+    function test_EvcInternalSettle_RequiresCorrectCalldata() public {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
         params.account = OWNER;
 
@@ -442,8 +451,13 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         // Set incorrect onBehalfOfAccount (not address(wrapper))
         mockEvc.setOnBehalfOf(address(0x9999));
 
+        // the wrapper data is omitted in the expected call
+        wrapper.setExpectedEvcInternalSettleCall(
+            abi.encodeCall(wrapper.evcInternalSettle, (settleData, new bytes(0), remainingWrapperData))
+        );
+
         vm.prank(address(mockEvc));
-        vm.expectRevert(abi.encodeWithSelector(CowEvcClosePositionWrapper.Unauthorized.selector, address(0x9999)));
+        vm.expectRevert(CowEvcClosePositionWrapper.InvalidCallback.selector);
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
 
@@ -456,6 +470,10 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         bytes memory remainingWrapperData = "";
 
         mockSettlement.setSuccessfulSettle(true);
+
+        wrapper.setExpectedEvcInternalSettleCall(
+            abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
+        );
 
         vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
@@ -508,55 +526,16 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
 
         mockSettlement.setSuccessfulSettle(true);
 
+        wrapper.setExpectedEvcInternalSettleCall(
+            abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
+        );
+
         vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
 
         // Verify transfer occurred from account to owner
         assertLt(mockCollateralVault.balanceOf(ACCOUNT), 2000e18, "Account balance should decrease");
         assertGt(mockCollateralVault.balanceOf(OWNER), 0, "Owner should receive tokens");
-    }
-
-    function test_EvcInternalSettle_PricesNotFoundReverts() public {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            repayAmount: 1000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
-        });
-
-        // Create settle data with empty tokens (should fail to find prices)
-        address[] memory tokens = new address[](0);
-        uint256[] memory prices = new uint256[](0);
-
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                tokens,
-                prices,
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-        bytes memory remainingWrapperData = "";
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                CowEvcClosePositionWrapper.PricesNotFoundInSettlement.selector,
-                mockCollateralVault,
-                mockBorrowVault.asset()
-            )
-        );
-        vm.prank(address(mockEvc));
-        wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
 
     function test_EvcInternalSettle_SubaccountMustBeControlledByOwner() public {
@@ -608,6 +587,10 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         bytes memory remainingWrapperData = "";
 
         mockSettlement.setSuccessfulSettle(true);
+
+        wrapper.setExpectedEvcInternalSettleCall(
+            abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
+        );
 
         vm.prank(address(mockEvc));
         vm.expectRevert(

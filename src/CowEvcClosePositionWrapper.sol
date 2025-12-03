@@ -51,6 +51,8 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Close Position";
 
+    uint256 private immutable PARAMS_SIZE;
+
     /// @dev Indicates that the current operation cannot be completed with the given msgSender
     error Unauthorized(address msgSender);
 
@@ -60,11 +62,11 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that this contract did not receive enough repayment assets from the settlement contract in order to cover all user's orders
     error InsufficientRepaymentAsset(address vault, uint256 balanceAmount, uint256 repayAmount);
 
-    /// @dev Indicates that the close order cannot be executed becuase the necessary pricing data is not present in the `tokens`/`clearingPrices` variable
-    error PricesNotFoundInSettlement(address collateralVaultToken, address borrowToken);
-
     /// @dev Indicates that a user attempted to interact with an account that is not their own
     error SubaccountMustBeControlledByOwner(address subaccount, address owner);
+
+    /// @dev Indicates that the EVC called `evcInternalSettle` in an invalid way
+    error InvalidCallback();
 
     /// @dev Emitted when a position is closed via this wrapper
     event CowEvcPositionClosed(
@@ -77,8 +79,25 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         bytes32 kind
     );
 
+    /// @dev Used to ensure that the EVC is calling back this contract with the correct data
+    bytes32 internal transient expectedEvcInternalSettleCallHash;
+
     constructor(address _evc, ICowSettlement _settlement) CowWrapper(_settlement) {
         require(_evc.code.length > 0, "EVC address is invalid");
+        PARAMS_SIZE =
+        abi.encode(
+            ClosePositionParams({
+                owner: address(0),
+                account: address(0),
+                deadline: 0,
+                borrowVault: address(0),
+                collateralVault: address(0),
+                collateralAmount: 0,
+                repayAmount: 0,
+                kind: bytes32(0)
+            })
+        )
+        .length;
         EVC = IEVC(_evc);
         NONCE_NAMESPACE = uint256(uint160(address(this)));
 
@@ -86,11 +105,9 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
             keccak256(abi.encode(DOMAIN_TYPE_HASH, DOMAIN_NAME, DOMAIN_VERSION, block.chainid, address(this)));
     }
 
-    /**
-     * @notice The information necessary to close a debt position against an euler vault by repaying debt and returning collateral
-     * @dev This structure is used, combined with domain separator, to indicate a pre-approved hash.
-     * the `deadline` is used for deduplication checking, so be careful to ensure this value is unique.
-     */
+    /// @notice The information necessary to close a debt position against an euler vault by repaying debt and returning collateral
+    /// @dev This structure is used, combined with domain separator, to indicate a pre-approved hash.
+    /// the `deadline` is used for deduplication checking, so be careful to ensure this value is unique.
     struct ClosePositionParams {
         /// @dev The ethereum address that has permission to operate upon the account
         address owner;
@@ -119,7 +136,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
 
     function _parseClosePositionParams(bytes calldata wrapperData)
         internal
-        pure
+        view
         returns (ClosePositionParams memory params, bytes memory signature, bytes calldata remainingWrapperData)
     {
         (params, signature) = abi.decode(wrapperData, (ClosePositionParams, bytes));
@@ -128,11 +145,10 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         // Structure:
         // - 32 bytes: offset to params (0x40)
         // - 32 bytes: offset to signature
-        // - 256 bytes: params data (8 fields × 32 bytes)
+        // - x bytes: params data (computed size in constructor to prevent errors)
         // - 32 bytes: signature length
         // - N bytes: signature data (padded to 32-byte boundary)
-        // We can just math this out
-        uint256 consumed = 256 + 64 + ((signature.length + 31) & ~uint256(31));
+        uint256 consumed = PARAMS_SIZE + 64 + ((signature.length + 31) & ~uint256(31));
 
         remainingWrapperData = wrapperData[consumed:];
     }
@@ -147,8 +163,9 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
     function _getApprovalHash(ClosePositionParams memory params) internal view returns (bytes32 digest) {
         bytes32 structHash;
         bytes32 separator = DOMAIN_SEPARATOR;
+        uint256 paramsSize = PARAMS_SIZE;
         assembly ("memory-safe") {
-            structHash := keccak256(params, 256)
+            structHash := keccak256(params, paramsSize)
             let ptr := mload(0x40)
             mstore(ptr, "\x19\x01")
             mstore(add(ptr, 0x02), separator)
@@ -159,7 +176,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
 
     function parseWrapperData(bytes calldata wrapperData)
         external
-        pure
+        view
         override
         returns (bytes calldata remainingWrapperData)
     {
@@ -239,11 +256,11 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
 
         // Build the EVC batch items for closing a position
         // 1. Settlement call
+        bytes memory callbackData =
+            abi.encodeCall(this.evcInternalSettle, (settleData, wrapperData, remainingWrapperData));
+        expectedEvcInternalSettleCallHash = keccak256(callbackData);
         items[itemIndex++] = IEVC.BatchItem({
-            onBehalfOfAccount: address(this),
-            targetContract: address(this),
-            value: 0,
-            data: abi.encodeCall(this.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
+            onBehalfOfAccount: address(this), targetContract: address(this), value: 0, data: callbackData
         });
 
         // 2. There are two ways this contract can be executed: either the user approves this contract as
@@ -295,24 +312,6 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         );
     }
 
-    function _findRatePrices(bytes calldata settleData, address collateralVault, address borrowVault)
-        internal
-        view
-        returns (uint256 collateralVaultPrice, uint256 borrowPrice)
-    {
-        address borrowAsset = IERC4626(borrowVault).asset();
-        (address[] memory tokens, uint256[] memory clearingPrices,,) =
-            abi.decode(settleData[4:], (address[], uint256[], ICowSettlement.Trade[], ICowSettlement.Interaction[][3]));
-        for (uint256 i = 0; i < tokens.length; i++) {
-            if (tokens[i] == collateralVault) {
-                collateralVaultPrice = clearingPrices[i];
-            } else if (tokens[i] == borrowAsset) {
-                borrowPrice = clearingPrices[i];
-            }
-        }
-        require(collateralVaultPrice != 0 && borrowPrice != 0, PricesNotFoundInSettlement(collateralVault, borrowAsset));
-    }
-
     /// @notice Internal settlement function called by EVC
     function evcInternalSettle(
         bytes calldata settleData,
@@ -320,8 +319,8 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         bytes calldata remainingWrapperData
     ) external payable {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
-        (address onBehalfOfAccount,) = EVC.getCurrentOnBehalfOfAccount(address(0));
-        require(onBehalfOfAccount == address(this), Unauthorized(onBehalfOfAccount));
+        require(expectedEvcInternalSettleCallHash == keccak256(msg.data), InvalidCallback());
+        expectedEvcInternalSettleCallHash = bytes32(0);
 
         ClosePositionParams memory params;
         (params,,) = _parseClosePositionParams(wrapperData);
@@ -350,9 +349,8 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
             uint256 transferAmount = params.collateralAmount;
 
             if (params.kind == KIND_BUY) {
-                (uint256 collateralVaultPrice, uint256 borrowPrice) =
-                    _findRatePrices(settleData, params.collateralVault, params.borrowVault);
-                transferAmount = params.repayAmount * borrowPrice / collateralVaultPrice;
+                // transfer the full balance from the subaccount to avoid price calculation
+                transferAmount = IERC20(params.collateralVault).balanceOf(params.account);
             }
 
             SafeERC20Lib.safeTransferFrom(
