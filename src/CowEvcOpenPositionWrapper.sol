@@ -3,9 +3,9 @@ pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 
-import {CowWrapper, ICowSettlement} from "./CowWrapper.sol";
+import {ICowSettlement} from "./CowWrapper.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
-import {PreApprovedHashes} from "./PreApprovedHashes.sol";
+import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
 
 /// @title CowEvcOpenPositionWrapper
 /// @notice A specialized wrapper for opening leveraged positions with EVC
@@ -18,39 +18,9 @@ import {PreApprovedHashes} from "./PreApprovedHashes.sol";
 /// from IERC20(borrowVault.asset()) -> collateralVault. The recipient of the
 /// swap should be the `owner` (not this contract). Furthermore, the buyAmountIn should
 /// be the same as `maxRepayAmount`.
-contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
-    IEVC public immutable EVC;
-
-    /// @dev The EIP-712 domain type hash used for computing the domain
-    /// separator.
-    bytes32 private constant DOMAIN_TYPE_HASH =
-        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
-
-    /// @dev The EIP-712 domain name used for computing the domain separator.
-    bytes32 private constant DOMAIN_NAME = keccak256("CowEvcOpenPositionWrapper");
-
-    /// @dev The EIP-712 domain version used for computing the domain separator.
-    bytes32 private constant DOMAIN_VERSION = keccak256("1");
-
-    /// @dev Used by EIP-712 signing to prevent signatures from being replayed
-    bytes32 public immutable DOMAIN_SEPARATOR;
-
-    //// @dev The EVC nonce namespace to use when calling `EVC.permit` to authorize this contract.
-    uint256 public immutable NONCE_NAMESPACE;
-
+contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Open Position";
-
-    uint256 private immutable PARAMS_SIZE;
-
-    /// @dev Indicates that the current operation cannot be completed with the given msgSender
-    error Unauthorized(address msgSender);
-
-    /// @dev Indicates that the pre-approved hash is no longer able to be executed because the block timestamp is too old
-    error OperationDeadlineExceeded(uint256 validToTimestamp, uint256 currentTimestamp);
-
-    /// @dev Indicates that the EVC called `evcInternalSettle` in an invalid way
-    error InvalidCallback();
 
     /// @dev Emitted when a position is opened via this wrapper
     event CowEvcPositionOpened(
@@ -62,11 +32,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
         uint256 borrowAmount
     );
 
-    /// @dev Used to ensure that the EVC is calling back this contract with the correct data
-    bytes32 internal transient expectedEvcInternalSettleCallHash;
-
-    constructor(address _evc, ICowSettlement _settlement) CowWrapper(_settlement) {
-        require(_evc.code.length > 0, "EVC address is invalid");
+    constructor(address _evc, ICowSettlement _settlement) CowEvcBaseWrapper(_evc, _settlement) {
         PARAMS_SIZE =
         abi.encode(
             OpenPositionParams({
@@ -80,11 +46,6 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
             })
         )
         .length;
-        EVC = IEVC(_evc);
-        NONCE_NAMESPACE = uint256(uint160(address(this)));
-
-        DOMAIN_SEPARATOR =
-            keccak256(abi.encode(DOMAIN_TYPE_HASH, DOMAIN_NAME, DOMAIN_VERSION, block.chainid, address(this)));
     }
 
     /// @notice The information necessary to open a debt position against an euler vault using collateral as backing.
@@ -140,17 +101,11 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     }
 
     function _getApprovalHash(OpenPositionParams memory params) internal view returns (bytes32 digest) {
-        bytes32 structHash;
-        bytes32 separator = DOMAIN_SEPARATOR;
-        uint256 paramsSize = PARAMS_SIZE;
+        bytes32 paramsMemoryLocation;
         assembly ("memory-safe") {
-            structHash := keccak256(params, paramsSize)
-            let ptr := mload(0x40)
-            mstore(ptr, "\x19\x01")
-            mstore(add(ptr, 0x02), separator)
-            mstore(add(ptr, 0x22), structHash)
-            digest := keccak256(ptr, 0x42)
+            paramsMemoryLocation := params
         }
+        return _getApprovalHash(paramsMemoryLocation);
     }
 
     function parseWrapperData(bytes calldata wrapperData)
@@ -214,7 +169,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
         }
 
         // 2. Settlement call
-        bytes memory callbackData = abi.encodeCall(this.evcInternalSettle, (settleData, remainingWrapperData));
+        bytes memory callbackData = abi.encodeCall(this.evcInternalSettle, (settleData, hex"", remainingWrapperData));
         expectedEvcInternalSettleCallHash = keccak256(callbackData);
         items[itemIndex] = IEVC.BatchItem({
             onBehalfOfAccount: address(this), targetContract: address(this), value: 0, data: callbackData
@@ -281,14 +236,22 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
         });
     }
 
-    /// @notice Internal settlement function called by EVC
-    function evcInternalSettle(bytes calldata settleData, bytes calldata remainingWrapperData) external payable {
-        require(msg.sender == address(EVC), Unauthorized(msg.sender));
-        require(expectedEvcInternalSettleCallHash == keccak256(msg.data), InvalidCallback());
-        expectedEvcInternalSettleCallHash = bytes32(0);
-
+    function _evcInternalSettle(bytes calldata settleData, bytes calldata, bytes calldata remainingWrapperData)
+        internal
+        override
+    {
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
         _next(settleData, remainingWrapperData);
+    }
+
+    /// @inheritdoc CowEvcBaseWrapper
+    function domainName() internal pure override returns (string memory) {
+        return "CowEvcOpenPositionWrapper";
+    }
+
+    /// @inheritdoc CowEvcBaseWrapper
+    function domainVersion() internal pure override returns (string memory) {
+        return "1";
     }
 }

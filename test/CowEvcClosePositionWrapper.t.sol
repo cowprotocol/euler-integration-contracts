@@ -7,6 +7,7 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcClosePositionWrapper} from "../src/CowEvcClosePositionWrapper.sol";
+import {CowEvcBaseWrapper} from "../src/CowEvcBaseWrapper.sol";
 import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 import {PreApprovedHashes} from "../src/PreApprovedHashes.sol";
@@ -268,7 +269,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         bytes memory wrapperData = "";
 
         // Try to call evcInternalSettle directly (not through EVC)
-        vm.expectRevert(abi.encodeWithSelector(CowEvcClosePositionWrapper.Unauthorized.selector, address(this)));
+        vm.expectRevert(abi.encodeWithSelector(CowEvcBaseWrapper.Unauthorized.selector, address(this)));
         closePositionWrapper.evcInternalSettle(settleData, wrapperData, wrapperData);
     }
 

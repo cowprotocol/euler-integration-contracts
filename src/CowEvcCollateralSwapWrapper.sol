@@ -6,7 +6,7 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {CowWrapper, ICowSettlement} from "./CowWrapper.sol";
 import {IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {SafeERC20Lib} from "euler-vault-kit/src/EVault/shared/lib/SafeERC20Lib.sol";
-import {PreApprovedHashes} from "./PreApprovedHashes.sol";
+import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
 
 /// @title CowEvcCollateralSwapWrapper
 /// @notice A specialized wrapper for swapping collateral between vaults with EVC
@@ -15,52 +15,9 @@ import {PreApprovedHashes} from "./PreApprovedHashes.sol";
 ///      2. Transfer collateral from EVC subaccount to main account (if using subaccount)
 ///      3. Execute settlement to swap collateral (new collateral is deposited directly into user's account)
 ///      All operations are atomic within EVC batch
-contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
-    IEVC public immutable EVC;
-
-    /// @dev The EIP-712 domain type hash used for computing the domain
-    /// separator.
-    bytes32 private constant DOMAIN_TYPE_HASH =
-        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
-
-    /// @dev The EIP-712 domain name used for computing the domain separator.
-    bytes32 private constant DOMAIN_NAME = keccak256("CowEvcCollateralSwapWrapper");
-
-    /// @dev The EIP-712 domain version used for computing the domain separator.
-    bytes32 private constant DOMAIN_VERSION = keccak256("1");
-
-    /// @dev The marker value for a sell order for computing the order struct
-    /// hash. This allows the EIP-712 compatible wallets to display a
-    /// descriptive string for the order kind (instead of 0 or 1).
-    bytes32 private constant KIND_SELL = keccak256("sell");
-
-    /// @dev The OrderKind marker value for a buy order for computing the order
-    /// struct hash.
-    bytes32 private constant KIND_BUY = keccak256("buy");
-
-    /// @dev Used by EIP-712 signing to prevent signatures from being replayed
-    bytes32 public immutable DOMAIN_SEPARATOR;
-
-    //// @dev The EVC nonce namespace to use when calling `EVC.permit` to authorize this contract.
-    uint256 public immutable NONCE_NAMESPACE;
-
+contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Collateral Swap";
-
-    /// @dev The size of the CollateralSwapParams struct. Its computed in the constructor so it can be used as a constant later.
-    uint256 private immutable PARAMS_SIZE;
-
-    /// @dev Indicates that the current operation cannot be completed with the given msgSender
-    error Unauthorized(address msgSender);
-
-    /// @dev Indicates that the pre-approved hash is no longer able to be executed because the block timestamp is too old
-    error OperationDeadlineExceeded(uint256 validToTimestamp, uint256 currentTimestamp);
-
-    /// @dev Indicates that a user attempted to interact with an account that is not their own
-    error SubaccountMustBeControlledByOwner(address subaccount, address owner);
-
-    /// @dev Indicates that the EVC called `evcInternalSwap` in an invalid way
-    error InvalidCallback();
 
     /// @dev Emitted when collateral is swapped via this wrapper
     event CowEvcCollateralSwapped(
@@ -72,11 +29,7 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         bytes32 kind
     );
 
-    /// @dev Used to ensure that the EVC is calling back this contract with the correct data
-    bytes32 internal transient expectedEvcInternalSwapCallHash;
-
-    constructor(address _evc, ICowSettlement _settlement) CowWrapper(_settlement) {
-        require(_evc.code.length > 0, "EVC address is invalid");
+    constructor(address _evc, ICowSettlement _settlement) CowEvcBaseWrapper(_evc, _settlement) {
         PARAMS_SIZE =
         abi.encode(
             CollateralSwapParams({
@@ -90,11 +43,6 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
             })
         )
         .length;
-        EVC = IEVC(_evc);
-        NONCE_NAMESPACE = uint256(uint160(address(this)));
-
-        DOMAIN_SEPARATOR =
-            keccak256(abi.encode(DOMAIN_TYPE_HASH, DOMAIN_NAME, DOMAIN_VERSION, block.chainid, address(this)));
     }
 
     /// @notice The information necessary to swap collateral between vaults
@@ -150,17 +98,11 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
     }
 
     function _getApprovalHash(CollateralSwapParams memory params) internal view returns (bytes32 digest) {
-        bytes32 structHash;
-        bytes32 separator = DOMAIN_SEPARATOR;
-        uint256 paramsSize = PARAMS_SIZE;
+        bytes32 paramsMemoryLocation;
         assembly ("memory-safe") {
-            structHash := keccak256(params, paramsSize)
-            let ptr := mload(0x40)
-            mstore(ptr, "\x19\x01")
-            mstore(add(ptr, 0x02), separator)
-            mstore(add(ptr, 0x22), structHash)
-            digest := keccak256(ptr, 0x42)
+            paramsMemoryLocation := params
         }
+        return _getApprovalHash(paramsMemoryLocation);
     }
 
     /// @inheritdoc CowWrapper
@@ -249,8 +191,8 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
 
         // 2. Settlement call
         bytes memory callbackData =
-            abi.encodeCall(this.evcInternalSwap, (settleData, wrapperData, remainingWrapperData));
-        expectedEvcInternalSwapCallHash = keccak256(callbackData);
+            abi.encodeCall(CowEvcBaseWrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData));
+        expectedEvcInternalSettleCallHash = keccak256(callbackData);
         items[itemIndex] = IEVC.BatchItem({
             onBehalfOfAccount: address(this), targetContract: address(this), value: 0, data: callbackData
         });
@@ -267,26 +209,12 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         );
     }
 
-    /// @notice Internal swap function called by EVC
-    function evcInternalSwap(
+    function _evcInternalSettle(
         bytes calldata settleData,
         bytes calldata wrapperData,
         bytes calldata remainingWrapperData
-    ) external payable {
-        require(msg.sender == address(EVC), Unauthorized(msg.sender));
-        require(expectedEvcInternalSwapCallHash == keccak256(msg.data), InvalidCallback());
-        expectedEvcInternalSwapCallHash = bytes32(0);
-
-        CollateralSwapParams memory params;
-        (params,,) = _parseCollateralSwapParams(wrapperData);
-        _evcInternalSwap(settleData, remainingWrapperData, params);
-    }
-
-    function _evcInternalSwap(
-        bytes calldata settleData,
-        bytes calldata remainingWrapperData,
-        CollateralSwapParams memory params
-    ) internal {
+    ) internal override {
+        (CollateralSwapParams memory params,,) = _parseCollateralSwapParams(wrapperData);
         // If a subaccount is being used, we need to transfer the required amount of collateral for the trade into the owner's wallet.
         // This is required becuase the settlement contract can only pull funds from the wallet that signed the transaction.
         // Since its not possible for a subaccount to sign a transaction due to the private key not existing and their being no
@@ -329,5 +257,15 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
                 );
             }
         }
+    }
+
+    /// @inheritdoc CowEvcBaseWrapper
+    function domainName() internal pure override returns (string memory) {
+        return "CowEvcCollateralSwapWrapper";
+    }
+
+    /// @inheritdoc CowEvcBaseWrapper
+    function domainVersion() internal pure override returns (string memory) {
+        return "1";
     }
 }

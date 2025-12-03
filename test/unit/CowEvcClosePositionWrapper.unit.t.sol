@@ -4,6 +4,7 @@ pragma solidity ^0.8;
 import {Test} from "forge-std/Test.sol";
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {CowEvcClosePositionWrapper} from "../../src/CowEvcClosePositionWrapper.sol";
+import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
@@ -395,7 +396,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     }
 
     function test_HelperRepay_OnlyEVC() public {
-        vm.expectRevert(abi.encodeWithSelector(CowEvcClosePositionWrapper.Unauthorized.selector, address(this)));
+        vm.expectRevert(abi.encodeWithSelector(CowEvcBaseWrapper.Unauthorized.selector, address(this)));
         wrapper.helperRepay(address(mockBorrowVault), OWNER, ACCOUNT);
     }
 
@@ -421,7 +422,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         });
 
         vm.prank(address(mockEvc));
-        vm.expectRevert(abi.encodeWithSelector(CowEvcClosePositionWrapper.Unauthorized.selector, wrongAccount));
+        vm.expectRevert(abi.encodeWithSelector(CowEvcBaseWrapper.Unauthorized.selector, wrongAccount));
         mockEvc.batch(items);
     }
 
@@ -434,7 +435,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         bytes memory wrapperData = "";
         bytes memory remainingWrapperData = "";
 
-        vm.expectRevert(abi.encodeWithSelector(CowEvcClosePositionWrapper.Unauthorized.selector, address(this)));
+        vm.expectRevert(abi.encodeWithSelector(CowEvcBaseWrapper.Unauthorized.selector, address(this)));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
 
@@ -457,7 +458,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         );
 
         vm.prank(address(mockEvc));
-        vm.expectRevert(CowEvcClosePositionWrapper.InvalidCallback.selector);
+        vm.expectRevert(CowEvcBaseWrapper.InvalidCallback.selector);
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
 
@@ -601,7 +602,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         vm.prank(address(mockEvc));
         vm.expectRevert(
             abi.encodeWithSelector(
-                CowEvcClosePositionWrapper.SubaccountMustBeControlledByOwner.selector, invalidSubaccount, OWNER
+                CowEvcBaseWrapper.SubaccountMustBeControlledByOwner.selector, invalidSubaccount, OWNER
             )
         );
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
@@ -723,7 +724,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         vm.prank(SOLVER);
         vm.expectRevert(
             abi.encodeWithSelector(
-                CowEvcClosePositionWrapper.OperationDeadlineExceeded.selector, params.deadline, block.timestamp
+                CowEvcBaseWrapper.OperationDeadlineExceeded.selector, params.deadline, block.timestamp
             )
         );
         wrapper.wrappedSettle(settleData, wrapperData);

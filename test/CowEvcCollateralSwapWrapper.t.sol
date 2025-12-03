@@ -6,6 +6,7 @@ import {GPv2Order} from "cow/libraries/GPv2Order.sol";
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
+import {CowEvcBaseWrapper} from "../src/CowEvcBaseWrapper.sol";
 import {CowEvcCollateralSwapWrapper} from "../src/CowEvcCollateralSwapWrapper.sol";
 import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
@@ -322,8 +323,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         bytes memory wrapperData = "";
 
         // Try to call evcInternalSwap directly (not through EVC)
-        vm.expectRevert(abi.encodeWithSelector(CowEvcCollateralSwapWrapper.Unauthorized.selector, address(this)));
-        collateralSwapWrapper.evcInternalSwap(settleData, wrapperData, wrapperData);
+        vm.expectRevert(abi.encodeWithSelector(CowEvcBaseWrapper.Unauthorized.selector, address(this)));
+        collateralSwapWrapper.evcInternalSettle(settleData, wrapperData, wrapperData);
     }
 
     /// @notice Test that non-solvers cannot call wrappedSettle
