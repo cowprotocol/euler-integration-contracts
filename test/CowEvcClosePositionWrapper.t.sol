@@ -96,6 +96,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         });
         EVC.batch(items);
 
+        // Approve the wrapper to send excess tokens back to the subaccount they came from
+        IEVault(ESUSDS).approve(address(closePositionWrapper), type(uint256).max);
+
         // Approve vault shares for settlement
         IEVault(ESUSDS).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
 
@@ -123,6 +126,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             data: abi.encodeCall(IERC20.approve, (address(closePositionWrapper), type(uint256).max))
         });
         EVC.batch(items);
+
+        // Approve transfer of any remaining vault shares from the wrapper back to the subaccount
+        IEVault(collateralVault).approve(address(closePositionWrapper), type(uint256).max);
 
         // Approve vault shares for settlement
         IEVault(collateralVault).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
@@ -188,7 +194,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         );
     }
 
-    /// @notice Test closing a leveraged position using the new wrapper
+    /// @notice Test closing a leveraged position using the wrapper
     function test_ClosePositionWrapper_SuccessFullRepay() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
@@ -250,8 +256,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         assertLt(
             IERC20(ESUSDS).balanceOf(account), collateralBeforeAccount, "User should have less collateral after closing"
         );
-        assertGt(IERC20(ESUSDS).balanceOf(account), 0, "User should have some collateral remaining");
         assertEq(IERC20(ESUSDS).balanceOf(user), collateralBefore, "User main account balance should not have changed");
+        assertGt(IERC20(ESUSDS).balanceOf(account), 0, "User should have some collateral remaining");
     }
 
     /// @notice Test that unauthorized users cannot call evcInternalSettle directly
