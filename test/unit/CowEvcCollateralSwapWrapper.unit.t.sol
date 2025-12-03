@@ -12,7 +12,6 @@ import {MockERC20, MockVault} from "./mocks/MockERC20AndVaults.sol";
 
 // this is required because foundry doesn't have a cheatcode for override any transient storage.
 contract TestableCollateralSwapWrapper is CowEvcCollateralSwapWrapper {
-
     constructor(address _evc, ICowSettlement _settlement) CowEvcCollateralSwapWrapper(_evc, _settlement) {}
 
     function setExpectedEvcInternalSwapCall(bytes memory call) external {
@@ -299,7 +298,9 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         mockEvc.setOnBehalfOf(address(0x9999));
 
         // the wrapper data is omitted in the expected call
-        wrapper.setExpectedEvcInternalSwapCall(abi.encodeCall(wrapper.evcInternalSwap, (settleData, new bytes(0), remainingWrapperData)));
+        wrapper.setExpectedEvcInternalSwapCall(
+            abi.encodeCall(wrapper.evcInternalSwap, (settleData, new bytes(0), remainingWrapperData))
+        );
 
         vm.prank(address(mockEvc));
         vm.expectRevert(CowEvcCollateralSwapWrapper.InvalidCallback.selector);
@@ -335,7 +336,9 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
 
         mockSettlement.setSuccessfulSettle(true);
 
-        wrapper.setExpectedEvcInternalSwapCall(abi.encodeCall(wrapper.evcInternalSwap, (settleData, wrapperData, remainingWrapperData)));
+        wrapper.setExpectedEvcInternalSwapCall(
+            abi.encodeCall(wrapper.evcInternalSwap, (settleData, wrapperData, remainingWrapperData))
+        );
 
         vm.prank(address(mockEvc));
         wrapper.evcInternalSwap(settleData, wrapperData, remainingWrapperData);
@@ -379,7 +382,9 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
 
         mockSettlement.setSuccessfulSettle(true);
 
-        wrapper.setExpectedEvcInternalSwapCall(abi.encodeCall(wrapper.evcInternalSwap, (settleData, wrapperData, remainingWrapperData)));
+        wrapper.setExpectedEvcInternalSwapCall(
+            abi.encodeCall(wrapper.evcInternalSwap, (settleData, wrapperData, remainingWrapperData))
+        );
 
         vm.prank(address(mockEvc));
         wrapper.evcInternalSwap(settleData, wrapperData, remainingWrapperData);
@@ -438,7 +443,9 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
 
         mockSettlement.setSuccessfulSettle(true);
 
-        wrapper.setExpectedEvcInternalSwapCall(abi.encodeCall(wrapper.evcInternalSwap, (settleData, wrapperData, remainingWrapperData)));
+        wrapper.setExpectedEvcInternalSwapCall(
+            abi.encodeCall(wrapper.evcInternalSwap, (settleData, wrapperData, remainingWrapperData))
+        );
 
         vm.prank(address(mockEvc));
         wrapper.evcInternalSwap(settleData, wrapperData, remainingWrapperData);
@@ -491,7 +498,9 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
 
         mockSettlement.setSuccessfulSettle(true);
 
-        wrapper.setExpectedEvcInternalSwapCall(abi.encodeCall(wrapper.evcInternalSwap, (settleData, wrapperData, remainingWrapperData)));
+        wrapper.setExpectedEvcInternalSwapCall(
+            abi.encodeCall(wrapper.evcInternalSwap, (settleData, wrapperData, remainingWrapperData))
+        );
 
         vm.prank(address(mockEvc));
         vm.expectRevert(
@@ -727,7 +736,9 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
 
         mockSettlement.setSuccessfulSettle(true);
 
-        wrapper.setExpectedEvcInternalSwapCall(abi.encodeCall(wrapper.evcInternalSwap, (settleData, wrapperData, remainingWrapperData)));
+        wrapper.setExpectedEvcInternalSwapCall(
+            abi.encodeCall(wrapper.evcInternalSwap, (settleData, wrapperData, remainingWrapperData))
+        );
 
         vm.prank(address(mockEvc));
 
@@ -784,7 +795,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         });
 
         bytes32 hash = wrapper.getApprovalHash(params);
-
 
         vm.prank(OWNER);
         wrapper.setPreApprovedHash(hash, true);

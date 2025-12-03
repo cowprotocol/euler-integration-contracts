@@ -248,13 +248,11 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         }
 
         // 2. Settlement call
-        bytes memory callbackData = abi.encodeCall(this.evcInternalSwap, (settleData, wrapperData, remainingWrapperData));
+        bytes memory callbackData =
+            abi.encodeCall(this.evcInternalSwap, (settleData, wrapperData, remainingWrapperData));
         expectedEvcInternalSwapCallHash = keccak256(callbackData);
         items[itemIndex] = IEVC.BatchItem({
-            onBehalfOfAccount: address(this),
-            targetContract: address(this),
-            value: 0,
-            data: callbackData
+            onBehalfOfAccount: address(this), targetContract: address(this), value: 0, data: callbackData
         });
 
         // 3. Account status check (automatically done by EVC at end of batch)
