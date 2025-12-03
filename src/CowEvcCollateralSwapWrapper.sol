@@ -56,11 +56,11 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that the pre-approved hash is no longer able to be executed because the block timestamp is too old
     error OperationDeadlineExceeded(uint256 validToTimestamp, uint256 currentTimestamp);
 
-    /// @dev Indicates that the collateral swap cannot be executed because the necessary pricing data is not present in the `tokens`/`clearingPrices` variable
-    error PricesNotFoundInSettlement(address fromVault, address toVault);
-
     /// @dev Indicates that a user attempted to interact with an account that is not their own
     error SubaccountMustBeControlledByOwner(address subaccount, address owner);
+
+    /// @dev Indicates that the EVC called `evcInternalSwap` in an invalid way
+    error InvalidCallback();
 
     /// @dev Emitted when collateral is swapped via this wrapper
     event CowEvcCollateralSwapped(
@@ -71,6 +71,9 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         uint256 swapAmount,
         bytes32 kind
     );
+
+    /// @dev Used to ensure that the EVC is calling back this contract with the correct data
+    bytes32 internal transient expectedEvcInternalSwapCallHash;
 
     constructor(address _evc, ICowSettlement _settlement) CowWrapper(_settlement) {
         require(_evc.code.length > 0, "EVC address is invalid");
@@ -245,11 +248,13 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         }
 
         // 2. Settlement call
+        bytes memory callbackData = abi.encodeCall(this.evcInternalSwap, (settleData, wrapperData, remainingWrapperData));
+        expectedEvcInternalSwapCallHash = keccak256(callbackData);
         items[itemIndex] = IEVC.BatchItem({
             onBehalfOfAccount: address(this),
             targetContract: address(this),
             value: 0,
-            data: abi.encodeCall(this.evcInternalSwap, (settleData, wrapperData, remainingWrapperData))
+            data: callbackData
         });
 
         // 3. Account status check (automatically done by EVC at end of batch)
@@ -271,8 +276,8 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
         bytes calldata remainingWrapperData
     ) external payable {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
-        (address onBehalfOfAccount,) = EVC.getCurrentOnBehalfOfAccount(address(0));
-        require(onBehalfOfAccount == address(this), Unauthorized(onBehalfOfAccount));
+        require(expectedEvcInternalSwapCallHash == keccak256(msg.data), InvalidCallback());
+        expectedEvcInternalSwapCallHash = bytes32(0);
 
         CollateralSwapParams memory params;
         (params,,) = _parseCollateralSwapParams(wrapperData);

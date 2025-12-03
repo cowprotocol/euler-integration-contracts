@@ -10,10 +10,20 @@ import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
 import {MockERC20, MockVault} from "./mocks/MockERC20AndVaults.sol";
 
+// this is required because foundry doesn't have a cheatcode for override any transient storage.
+contract TestableCollateralSwapWrapper is CowEvcCollateralSwapWrapper {
+
+    constructor(address _evc, ICowSettlement _settlement) CowEvcCollateralSwapWrapper(_evc, _settlement) {}
+
+    function setExpectedEvcInternalSwapCall(bytes memory call) external {
+        expectedEvcInternalSwapCallHash = keccak256(call);
+    }
+}
+
 /// @title Unit tests for CowEvcCollateralSwapWrapper
 /// @notice Comprehensive unit tests focusing on isolated functionality testing with mocks
 contract CowEvcCollateralSwapWrapperUnitTest is Test {
-    CowEvcCollateralSwapWrapper public wrapper;
+    TestableCollateralSwapWrapper public wrapper;
     EmptyWrapper public emptyWrapper;
     MockEVC public mockEvc;
     MockCowSettlement public mockSettlement;
@@ -104,7 +114,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         mockFromVault = new MockVault(address(mockAsset), "Mock From Vault", "mFROM");
         mockToVault = new MockVault(address(mockAsset), "Mock To Vault", "mTO");
 
-        wrapper = new CowEvcCollateralSwapWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)));
+        wrapper = new TestableCollateralSwapWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)));
         emptyWrapper = new EmptyWrapper(ICowSettlement(address(mockSettlement)));
 
         // Set solver as authenticated
@@ -244,52 +254,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                    FIND RATE PRICES TESTS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_FindRatePrices_SuccessfulLookup() public {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: OWNER, // Same account to avoid transfer logic
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            swapAmount: 1000e18,
-            kind: KIND_BUY
-        });
-
-        address[] memory tokens = new address[](2);
-        tokens[0] = address(mockFromVault);
-        tokens[1] = address(mockToVault);
-
-        uint256[] memory prices = new uint256[](2);
-        prices[0] = 1e18;
-        prices[1] = 2e18;
-
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                tokens,
-                prices,
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-
-        mockSettlement.setSuccessfulSettle(true);
-
-        vm.prank(address(mockEvc));
-        wrapper.evcInternalSwap(settleData, wrapperData, "");
-
-        // If we get here, prices were found successfully
-    }
-
-    /*//////////////////////////////////////////////////////////////
                     EVC INTERNAL SWAP TESTS
     //////////////////////////////////////////////////////////////*/
 
@@ -302,7 +266,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         wrapper.evcInternalSwap(settleData, wrapperData, remainingWrapperData);
     }
 
-    function test_EvcInternalSwap_RequiresCorrectOnBehalfOfAccount() public {
+    function test_EvcInternalSwap_RequiresCorrectCalldata() public {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
             owner: OWNER,
             account: OWNER,
@@ -334,8 +298,11 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         // Set incorrect onBehalfOfAccount (not address(wrapper))
         mockEvc.setOnBehalfOf(address(0x9999));
 
+        // the wrapper data is omitted in the expected call
+        wrapper.setExpectedEvcInternalSwapCall(abi.encodeCall(wrapper.evcInternalSwap, (settleData, new bytes(0), remainingWrapperData)));
+
         vm.prank(address(mockEvc));
-        vm.expectRevert(abi.encodeWithSelector(CowEvcCollateralSwapWrapper.Unauthorized.selector, address(0x9999)));
+        vm.expectRevert(CowEvcCollateralSwapWrapper.InvalidCallback.selector);
         wrapper.evcInternalSwap(settleData, wrapperData, remainingWrapperData);
     }
 
@@ -367,6 +334,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         bytes memory remainingWrapperData = "";
 
         mockSettlement.setSuccessfulSettle(true);
+
+        wrapper.setExpectedEvcInternalSwapCall(abi.encodeCall(wrapper.evcInternalSwap, (settleData, wrapperData, remainingWrapperData)));
 
         vm.prank(address(mockEvc));
         wrapper.evcInternalSwap(settleData, wrapperData, remainingWrapperData);
@@ -409,6 +378,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         bytes memory remainingWrapperData = "";
 
         mockSettlement.setSuccessfulSettle(true);
+
+        wrapper.setExpectedEvcInternalSwapCall(abi.encodeCall(wrapper.evcInternalSwap, (settleData, wrapperData, remainingWrapperData)));
 
         vm.prank(address(mockEvc));
         wrapper.evcInternalSwap(settleData, wrapperData, remainingWrapperData);
@@ -467,6 +438,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
 
         mockSettlement.setSuccessfulSettle(true);
 
+        wrapper.setExpectedEvcInternalSwapCall(abi.encodeCall(wrapper.evcInternalSwap, (settleData, wrapperData, remainingWrapperData)));
+
         vm.prank(address(mockEvc));
         wrapper.evcInternalSwap(settleData, wrapperData, remainingWrapperData);
 
@@ -518,6 +491,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
 
         mockSettlement.setSuccessfulSettle(true);
 
+        wrapper.setExpectedEvcInternalSwapCall(abi.encodeCall(wrapper.evcInternalSwap, (settleData, wrapperData, remainingWrapperData)));
+
         vm.prank(address(mockEvc));
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -557,6 +532,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         bytes memory wrapperData = abi.encode(params, new bytes(0));
 
         mockSettlement.setSuccessfulSettle(true);
+
+        wrapper.setExpectedEvcInternalSwapCall(abi.encodeCall(wrapper.evcInternalSwap, (settleData, wrapperData, "")));
 
         vm.prank(address(mockEvc));
         wrapper.evcInternalSwap(settleData, wrapperData, "");
@@ -750,7 +727,10 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
 
         mockSettlement.setSuccessfulSettle(true);
 
+        wrapper.setExpectedEvcInternalSwapCall(abi.encodeCall(wrapper.evcInternalSwap, (settleData, wrapperData, remainingWrapperData)));
+
         vm.prank(address(mockEvc));
+
         wrapper.evcInternalSwap(settleData, wrapperData, remainingWrapperData);
 
         // Should handle remaining wrapper data gracefully
@@ -805,9 +785,9 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
 
         bytes32 hash = wrapper.getApprovalHash(params);
 
+
         vm.prank(OWNER);
         wrapper.setPreApprovedHash(hash, true);
-
         mockEvc.setOperator(OWNER, address(wrapper), true);
 
         bytes memory settleData = abi.encodeCall(
