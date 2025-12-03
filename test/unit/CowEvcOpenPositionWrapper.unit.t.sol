@@ -9,10 +9,19 @@ import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
 
+// this is required because foundry doesn't have a cheatcode for override any transient storage.
+contract TestableOpenPositionWrapper is CowEvcOpenPositionWrapper {
+    constructor(address _evc, ICowSettlement _settlement) CowEvcOpenPositionWrapper(_evc, _settlement) {}
+
+    function setExpectedEvcInternalSettleCall(bytes memory call) external {
+        expectedEvcInternalSettleCallHash = keccak256(call);
+    }
+}
+
 /// @title Unit tests for CowEvcOpenPositionWrapper
 /// @notice Comprehensive unit tests focusing on isolated functionality testing with mocks
 contract CowEvcOpenPositionWrapperUnitTest is Test {
-    CowEvcOpenPositionWrapper public wrapper;
+    TestableOpenPositionWrapper public wrapper;
     MockEVC public mockEvc;
     MockCowSettlement public mockSettlement;
     MockCowAuthentication public mockAuth;
@@ -96,7 +105,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         mockSettlement = new MockCowSettlement(address(mockAuth));
         mockEvc = new MockEVC();
 
-        wrapper = new CowEvcOpenPositionWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)));
+        wrapper = new TestableOpenPositionWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)));
 
         // Set solver as authenticated
         mockAuth.setSolver(SOLVER, true);
@@ -270,7 +279,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         wrapper.evcInternalSettle(settleData, remainingWrapperData);
     }
 
-    function test_EvcInternalSettle_RequiresCorrectOnBehalfOfAccount() public {
+    function test_EvcInternalSettle_RequiresCorrectCalldata() public {
         bytes memory settleData = _getEmptySettleData();
         bytes memory remainingWrapperData = "";
 
@@ -279,8 +288,13 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         // Set incorrect onBehalfOfAccount (not address(wrapper))
         mockEvc.setOnBehalfOf(address(0x9999));
 
+        // set incorrect expected call
+        wrapper.setExpectedEvcInternalSettleCall(
+            abi.encodeCall(wrapper.evcInternalSettle, (new bytes(0), remainingWrapperData))
+        );
+
         vm.prank(address(mockEvc));
-        vm.expectRevert(abi.encodeWithSelector(CowEvcOpenPositionWrapper.Unauthorized.selector, address(0x9999)));
+        vm.expectRevert(CowEvcOpenPositionWrapper.InvalidCallback.selector);
         wrapper.evcInternalSettle(settleData, remainingWrapperData);
     }
 
@@ -289,6 +303,10 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         bytes memory remainingWrapperData = "";
 
         mockSettlement.setSuccessfulSettle(true);
+
+        wrapper.setExpectedEvcInternalSettleCall(
+            abi.encodeCall(wrapper.evcInternalSettle, (settleData, remainingWrapperData))
+        );
 
         vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, remainingWrapperData);
