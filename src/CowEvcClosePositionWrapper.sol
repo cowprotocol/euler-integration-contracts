@@ -338,6 +338,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         // contract deployed to the subaccount address, transferring to the owner's account is the only option.
         // Additionally, we don't transfer this collateral directly to the settlement contract because the settlement contract
         // requires receiving of funds from the user's wallet, and cannot be put in the contract in advance.
+        uint256 balanceBefore;
         if (params.owner != params.account) {
             // Subaccounts in the EVC can be any account that shares the highest 19 bits as the owner.
             // Here we briefly verify that the subaccount address has been specified as expected.
@@ -351,6 +352,7 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
             if (params.kind == KIND_BUY) {
                 // transfer the full balance from the subaccount to avoid price calculation
                 transferAmount = IERC20(params.collateralVault).balanceOf(params.account);
+                balanceBefore = IERC20(params.collateralVault).balanceOf(params.owner);
             }
 
             SafeERC20Lib.safeTransferFrom(
@@ -361,5 +363,20 @@ contract CowEvcClosePositionWrapper is CowWrapper, PreApprovedHashes {
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
         _next(settleData, remainingWrapperData);
+
+        if (params.kind == KIND_BUY) {
+            // return any remainder to the subaccount
+            uint256 balanceAfter = IERC20(params.collateralVault).balanceOf(params.owner);
+
+            if (balanceAfter > balanceBefore) {
+                SafeERC20Lib.safeTransferFrom(
+                    IERC20(params.collateralVault),
+                    params.owner,
+                    params.account,
+                    balanceAfter - balanceBefore,
+                    address(0)
+                );
+            }
+        }
     }
 }

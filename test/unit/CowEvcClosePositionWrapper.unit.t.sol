@@ -499,6 +499,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         vm.prank(ACCOUNT);
         mockCollateralVault.approve(address(wrapper), 2000e18);
 
+        vm.prank(OWNER);
+        mockCollateralVault.approve(address(wrapper), 2000e18);
+
         // Create settle data with tokens and prices
         address[] memory tokens = new address[](2);
         tokens[0] = address(mockCollateralVault);
@@ -533,9 +536,12 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
 
-        // Verify transfer occurred from account to owner
-        assertLt(mockCollateralVault.balanceOf(ACCOUNT), 2000e18, "Account balance should decrease");
-        assertGt(mockCollateralVault.balanceOf(OWNER), 0, "Owner should receive tokens");
+        // Verify owner has same balance before (because the balance is kept the same by the wrapper)
+        assertEq(
+            mockCollateralVault.balanceOf(OWNER),
+            0,
+            "Owner should not have a balance change after the operation is complete"
+        );
     }
 
     function test_EvcInternalSettle_SubaccountMustBeControlledByOwner() public {
@@ -629,6 +635,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         vm.prank(ACCOUNT);
         mockCollateralVault.approve(address(wrapper), 2000e18);
 
+        vm.prank(OWNER);
+        mockCollateralVault.approve(address(wrapper), 2000e18);
+
         CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
             owner: OWNER,
             account: ACCOUNT,
@@ -680,6 +689,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         vm.stopPrank();
 
         vm.prank(ACCOUNT);
+        mockCollateralVault.approve(address(wrapper), 2000e18);
+
+        vm.prank(OWNER);
         mockCollateralVault.approve(address(wrapper), 2000e18);
 
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
