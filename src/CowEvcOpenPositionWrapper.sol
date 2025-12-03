@@ -49,6 +49,9 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that the pre-approved hash is no longer able to be executed because the block timestamp is too old
     error OperationDeadlineExceeded(uint256 validToTimestamp, uint256 currentTimestamp);
 
+    /// @dev Indicates that the EVC called `evcInternalSettle` in an invalid way
+    error InvalidCallback();
+
     /// @dev Emitted when a position is opened via this wrapper
     event CowEvcPositionOpened(
         address indexed owner,
@@ -58,6 +61,9 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
         uint256 collateralAmount,
         uint256 borrowAmount
     );
+
+    /// @dev Used to ensure that the EVC is calling back this contract with the correct data
+    bytes32 internal transient expectedEvcInternalSettleCallHash;
 
     constructor(address _evc, ICowSettlement _settlement) CowWrapper(_settlement) {
         require(_evc.code.length > 0, "EVC address is invalid");
@@ -208,11 +214,10 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
         }
 
         // 2. Settlement call
+        bytes memory callbackData = abi.encodeCall(this.evcInternalSettle, (settleData, remainingWrapperData));
+        expectedEvcInternalSettleCallHash = keccak256(callbackData);
         items[itemIndex] = IEVC.BatchItem({
-            onBehalfOfAccount: address(this),
-            targetContract: address(this),
-            value: 0,
-            data: abi.encodeCall(this.evcInternalSettle, (settleData, remainingWrapperData))
+            onBehalfOfAccount: address(this), targetContract: address(this), value: 0, data: callbackData
         });
 
         // 3. Account status check (automatically done by EVC at end of batch)
@@ -279,8 +284,8 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     /// @notice Internal settlement function called by EVC
     function evcInternalSettle(bytes calldata settleData, bytes calldata remainingWrapperData) external payable {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
-        (address onBehalfOfAccount,) = EVC.getCurrentOnBehalfOfAccount(address(0));
-        require(onBehalfOfAccount == address(this), Unauthorized(onBehalfOfAccount));
+        require(expectedEvcInternalSettleCallHash == keccak256(msg.data), InvalidCallback());
+        expectedEvcInternalSettleCallHash = bytes32(0);
 
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
