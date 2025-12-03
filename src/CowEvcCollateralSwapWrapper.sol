@@ -312,7 +312,7 @@ contract CowEvcCollateralSwapWrapper is CowWrapper, PreApprovedHashes {
             );
         }
 
-        // Use GPv2Wrapper's _next to call the settlement contract
+        // Use CowWrapper's _next to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
         _next(settleData, remainingWrapperData);
 
