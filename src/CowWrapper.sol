@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-pragma solidity >=0.7.6 <0.9.0;
-pragma abicoder v2;
+pragma solidity >=0.8.0 <0.9.0;
 
 /**
  * @title CoW Wrapper all-in-one integration file
@@ -41,7 +40,7 @@ interface ICowSettlement {
         bytes signature;
     }
 
-    /// @notice Interaction data structure for pre/intra/post-settlement hooks
+    /// @notice Interaction data structure for pre/intra/post-settlement actions which are supplied by the solver to complete the user request
     struct Interaction {
         address target;
         uint256 value;
@@ -131,12 +130,7 @@ abstract contract CowWrapper is ICowWrapper {
         AUTHENTICATOR = settlement_.authenticator();
     }
 
-    /// @notice Initiates a wrapped settlement call
-    /// @dev Entry point for solvers to execute wrapped settlements. Verifies the caller is a solver,
-    ///      validates wrapper data, then delegates to _wrap() for custom logic.
-    /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data
-    /// @param wrapperData Encoded data for this wrapper and the chain of next wrappers/settlement.
-    ///                    Format: [2-byte len][wrapper-specific-data][next-address]([2-byte len][wrapper-specific-data][next-address]...)
+    /// @inheritdoc ICowWrapper
     function wrappedSettle(bytes calldata settleData, bytes calldata wrapperData) external {
         // Revert if not a valid solver
         require(AUTHENTICATOR.isSolver(msg.sender), NotASolver(msg.sender));

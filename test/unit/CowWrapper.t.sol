@@ -1,12 +1,13 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 
 import {Test} from "forge-std/Test.sol";
-import {CowWrapper, ICowSettlement, ICowAuthentication} from "../../src/CowWrapper.sol";
+import {CowWrapper, ICowWrapper, ICowSettlement, ICowAuthentication} from "../../src/CowWrapper.sol";
+import {EmptyWrapper} from "../EmptyWrapper.sol";
+
+import {MockWrapper, MockCowSettlement, MockCowAuthentication} from "./mocks/MockCowProtocol.sol";
 
 import {CowWrapperHelpers} from "../../src/CowWrapperHelpers.sol";
-
-import {MockCowSettlement, MockCowAuthentication, MockWrapper} from "./mocks/MockCowProtocol.sol";
 
 contract CowWrapperTest is Test {
     MockCowAuthentication public authenticator;
