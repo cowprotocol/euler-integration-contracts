@@ -139,9 +139,9 @@ contract CowWrapperTest is Test {
         bytes memory wrapperData = helpers.verifyAndBuildWrapperData(wrapperCalls);
 
         // all the wrappers gets called, with wrapper 1 called twice
-        vm.expectCall(address(wrapper1), 0, abi.encodeWithSelector(wrapper1.wrappedSettle.selector), 2);
-        vm.expectCall(address(wrapper2), 0, abi.encodeWithSelector(wrapper2.wrappedSettle.selector), 1);
-        vm.expectCall(address(wrapper3), 0, abi.encodeWithSelector(wrapper3.wrappedSettle.selector), 1);
+        vm.expectCall(address(wrapper1), 0, abi.encodePacked(ICowWrapper.wrappedSettle.selector), 2);
+        vm.expectCall(address(wrapper2), 0, abi.encodePacked(ICowWrapper.wrappedSettle.selector), 1);
+        vm.expectCall(address(wrapper3), 0, abi.encodePacked(ICowWrapper.wrappedSettle.selector), 1);
 
         // the settlement gets called with the full data
         vm.expectCall(address(mockSettlement), new bytes(0));
