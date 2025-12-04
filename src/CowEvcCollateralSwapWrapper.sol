@@ -36,7 +36,7 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
     );
 
     constructor(address _evc, ICowSettlement _settlement)
-        CowEvcBaseWrapper(_evc, _settlement, DOMAIN_NAME, DOMAIN_VERSION)
+        CowEvcBaseWrapper(_evc, _settlement, DOMAIN_NAME, DOMAIN_VERSION, 2)
     {
         PARAMS_SIZE =
         abi.encode(
@@ -119,14 +119,15 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
     /// @param params The CollateralSwapParams needed to construct the permit
     /// @return The `data` field of the EVC.permit call which should be signed
     function getSignedCalldata(CollateralSwapParams memory params) external view returns (bytes memory) {
-        return abi.encodeCall(IEVC.batch, _encodeSignedBatchItems(memoryLocation(params)));
+        (IEVC.BatchItem[] memory items, ) = _encodeBatchItemsAfter(memoryLocation(params));
+        return abi.encodeCall(IEVC.batch, (items));
     }
 
-    function _encodeSignedBatchItems(ParamsLocation paramsLocation)
+    function _encodeBatchItemsAfter(ParamsLocation paramsLocation)
         internal
         view
         override
-        returns (IEVC.BatchItem[] memory items)
+        returns (IEVC.BatchItem[] memory items, bool needsPermit)
     {
         CollateralSwapParams memory params = paramsFromMemory(paramsLocation);
         items = new IEVC.BatchItem[](1);
@@ -138,6 +139,8 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
             value: 0,
             data: abi.encodeCall(IEVC.enableCollateral, (params.account, params.toVault))
         });
+
+        needsPermit = true;
     }
 
     /// @notice Implementation of GPv2Wrapper._wrap - executes EVC operations to swap collateral
@@ -159,8 +162,7 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
             memoryLocation(params),
             signature,
             params.owner,
-            params.deadline,
-            SettlementTiming.After
+            params.deadline
         );
 
         emit CowEvcCollateralSwapped(
