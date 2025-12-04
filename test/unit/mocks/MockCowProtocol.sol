@@ -1,7 +1,7 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 
-import {ICowSettlement, ICowAuthentication, CowWrapper} from "../../../src/CowWrapper.sol";
+import {ICowSettlement, ICowAuthentication} from "../../../src/CowWrapper.sol";
 
 /// @title MockCowAuthentication
 /// @notice Mock implementation of CoW Protocol authenticator for unit testing
@@ -51,28 +51,5 @@ contract MockCowSettlement is ICowSettlement {
 
     function setSuccessfulSettle(bool success) external {
         shouldSucceed = success;
-    }
-}
-
-contract MockWrapper is CowWrapper {
-    string public override name = "Mock Wrapper";
-    uint256 public consumeBytes;
-
-    constructor(ICowSettlement settlement_, uint256 consumeBytes_) CowWrapper(settlement_) {
-        consumeBytes = consumeBytes_;
-    }
-
-    function _wrap(bytes calldata settleData, bytes calldata, bytes calldata remainingWrapperData) internal override {
-        _next(settleData, remainingWrapperData);
-    }
-
-    function parseWrapperData(bytes calldata wrapperData)
-        external
-        view
-        override
-        returns (bytes calldata remainingWrapperData)
-    {
-        // consume up to `consumeBytes` bytes
-        return wrapperData[(consumeBytes < wrapperData.length ? consumeBytes : wrapperData.length):];
     }
 }

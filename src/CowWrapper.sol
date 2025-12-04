@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-pragma solidity >=0.7.6 <0.9.0;
-pragma abicoder v2;
+pragma solidity >=0.8.0 <0.9.0;
 
 /**
  * @title CoW Wrapper all-in-one integration file
@@ -41,7 +40,7 @@ interface ICowSettlement {
         bytes signature;
     }
 
-    /// @notice Interaction data structure for pre/intra/post-settlement hooks
+    /// @notice Interaction data structure for pre/intra/post-settlement actions which are supplied by the solver to complete the user request
     struct Interaction {
         address target;
         uint256 value;
@@ -88,16 +87,14 @@ interface ICowWrapper {
     /// @dev This is the entry point for wrapped settlements. The wrapper will execute custom logic
     ///      before calling the next wrapper or settlement contract in the chain.
     /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data
-    /// @param wrapperData Encoded data for this wrapper and the chain of next wrappers/settlement.
+    /// @param chainedWrapperData Encoded data for this wrapper and the chain of next wrappers/settlement.
     ///                    Format: [2-byte len][wrapper-specific-data][next-address]([2-byte len][wrapper-specific-data][next-address]...)
-    function wrappedSettle(bytes calldata settleData, bytes calldata wrapperData) external;
+    function wrappedSettle(bytes calldata settleData, bytes calldata chainedWrapperData) external;
 
-    /// @notice Parses and validates wrapper-specific data
-    /// @dev Used by CowWrapperHelpers to validate wrapper data before execution.
-    ///      Implementations should consume their portion of wrapperData and return the rest.
+    /// @notice Confirm's validity of wrapper-specific data
+    /// @dev Used by CowWrapperHelpers to validate wrapper data before execution. Reverts if the wrapper data is not valid for some reason.
     /// @param wrapperData The wrapper-specific data to parse
-    /// @return remainingWrapperData Any wrapper data that was not consumed by this wrapper
-    function parseWrapperData(bytes calldata wrapperData) external view returns (bytes calldata remainingWrapperData);
+    function validateWrapperData(bytes calldata wrapperData) external view;
 }
 
 /// @title CoW Protocol Wrapper Base Contract
@@ -131,43 +128,32 @@ abstract contract CowWrapper is ICowWrapper {
         AUTHENTICATOR = settlement_.authenticator();
     }
 
-    /// @notice Initiates a wrapped settlement call
-    /// @dev Entry point for solvers to execute wrapped settlements. Verifies the caller is a solver,
-    ///      validates wrapper data, then delegates to _wrap() for custom logic.
-    /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data
-    /// @param wrapperData Encoded data for this wrapper and the chain of next wrappers/settlement.
-    ///                    Format: [2-byte len][wrapper-specific-data][next-address]([2-byte len][wrapper-specific-data][next-address]...)
-    function wrappedSettle(bytes calldata settleData, bytes calldata wrapperData) external {
+    /// @inheritdoc ICowWrapper
+    function wrappedSettle(bytes calldata settleData, bytes calldata chainedWrapperData) external {
         // Revert if not a valid solver
         require(AUTHENTICATOR.isSolver(msg.sender), NotASolver(msg.sender));
 
         // Find out how long the next wrapper data is supposed to be
         // We use 2 bytes to decode the length of the wrapper data because it allows for up to 64KB of data for each wrapper.
         // This should be plenty of length for all identified use-cases of wrappers in the forseeable future.
-        uint16 nextWrapperDataLen = uint16(bytes2(wrapperData[0:2]));
+        uint16 nextWrapperDataLen = uint16(bytes2(chainedWrapperData[0:2]));
 
         // Delegate to the wrapper's custom logic
         uint256 remainingWrapperDataStart = 2 + nextWrapperDataLen;
-        _wrap(settleData, wrapperData[2:remainingWrapperDataStart], wrapperData[remainingWrapperDataStart:]);
+        _wrap(
+            settleData, chainedWrapperData[2:remainingWrapperDataStart], chainedWrapperData[remainingWrapperDataStart:]
+        );
     }
 
-    /// @notice Parses and validates wrapper-specific data
-    /// @dev Must be implemented by concrete wrapper contracts. Used for pre-execution validation.
-    ///      The implementation should consume its wrapper-specific data and return the remainder.
-    /// @param wrapperData The full wrapper data to parse
-    /// @return remainingWrapperData The portion of wrapper data not consumed by this wrapper
-    function parseWrapperData(bytes calldata wrapperData)
-        external
-        view
-        virtual
-        returns (bytes calldata remainingWrapperData);
+    /// @inheritdoc ICowWrapper
+    function validateWrapperData(bytes calldata wrapperData) external view virtual;
 
     /// @notice Internal function containing the wrapper's custom logic
     /// @dev Must be implemented by concrete wrapper contracts. Should execute custom logic
     ///      then eventually call _next() to continue the wrapped settlement chain.
     /// @param settleData ABI-encoded call to ICowSettlement.settle()
     /// @param wrapperData The wrapper data which should be consumed by this wrapper
-    /// @param remainingWrapperData Additional wrapper data. It is the reminder bytes resulting from consuming the current's wrapper data from the original `wrapperData` in the `wrappedSettle` call. This should be passed unaltered to `_next` that will call the settlement function if this remainder is empty, or delegate the settlement to the next wrapper
+    /// @param remainingWrapperData The reminder bytes resulting from consuming the current's wrapper data from the original `chainedWrapperData` in the `wrappedSettle` call. This should be passed unaltered to `_next` that will call the settlement function if this remainder is empty, or delegate the settlement to the next wrapper
     function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
         internal
         virtual;
