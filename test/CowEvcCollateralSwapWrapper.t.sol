@@ -339,17 +339,16 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         collateralSwapWrapper.wrappedSettle(settleData, wrapperData);
     }
 
-    /// @notice Test parseWrapperData function
-    function test_CollateralSwapWrapper_ParseWrapperData() external view {
+    /// @notice Test validateWrapperData function
+    function test_CollateralSwapWrapper_ValidateWrapperData() external view {
         address account = address(uint160(user) ^ uint8(0x01));
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, account);
 
         bytes memory signature = new bytes(0);
         bytes memory wrapperData = abi.encode(params, signature);
-        bytes memory remainingData = collateralSwapWrapper.parseWrapperData(wrapperData);
 
-        // After parsing CollateralSwapParams, remaining data should be empty
-        assertEq(remainingData.length, 0, "Remaining data should be empty");
+        // Should not revert for valid wrapper data
+        collateralSwapWrapper.validateWrapperData(wrapperData);
     }
 
     /// @notice Test swapping with a leveraged position (ensuring account health is maintained)

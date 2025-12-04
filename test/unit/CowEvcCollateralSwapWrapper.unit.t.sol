@@ -158,27 +158,13 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
                     PARSE WRAPPER DATA TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_ParseWrapperData_EmptySignature() public view {
+    function test_ValidateWrapperData_EmptySignature() public view {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
 
         bytes memory wrapperData = abi.encode(params, new bytes(0));
-        bytes memory remaining = wrapper.parseWrapperData(wrapperData);
 
-        assertEq(remaining.length, 0, "Should have no remaining data");
-    }
-
-    function test_ParseWrapperData_WithExtraData() public view {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
-
-        bytes memory signature = new bytes(0);
-        bytes memory wrapperData = abi.encode(params, signature);
-        bytes memory extraData = hex"deadbeef";
-        wrapperData = abi.encodePacked(wrapperData, extraData);
-
-        bytes memory remaining = wrapper.parseWrapperData(wrapperData);
-
-        assertEq(remaining.length, 4, "Should have 4 bytes remaining");
-        assertEq(remaining, extraData, "Extra data should match");
+        // Should not revert for valid wrapper data
+        wrapper.validateWrapperData(wrapperData);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -691,7 +677,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         );
     }
 
-    function test_ParseWrapperData_LongSignature() public view {
+    function test_ValidateWrapperData_LongSignature() public view {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
             owner: OWNER,
             account: ACCOUNT,
@@ -705,9 +691,9 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         // Create a signature longer than 65 bytes
         bytes memory signature = new bytes(128);
         bytes memory wrapperData = abi.encode(params, signature);
-        bytes memory remaining = wrapper.parseWrapperData(wrapperData);
 
-        assertEq(remaining.length, 0, "Should have no remaining data with long signature");
+        // Should not revert for valid wrapper data with long signature
+        wrapper.validateWrapperData(wrapperData);
     }
 
     function test_EvcInternalSettle_WithRemainingWrapperData() public {

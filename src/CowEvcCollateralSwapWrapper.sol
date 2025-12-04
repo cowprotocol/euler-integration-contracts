@@ -106,20 +106,17 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
     }
 
     /// @inheritdoc CowWrapper
-    function parseWrapperData(bytes calldata wrapperData)
-        external
-        view
-        override
-        returns (bytes calldata remainingWrapperData)
-    {
-        (,, remainingWrapperData) = _parseCollateralSwapParams(wrapperData);
+    function validateWrapperData(bytes calldata wrapperData) external view override {
+        // Validate by attempting to parse the wrapper data
+        // Will revert if the data is malformed
+        _parseCollateralSwapParams(wrapperData);
     }
 
     /// @notice Helper function to compute the `data` field needed for the `EVC.permit` call executed by this function
     /// @param params The CollateralSwapParams needed to construct the permit
     /// @return The `data` field of the EVC.permit call which should be signed
     function getSignedCalldata(CollateralSwapParams memory params) external view returns (bytes memory) {
-        (IEVC.BatchItem[] memory items, ) = _encodeBatchItemsAfter(memoryLocation(params));
+        (IEVC.BatchItem[] memory items,) = _encodeBatchItemsAfter(memoryLocation(params));
         return abi.encodeCall(IEVC.batch, (items));
     }
 
