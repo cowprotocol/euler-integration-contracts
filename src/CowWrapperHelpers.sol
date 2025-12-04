@@ -14,14 +14,9 @@ contract CowWrapperHelpers {
     /// @param authenticatorContract The authentication contract that rejected the wrapper
     error WrapperNotAuthorized(uint256 wrapperIndex, address unauthorized, address authenticatorContract);
 
-    /// @notice Thrown when a wrapper's parseWrapperData doesn't fully consume its data
-    /// @param wrapperIndex The index of the wrapper that didn't consume all its data
-    /// @param remainingWrapperData The data that was not consumed by the wrapper
-    error WrapperDataNotFullyConsumed(uint256 wrapperIndex, bytes remainingWrapperData);
-
-    /// @notice Thrown when a wrapper's parseWrapperData reverts, which is assumed to be due to malformed data
+    /// @notice Thrown when a wrapper's validateWrapperData reverts, which is assumed to be due to malformed data
     /// @param wrapperIndex The index of the wrapper with malformed data
-    /// @param wrapperError The error returned by the wrapper's parseWrapperData
+    /// @param wrapperError The error returned by the wrapper's validateWrapperData
     error WrapperDataMalformed(uint256 wrapperIndex, bytes wrapperError);
 
     /// @notice Thrown when the data for the wrapper is too long. Its limited to 65535 bytes.
@@ -56,15 +51,14 @@ contract CowWrapperHelpers {
 
     /// @notice Constructs a new CowWrapperHelpers contract
     /// @param wrapperAuthenticator_ The ICowAuthentication contract used to verify wrapper contracts
-    /// @param solverAuthenticator_ The ICowAuthentication contract used to verify solvers
-    constructor(ICowAuthentication wrapperAuthenticator_, ICowAuthentication solverAuthenticator_) {
+    constructor(ICowAuthentication wrapperAuthenticator_) {
         WRAPPER_AUTHENTICATOR = wrapperAuthenticator_;
     }
 
     /// @notice Validates a wrapper chain configuration and builds the properly formatted wrapper data
     /// @dev Performs comprehensive validation of the wrapper chain before encoding:
     ///      1. Verifies each wrapper is authenticated via WRAPPER_AUTHENTICATOR
-    ///      2. Verifies each wrapper's data is valid and fully consumed by calling parseWrapperData
+    ///      2. Verifies each wrapper's data is valid and fully consumed by calling validateWrapperData
     ///      3. Verifies all wrappers use the same settlement contract (from first wrapper's SETTLEMENT)
     ///      4. Verifies the settlement contract is not authenticated as a solver
     /// See CowWrapper.wrappedSettle for more information about how the wrapper data chain is encoded
@@ -86,13 +80,8 @@ contract CowWrapperHelpers {
             );
 
             // The wrapper data must be parsable
-            try ICowWrapper(wrapperCalls[i].target).verify(wrapperCalls[i].data) returns (
-                bytes memory remainingWrapperData
-            ) {
-                if (remainingWrapperData.length > 0) {
-                    revert WrapperDataNotFullyConsumed(i, remainingWrapperData);
-                }
-            } catch (bytes memory err) {
+            try ICowWrapper(wrapperCalls[i].target).validateWrapperData(wrapperCalls[i].data) {}
+            catch (bytes memory err) {
                 revert WrapperDataMalformed(i, err);
             }
 
@@ -101,7 +90,8 @@ contract CowWrapperHelpers {
             }
 
             require(wrapperCalls[i].data.length < 65536, WrapperDataTooLong(i, wrapperCalls[i].data.length));
-            chainedWrapperData = abi.encodePacked(chainedWrapperData, uint16(wrapperCalls[i].data.length), wrapperCalls[i].data);
+            chainedWrapperData =
+                abi.encodePacked(chainedWrapperData, uint16(wrapperCalls[i].data.length), wrapperCalls[i].data);
         }
 
         return chainedWrapperData;

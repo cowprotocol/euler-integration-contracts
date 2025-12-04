@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {CowWrapper, ICowWrapper, ICowSettlement, ICowAuthentication} from "../../src/CowWrapper.sol";
 import {EmptyWrapper} from "../EmptyWrapper.sol";
 
-import {MockWrapper, MockCowSettlement, MockCowAuthentication} from "./mocks/MockCowProtocol.sol";
+import {MockCowSettlement, MockCowAuthentication} from "./mocks/MockCowProtocol.sol";
 
 import {CowWrapperHelpers} from "../../src/CowWrapperHelpers.sol";
 
@@ -15,26 +15,24 @@ contract CowWrapperTest is Test {
     CowWrapperHelpers public helpers;
     address public solver;
 
-    MockWrapper private wrapper1;
-    MockWrapper private wrapper2;
-    MockWrapper private wrapper3;
+    EmptyWrapper private wrapper1;
+    EmptyWrapper private wrapper2;
+    EmptyWrapper private wrapper3;
 
     function setUp() public {
         // Deploy mock contracts
         authenticator = new MockCowAuthentication();
         mockSettlement = new MockCowSettlement(address(authenticator));
-        helpers = new CowWrapperHelpers(
-            ICowAuthentication(address(authenticator)), ICowAuthentication(address(authenticator))
-        );
+        helpers = new CowWrapperHelpers(ICowAuthentication(address(authenticator)));
 
         solver = makeAddr("solver");
         // Add solver to the authenticator
         authenticator.setSolver(solver, true);
 
         // Create test wrappers
-        wrapper1 = new MockWrapper(ICowSettlement(address(mockSettlement)), 65536);
-        wrapper2 = new MockWrapper(ICowSettlement(address(mockSettlement)), 65536);
-        wrapper3 = new MockWrapper(ICowSettlement(address(mockSettlement)), 65536);
+        wrapper1 = new EmptyWrapper(ICowSettlement(address(mockSettlement)));
+        wrapper2 = new EmptyWrapper(ICowSettlement(address(mockSettlement)));
+        wrapper3 = new EmptyWrapper(ICowSettlement(address(mockSettlement)));
 
         // Add all wrappers as solvers
         authenticator.setSolver(address(wrapper1), true);

@@ -91,11 +91,9 @@ interface ICowWrapper {
     ///                    Format: [2-byte len][wrapper-specific-data][next-address]([2-byte len][wrapper-specific-data][next-address]...)
     function wrappedSettle(bytes calldata settleData, bytes calldata chainedWrapperData) external;
 
-    /// @notice Parses and validates wrapper-specific data
-    /// @dev Used by CowWrapperHelpers to validate wrapper data before execution.
-    ///      Implementations should consume their portion of wrapperData and return the rest.
+    /// @notice Confirm's validity of wrapper-specific data
+    /// @dev Used by CowWrapperHelpers to validate wrapper data before execution. Reverts if the wrapper data is not valid for some reason.
     /// @param wrapperData The wrapper-specific data to parse
-    /// @return remainingWrapperData Any wrapper data that was not consumed by this wrapper
     function validateWrapperData(bytes calldata wrapperData) external view;
 }
 
@@ -142,15 +140,13 @@ abstract contract CowWrapper is ICowWrapper {
 
         // Delegate to the wrapper's custom logic
         uint256 remainingWrapperDataStart = 2 + nextWrapperDataLen;
-        _wrap(settleData, chainedWrapperData[2:remainingWrapperDataStart], chainedWrapperData[remainingWrapperDataStart:]);
+        _wrap(
+            settleData, chainedWrapperData[2:remainingWrapperDataStart], chainedWrapperData[remainingWrapperDataStart:]
+        );
     }
 
     /// @inheritdoc ICowWrapper
-    function parseWrapperData(bytes calldata wrapperData)
-        external
-        view
-        virtual
-        returns (bytes calldata remainingWrapperData);
+    function validateWrapperData(bytes calldata wrapperData) external view virtual;
 
     /// @notice Internal function containing the wrapper's custom logic
     /// @dev Must be implemented by concrete wrapper contracts. Should execute custom logic
