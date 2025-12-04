@@ -87,7 +87,7 @@ interface ICowWrapper {
     /// @dev This is the entry point for wrapped settlements. The wrapper will execute custom logic
     ///      before calling the next wrapper or settlement contract in the chain.
     /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data
-    /// @param wrapperData Encoded data for this wrapper and the chain of next wrappers/settlement.
+    /// @param chainedWrapperData Encoded data for this wrapper and the chain of next wrappers/settlement.
     ///                    Format: [2-byte len][wrapper-specific-data][next-address]([2-byte len][wrapper-specific-data][next-address]...)
     function wrappedSettle(bytes calldata settleData, bytes calldata chainedWrapperData) external;
 
@@ -131,18 +131,18 @@ abstract contract CowWrapper is ICowWrapper {
     }
 
     /// @inheritdoc ICowWrapper
-    function wrappedSettle(bytes calldata settleData, bytes calldata wrapperData) external {
+    function wrappedSettle(bytes calldata settleData, bytes calldata chainedWrapperData) external {
         // Revert if not a valid solver
         require(AUTHENTICATOR.isSolver(msg.sender), NotASolver(msg.sender));
 
         // Find out how long the next wrapper data is supposed to be
         // We use 2 bytes to decode the length of the wrapper data because it allows for up to 64KB of data for each wrapper.
         // This should be plenty of length for all identified use-cases of wrappers in the forseeable future.
-        uint16 nextWrapperDataLen = uint16(bytes2(wrapperData[0:2]));
+        uint16 nextWrapperDataLen = uint16(bytes2(chainedWrapperData[0:2]));
 
         // Delegate to the wrapper's custom logic
         uint256 remainingWrapperDataStart = 2 + nextWrapperDataLen;
-        _wrap(settleData, wrapperData[2:remainingWrapperDataStart], wrapperData[remainingWrapperDataStart:]);
+        _wrap(settleData, chainedWrapperData[2:remainingWrapperDataStart], chainedWrapperData[remainingWrapperDataStart:]);
     }
 
     /// @inheritdoc ICowWrapper
@@ -157,7 +157,7 @@ abstract contract CowWrapper is ICowWrapper {
     ///      then eventually call _next() to continue the wrapped settlement chain.
     /// @param settleData ABI-encoded call to ICowSettlement.settle()
     /// @param wrapperData The wrapper data which should be consumed by this wrapper
-    /// @param remainingWrapperData Additional wrapper data. It is the reminder bytes resulting from consuming the current's wrapper data from the original `wrapperData` in the `wrappedSettle` call. This should be passed unaltered to `_next` that will call the settlement function if this remainder is empty, or delegate the settlement to the next wrapper
+    /// @param remainingWrapperData The reminder bytes resulting from consuming the current's wrapper data from the original `chainedWrapperData` in the `wrappedSettle` call. This should be passed unaltered to `_next` that will call the settlement function if this remainder is empty, or delegate the settlement to the next wrapper
     function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
         internal
         virtual;
