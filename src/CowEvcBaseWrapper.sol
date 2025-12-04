@@ -36,6 +36,9 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
     uint256 internal immutable PARAMS_SIZE;
 
+    /// @dev How long to make the `items` array without calculating it. Determines the maximum number of EVC operations that can be batched.
+    uint256 internal immutable MAX_BATCH_OPERATIONS;
+
     /// @dev Indicates that the current operation cannot be completed with the given msgSender
     error Unauthorized(address msgSender);
 
@@ -54,26 +57,42 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Used to ensure that the EVC is calling back this contract with the correct data
     bytes32 internal transient expectedEvcInternalSettleCallHash;
 
-    enum SettlementTiming {
-        Before,
-        After
-    }
-
-    constructor(address _evc, ICowSettlement _settlement, bytes32 _domainName, bytes32 _domainVersion)
-        CowWrapper(_settlement)
-    {
+    constructor(
+        address _evc,
+        ICowSettlement _settlement,
+        bytes32 _domainName,
+        bytes32 _domainVersion,
+        uint256 maxBatchOperations
+    ) CowWrapper(_settlement) {
         require(_evc.code.length > 0, "EVC address is invalid");
         EVC = IEVC(_evc);
         NONCE_NAMESPACE = uint256(uint160(address(this)));
         DOMAIN_SEPARATOR =
             keccak256(abi.encode(DOMAIN_TYPE_HASH, _domainName, _domainVersion, block.chainid, address(this)));
+        MAX_BATCH_OPERATIONS = maxBatchOperations;
     }
 
-    function _encodeSignedBatchItems(ParamsLocation paramsLocation)
+    /// @dev Encode batch items to execute before the settlement
+    /// @notice By default we return the default value (empty array, false)
+    /// @return items Array of batch items to execute
+    /// @return needsPermit Whether these items require user signature or prior authorization as an operator
+    function _encodeBatchItemsBefore(ParamsLocation)
         internal
         view
         virtual
-        returns (IEVC.BatchItem[] memory items);
+        returns (IEVC.BatchItem[] memory items, bool needsPermit)
+    {}
+
+    /// @dev Encode batch items to execute after the settlement
+    /// @notice By default we return the default value (empty array, false)
+    /// @return items Array of batch items to execute
+    /// @return needsPermit Whether these items require user signature or prior authorization as an operator
+    function _encodeBatchItemsAfter(ParamsLocation)
+        internal
+        view
+        virtual
+        returns (IEVC.BatchItem[] memory items, bool needsPermit)
+    {}
 
     /// @dev This function makes strong assumptions on the memory layout of the struct in memory.
     /// It assumes:
@@ -112,33 +131,67 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         ParamsLocation paramMemoryLocation,
         bytes memory signature,
         address owner,
-        uint256 deadline,
-        SettlementTiming timing
+        uint256 deadline
     ) internal {
-        bool isPreApproved = signature.length == 0
-            && _consumePreApprovedHash(owner, _getApprovalHash(paramMemoryLocation));
-        IEVC.BatchItem[] memory signedItems = _encodeSignedBatchItems(paramMemoryLocation);
+        if (signature.length == 0) {
+            _consumePreApprovedHash(owner, _getApprovalHash(paramMemoryLocation));
+            require(deadline >= block.timestamp, OperationDeadlineExceeded(deadline, block.timestamp));
+        }
 
         // Build the EVC batch items for swapping collateral
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](isPreApproved ? signedItems.length + 1 : 2);
+        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](MAX_BATCH_OPERATIONS);
 
         uint256 itemIndex = 0;
 
-        bytes memory callbackData =
-            abi.encodeCall(CowEvcBaseWrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData));
-        expectedEvcInternalSettleCallHash = keccak256(callbackData);
+        // add any EVC actions that have to be performed before
+        {
+            (IEVC.BatchItem[] memory beforeItems, bool isPermit) = _encodeBatchItemsBefore(paramMemoryLocation);
+            itemIndex = _addEvcBatchItems(items, beforeItems, itemIndex, owner, deadline, signature, isPermit);
+        }
 
-        if (timing == SettlementTiming.Before) {
+        // add the EVC callback to this (which calls settlement)
+        {
+            bytes memory callbackData =
+                abi.encodeCall(CowEvcBaseWrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData));
+            expectedEvcInternalSettleCallHash = keccak256(callbackData);
             items[itemIndex++] = IEVC.BatchItem({
                 onBehalfOfAccount: address(this), targetContract: address(this), value: 0, data: callbackData
             });
         }
 
+        // add the EVC actions that have to be performed after
+        {
+            (IEVC.BatchItem[] memory afterItems, bool isPermit) = _encodeBatchItemsAfter(paramMemoryLocation);
+            itemIndex = _addEvcBatchItems(items, afterItems, itemIndex, owner, deadline, signature, isPermit);
+        }
+
+        // shorten the length of the generated array to its actual length
+        assembly ("memory-safe") {
+            mstore(items, itemIndex)
+        }
+
+        // 3. Account status check (automatically done by EVC at end of batch)
+        // For more info, see: https://evc.wtf/docs/concepts/internals/account-status-checks
+        // No explicit item needed - EVC handles this
+
+        // Execute all items in a single batch
+        EVC.batch(items);
+    }
+
+    function _addEvcBatchItems(
+        IEVC.BatchItem[] memory fullItems,
+        IEVC.BatchItem[] memory addItems,
+        uint256 itemIndex,
+        address owner,
+        uint256 deadline,
+        bytes memory signature,
+        bool isPermit
+    ) internal view returns (uint256) {
         // There are two ways this contract can be executed: either the user approves this contract as
         // an operator and supplies a pre-approved hash for the operation to take, or they submit a permit hash
         // for this specific instance
-        if (!isPreApproved) {
-            items[itemIndex++] = IEVC.BatchItem({
+        if (isPermit && signature.length > 0) {
+            fullItems[itemIndex++] = IEVC.BatchItem({
                 onBehalfOfAccount: address(0),
                 targetContract: address(EVC),
                 value: 0,
@@ -151,31 +204,21 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
                         EVC.getNonce(bytes19(bytes20(owner)), NONCE_NAMESPACE),
                         deadline,
                         0, // value field (no ETH transferred to the EVC)
-                        abi.encodeCall(EVC.batch, signedItems),
+                        abi.encodeCall(EVC.batch, addItems),
                         signature
                     )
                 )
             });
         } else {
-            require(deadline >= block.timestamp, OperationDeadlineExceeded(deadline, block.timestamp));
-            // copy the operations to execute. we can operate on behalf of the user directly
-            for (uint256 i; i < signedItems.length; i++) {
-                items[itemIndex++] = signedItems[i];
+            // copy the operations to execute. this contract can operate on behalf of the user directly
+            for (uint256 i; i < addItems.length; i++) {
+                fullItems[itemIndex + i] = addItems[i];
             }
+
+            itemIndex += addItems.length;
         }
 
-        if (timing == SettlementTiming.After) {
-            items[itemIndex++] = IEVC.BatchItem({
-                onBehalfOfAccount: address(this), targetContract: address(this), value: 0, data: callbackData
-            });
-        }
-
-        // 3. Account status check (automatically done by EVC at end of batch)
-        // For more info, see: https://evc.wtf/docs/concepts/internals/account-status-checks
-        // No explicit item needed - EVC handles this
-
-        // Execute all items in a single batch
-        EVC.batch(items);
+        return itemIndex;
     }
 
     function _evcInternalSettle(

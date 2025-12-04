@@ -39,7 +39,7 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
     );
 
     constructor(address _evc, ICowSettlement _settlement)
-        CowEvcBaseWrapper(_evc, _settlement, DOMAIN_NAME, DOMAIN_VERSION)
+        CowEvcBaseWrapper(_evc, _settlement, DOMAIN_NAME, DOMAIN_VERSION, 6)
     {
         PARAMS_SIZE =
         abi.encode(
@@ -134,8 +134,7 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
             memoryLocation(params),
             signature,
             params.owner,
-            params.deadline,
-            SettlementTiming.After
+            params.deadline
         );
 
         emit CowEvcPositionOpened(
@@ -149,14 +148,15 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
     }
 
     function getSignedCalldata(OpenPositionParams memory params) external view returns (bytes memory) {
-        return abi.encodeCall(IEVC.batch, _encodeSignedBatchItems(memoryLocation(params)));
+        (IEVC.BatchItem[] memory items,) = _encodeBatchItemsBefore(memoryLocation(params));
+        return abi.encodeCall(IEVC.batch, items);
     }
 
-    function _encodeSignedBatchItems(ParamsLocation paramsLocation)
+    function _encodeBatchItemsBefore(ParamsLocation paramsLocation)
         internal
         view
         override
-        returns (IEVC.BatchItem[] memory items)
+        returns (IEVC.BatchItem[] memory items, bool isSigned)
     {
         OpenPositionParams memory params = paramsFromMemory(paramsLocation);
         items = new IEVC.BatchItem[](4);
@@ -192,6 +192,8 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
             value: 0,
             data: abi.encodeCall(IBorrowing.borrow, (params.borrowAmount, params.owner))
         });
+
+        isSigned = true;
     }
 
     function _evcInternalSettle(bytes calldata settleData, bytes calldata, bytes calldata remainingWrapperData)

@@ -41,7 +41,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
     );
 
     constructor(address _evc, ICowSettlement _settlement)
-        CowEvcBaseWrapper(_evc, _settlement, DOMAIN_NAME, DOMAIN_VERSION)
+        CowEvcBaseWrapper(_evc, _settlement, DOMAIN_NAME, DOMAIN_VERSION, 2)
     {
         PARAMS_SIZE =
         abi.encode(
@@ -124,14 +124,15 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
     }
 
     function getSignedCalldata(ClosePositionParams memory params) external view returns (bytes memory) {
-        return abi.encodeCall(IEVC.batch, _encodeSignedBatchItems(memoryLocation(params)));
+        (IEVC.BatchItem[] memory items, ) = _encodeBatchItemsAfter(memoryLocation(params));
+        return abi.encodeCall(IEVC.batch, (items));
     }
 
-    function _encodeSignedBatchItems(ParamsLocation paramsLocation)
+    function _encodeBatchItemsAfter(ParamsLocation paramsLocation)
         internal
         view
         override
-        returns (IEVC.BatchItem[] memory items)
+        returns (IEVC.BatchItem[] memory items, bool needsPermit)
     {
         ClosePositionParams memory params = paramsFromMemory(paramsLocation);
         items = new IEVC.BatchItem[](1);
@@ -143,6 +144,8 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
             value: 0,
             data: abi.encodeCall(this.helperRepay, (params.borrowVault, params.owner, params.account))
         });
+
+        needsPermit = true;
     }
 
     /// @notice Called by the EVC after a CoW swap is completed to repay the user's debt. Will use all available collateral in the user's account to do so.
@@ -192,8 +195,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
             memoryLocation(params),
             signature,
             params.owner,
-            params.deadline,
-            SettlementTiming.Before
+            params.deadline
         );
 
         emit CowEvcPositionClosed(
