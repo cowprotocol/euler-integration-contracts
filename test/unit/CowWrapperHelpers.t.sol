@@ -213,7 +213,8 @@ contract CowWrapperHelpersTest is Test {
 
     function test_verifyAndBuildWrapperData_RevertsOnWrapperDataTooLong_FirstWrapper() public {
         // Create data that's exactly 65536 bytes (exceeds uint16 max of 65535)
-        bytes memory tooLongData = new bytes(65536);
+        uint256 tooLongLength = 65536;
+        bytes memory tooLongData = new bytes(tooLongLength);
 
         // Create a wrapper that consumes all bytes passed to it
         MockWrapper largeWrapper = new MockWrapper(ICowSettlement(address(mockSettlement)), 65536);
