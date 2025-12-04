@@ -25,9 +25,9 @@ contract CowWrapperHelpersTest is Test {
         mockSettlement = new MockCowSettlement(address(wrapperAuth));
 
         // Create mock wrappers
-        wrapper1 = new MockWrapper(ICowSettlement(address(mockSettlement)), 4);
-        wrapper2 = new MockWrapper(ICowSettlement(address(mockSettlement)), 8);
-        wrapper3 = new MockWrapper(ICowSettlement(address(mockSettlement)), 0);
+        wrapper1 = new MockWrapper(mockSettlement, WRAPPER_1_CONSUMED_BYTES);
+        wrapper2 = new MockWrapper(mockSettlement, WRAPPER_2_CONSUMED_BYTES);
+        wrapper3 = new MockWrapper(mockSettlement, WRAPPER_3_CONSUMED_BYTES);
 
         // Add wrappers as solvers
         wrapperAuth.setSolver(address(wrapper1), true);
