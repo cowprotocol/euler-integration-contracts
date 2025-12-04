@@ -96,7 +96,7 @@ interface ICowWrapper {
     ///      Implementations should consume their portion of wrapperData and return the rest.
     /// @param wrapperData The wrapper-specific data to parse
     /// @return remainingWrapperData Any wrapper data that was not consumed by this wrapper
-    function parseWrapperData(bytes calldata wrapperData) external view returns (bytes calldata remainingWrapperData);
+    function validateWrapperData(bytes calldata wrapperData) external view;
 }
 
 /// @title CoW Protocol Wrapper Base Contract
