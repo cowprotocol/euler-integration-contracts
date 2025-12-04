@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 
-import {ICowSettlement, ICowAuthentication, CowWrapper} from "../../../src/CowWrapper.sol";
+import {ICowSettlement, ICowAuthentication} from "../../../src/CowWrapper.sol";
 
 /// @title MockCowAuthentication
 /// @notice Mock implementation of CoW Protocol authenticator for unit testing
