@@ -352,10 +352,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         params.repayAmount = type(uint256).max;
 
         bytes memory wrapperData = abi.encode(params, new bytes(65));
-        bytes memory remainingData = closePositionWrapper.parseWrapperData(wrapperData);
 
-        // After parsing ClosePositionParams, remaining data should be empty
-        assertEq(remainingData.length, 0, "Remaining data should be empty");
+        // Should not revert for valid wrapper data
+        closePositionWrapper.validateWrapperData(wrapperData);
     }
 
     /// @notice Test setting pre-approved hash

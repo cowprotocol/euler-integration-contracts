@@ -172,27 +172,13 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
                     PARSE WRAPPER DATA TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_ParseWrapperData_EmptySignature() public view {
+    function test_ValidateWrapperData_EmptySignature() public view {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
         bytes memory wrapperData = abi.encode(params, new bytes(0));
-        bytes memory remaining = wrapper.parseWrapperData(wrapperData);
 
-        assertEq(remaining.length, 0, "Should have no remaining data");
-    }
-
-    function test_ParseWrapperData_WithExtraData() public view {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
-
-        bytes memory signature = new bytes(0);
-        bytes memory wrapperData = abi.encode(params, signature);
-        bytes memory extraData = hex"deadbeef";
-        wrapperData = abi.encodePacked(wrapperData, extraData);
-
-        bytes memory remaining = wrapper.parseWrapperData(wrapperData);
-
-        assertEq(remaining.length, 4, "Should have 4 bytes remaining");
-        assertEq(remaining, extraData, "Extra data should match");
+        // Should not revert for valid wrapper data
+        wrapper.validateWrapperData(wrapperData);
     }
 
     /*//////////////////////////////////////////////////////////////
