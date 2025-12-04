@@ -6,7 +6,7 @@ import {IERC20 as CowERC20} from "cow/interfaces/IERC20.sol";
 
 import {EthereumVaultConnector} from "evc/EthereumVaultConnector.sol";
 import {Test} from "forge-std/Test.sol";
-import {IEVault, IVault, IBorrowing, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {IEVault, IVault, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
