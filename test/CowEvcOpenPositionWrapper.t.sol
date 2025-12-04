@@ -5,6 +5,7 @@ import {GPv2Order} from "cow/libraries/GPv2Order.sol";
 
 import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
+import {CowEvcBaseWrapper} from "../src/CowEvcOpenPositionWrapper.sol";
 import {CowEvcOpenPositionWrapper} from "../src/CowEvcOpenPositionWrapper.sol";
 import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
@@ -215,8 +216,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         bytes memory wrapperData = "";
 
         // Try to call evcInternalSettle directly (not through EVC)
-        vm.expectRevert(abi.encodeWithSelector(CowEvcOpenPositionWrapper.Unauthorized.selector, address(this)));
-        openPositionWrapper.evcInternalSettle(settleData, wrapperData);
+        vm.expectRevert(abi.encodeWithSelector(CowEvcBaseWrapper.Unauthorized.selector, address(this)));
+        openPositionWrapper.evcInternalSettle(settleData, hex"", wrapperData);
     }
 
     /// @notice Test that non-solvers cannot call wrappedSettle

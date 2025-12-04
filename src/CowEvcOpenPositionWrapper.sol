@@ -3,9 +3,9 @@ pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 
-import {CowWrapper, ICowSettlement} from "./CowWrapper.sol";
+import {ICowSettlement} from "./CowWrapper.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
-import {PreApprovedHashes} from "./PreApprovedHashes.sol";
+import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
 
 /// @title CowEvcOpenPositionWrapper
 /// @notice A specialized wrapper for opening leveraged positions with EVC
@@ -18,39 +18,15 @@ import {PreApprovedHashes} from "./PreApprovedHashes.sol";
 /// from IERC20(borrowVault.asset()) -> collateralVault. The recipient of the
 /// swap should be the `owner` (not this contract). Furthermore, the buyAmountIn should
 /// be the same as `maxRepayAmount`.
-contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
-    IEVC public immutable EVC;
-
-    /// @dev The EIP-712 domain type hash used for computing the domain
-    /// separator.
-    bytes32 private constant DOMAIN_TYPE_HASH =
-        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
-
+contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
     /// @dev The EIP-712 domain name used for computing the domain separator.
-    bytes32 private constant DOMAIN_NAME = keccak256("CowEvcOpenPositionWrapper");
+    bytes32 constant DOMAIN_NAME = keccak256("CowEvcOpenPositionWrapper");
 
     /// @dev The EIP-712 domain version used for computing the domain separator.
-    bytes32 private constant DOMAIN_VERSION = keccak256("1");
-
-    /// @dev Used by EIP-712 signing to prevent signatures from being replayed
-    bytes32 public immutable DOMAIN_SEPARATOR;
-
-    //// @dev The EVC nonce namespace to use when calling `EVC.permit` to authorize this contract.
-    uint256 public immutable NONCE_NAMESPACE;
+    bytes32 constant DOMAIN_VERSION = keccak256("1");
 
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Open Position";
-
-    uint256 private immutable PARAMS_SIZE;
-
-    /// @dev Indicates that the current operation cannot be completed with the given msgSender
-    error Unauthorized(address msgSender);
-
-    /// @dev Indicates that the pre-approved hash is no longer able to be executed because the block timestamp is too old
-    error OperationDeadlineExceeded(uint256 validToTimestamp, uint256 currentTimestamp);
-
-    /// @dev Indicates that the EVC called `evcInternalSettle` in an invalid way
-    error InvalidCallback();
 
     /// @dev Emitted when a position is opened via this wrapper
     event CowEvcPositionOpened(
@@ -62,11 +38,9 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
         uint256 borrowAmount
     );
 
-    /// @dev Used to ensure that the EVC is calling back this contract with the correct data
-    bytes32 internal transient expectedEvcInternalSettleCallHash;
-
-    constructor(address _evc, ICowSettlement _settlement) CowWrapper(_settlement) {
-        require(_evc.code.length > 0, "EVC address is invalid");
+    constructor(address _evc, ICowSettlement _settlement)
+        CowEvcBaseWrapper(_evc, _settlement, DOMAIN_NAME, DOMAIN_VERSION, 6)
+    {
         PARAMS_SIZE =
         abi.encode(
             OpenPositionParams({
@@ -80,11 +54,6 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
             })
         )
         .length;
-        EVC = IEVC(_evc);
-        NONCE_NAMESPACE = uint256(uint160(address(this)));
-
-        DOMAIN_SEPARATOR =
-            keccak256(abi.encode(DOMAIN_TYPE_HASH, DOMAIN_NAME, DOMAIN_VERSION, block.chainid, address(this)));
     }
 
     /// @notice The information necessary to open a debt position against an euler vault using collateral as backing.
@@ -136,21 +105,7 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     /// @param params The OpenPositionParams to hash
     /// @return The hash of the signed calldata for these params
     function getApprovalHash(OpenPositionParams memory params) external view returns (bytes32) {
-        return _getApprovalHash(params);
-    }
-
-    function _getApprovalHash(OpenPositionParams memory params) internal view returns (bytes32 digest) {
-        bytes32 structHash;
-        bytes32 separator = DOMAIN_SEPARATOR;
-        uint256 paramsSize = PARAMS_SIZE;
-        assembly ("memory-safe") {
-            structHash := keccak256(params, paramsSize)
-            let ptr := mload(0x40)
-            mstore(ptr, "\x19\x01")
-            mstore(add(ptr, 0x02), separator)
-            mstore(add(ptr, 0x22), structHash)
-            digest := keccak256(ptr, 0x42)
-        }
+        return _getApprovalHash(memoryLocation(params));
     }
 
     function parseWrapperData(bytes calldata wrapperData)
@@ -170,62 +125,17 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
         override
     {
         // Decode wrapper data into OpenPositionParams
-        OpenPositionParams memory params;
-        bytes memory signature;
-        (params, signature,) = _parseOpenPositionParams(wrapperData);
+        (OpenPositionParams memory params, bytes memory signature,) = _parseOpenPositionParams(wrapperData);
 
-        // Check if the signed calldata hash is pre-approved
-        IEVC.BatchItem[] memory signedItems = _encodeSignedBatchItems(params);
-        bool isPreApproved = signature.length == 0 && _consumePreApprovedHash(params.owner, _getApprovalHash(params));
-
-        // Build the EVC batch items for opening a position
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](isPreApproved ? signedItems.length + 1 : 2);
-
-        uint256 itemIndex = 0;
-
-        // 1. There are two ways this contract can be executed: either the user approves this contract as
-        // and operator and supplies a pre-approved hash for the operation to take, or they submit a permit hash
-        // for this specific instance
-        if (!isPreApproved) {
-            items[itemIndex++] = IEVC.BatchItem({
-                onBehalfOfAccount: address(0),
-                targetContract: address(EVC),
-                value: 0,
-                data: abi.encodeCall(
-                    IEVC.permit,
-                    (
-                        params.owner,
-                        address(this),
-                        uint256(NONCE_NAMESPACE),
-                        EVC.getNonce(bytes19(bytes20(params.owner)), NONCE_NAMESPACE),
-                        params.deadline,
-                        0, // value field (no ETH transferred to the EVC)
-                        abi.encodeCall(EVC.batch, signedItems),
-                        signature
-                    )
-                )
-            });
-        } else {
-            require(params.deadline >= block.timestamp, OperationDeadlineExceeded(params.deadline, block.timestamp));
-            // copy the operations to execute. we can operate on behalf of the user directly
-            for (; itemIndex < signedItems.length; itemIndex++) {
-                items[itemIndex] = signedItems[itemIndex];
-            }
-        }
-
-        // 2. Settlement call
-        bytes memory callbackData = abi.encodeCall(this.evcInternalSettle, (settleData, remainingWrapperData));
-        expectedEvcInternalSettleCallHash = keccak256(callbackData);
-        items[itemIndex] = IEVC.BatchItem({
-            onBehalfOfAccount: address(this), targetContract: address(this), value: 0, data: callbackData
-        });
-
-        // 3. Account status check (automatically done by EVC at end of batch)
-        // For more info, see: https://evc.wtf/docs/concepts/internals/account-status-checks
-        // No explicit item needed - EVC handles this
-
-        // Execute all items in a single batch
-        EVC.batch(items);
+        _invokeEvc(
+            settleData,
+            wrapperData,
+            remainingWrapperData,
+            memoryLocation(params),
+            signature,
+            params.owner,
+            params.deadline
+        );
 
         emit CowEvcPositionOpened(
             params.owner,
@@ -238,14 +148,17 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
     }
 
     function getSignedCalldata(OpenPositionParams memory params) external view returns (bytes memory) {
-        return abi.encodeCall(IEVC.batch, _encodeSignedBatchItems(params));
+        (IEVC.BatchItem[] memory items,) = _encodeBatchItemsBefore(memoryLocation(params));
+        return abi.encodeCall(IEVC.batch, items);
     }
 
-    function _encodeSignedBatchItems(OpenPositionParams memory params)
+    function _encodeBatchItemsBefore(ParamsLocation paramsLocation)
         internal
         view
-        returns (IEVC.BatchItem[] memory items)
+        override
+        returns (IEVC.BatchItem[] memory items, bool isSigned)
     {
+        OpenPositionParams memory params = paramsFromMemory(paramsLocation);
         items = new IEVC.BatchItem[](4);
 
         // 1. Enable collateral
@@ -279,16 +192,28 @@ contract CowEvcOpenPositionWrapper is CowWrapper, PreApprovedHashes {
             value: 0,
             data: abi.encodeCall(IBorrowing.borrow, (params.borrowAmount, params.owner))
         });
+
+        isSigned = true;
     }
 
-    /// @notice Internal settlement function called by EVC
-    function evcInternalSettle(bytes calldata settleData, bytes calldata remainingWrapperData) external payable {
-        require(msg.sender == address(EVC), Unauthorized(msg.sender));
-        require(expectedEvcInternalSettleCallHash == keccak256(msg.data), InvalidCallback());
-        expectedEvcInternalSettleCallHash = bytes32(0);
-
+    function _evcInternalSettle(bytes calldata settleData, bytes calldata, bytes calldata remainingWrapperData)
+        internal
+        override
+    {
         // Use GPv2Wrapper's _internalSettle to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
         _next(settleData, remainingWrapperData);
+    }
+
+    function memoryLocation(OpenPositionParams memory params) internal pure returns (ParamsLocation location) {
+        assembly ("memory-safe") {
+            location := params
+        }
+    }
+
+    function paramsFromMemory(ParamsLocation location) internal pure returns (OpenPositionParams memory params) {
+        assembly {
+            params := location
+        }
     }
 }

@@ -4,6 +4,7 @@ pragma solidity ^0.8;
 import {Test} from "forge-std/Test.sol";
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {CowEvcOpenPositionWrapper} from "../../src/CowEvcOpenPositionWrapper.sol";
+import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
@@ -275,8 +276,8 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         bytes memory settleData = "";
         bytes memory remainingWrapperData = "";
 
-        vm.expectRevert(abi.encodeWithSelector(CowEvcOpenPositionWrapper.Unauthorized.selector, address(this)));
-        wrapper.evcInternalSettle(settleData, remainingWrapperData);
+        vm.expectRevert(abi.encodeWithSelector(CowEvcBaseWrapper.Unauthorized.selector, address(this)));
+        wrapper.evcInternalSettle(settleData, hex"", remainingWrapperData);
     }
 
     function test_EvcInternalSettle_RequiresCorrectCalldata() public {
@@ -290,12 +291,12 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
 
         // set incorrect expected call
         wrapper.setExpectedEvcInternalSettleCall(
-            abi.encodeCall(wrapper.evcInternalSettle, (new bytes(0), remainingWrapperData))
+            abi.encodeCall(wrapper.evcInternalSettle, (new bytes(0), new bytes(0), remainingWrapperData))
         );
 
         vm.prank(address(mockEvc));
-        vm.expectRevert(CowEvcOpenPositionWrapper.InvalidCallback.selector);
-        wrapper.evcInternalSettle(settleData, remainingWrapperData);
+        vm.expectRevert(CowEvcBaseWrapper.InvalidCallback.selector);
+        wrapper.evcInternalSettle(settleData, hex"", remainingWrapperData);
     }
 
     function test_EvcInternalSettle_CanBeCalledByEVC() public {
@@ -305,11 +306,11 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         mockSettlement.setSuccessfulSettle(true);
 
         wrapper.setExpectedEvcInternalSettleCall(
-            abi.encodeCall(wrapper.evcInternalSettle, (settleData, remainingWrapperData))
+            abi.encodeCall(wrapper.evcInternalSettle, (settleData, hex"", remainingWrapperData))
         );
 
         vm.prank(address(mockEvc));
-        wrapper.evcInternalSettle(settleData, remainingWrapperData);
+        wrapper.evcInternalSettle(settleData, hex"", remainingWrapperData);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -366,7 +367,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         vm.prank(SOLVER);
         vm.expectRevert(
             abi.encodeWithSelector(
-                CowEvcOpenPositionWrapper.OperationDeadlineExceeded.selector, params.deadline, block.timestamp
+                CowEvcBaseWrapper.OperationDeadlineExceeded.selector, params.deadline, block.timestamp
             )
         );
         wrapper.wrappedSettle(settleData, wrapperData);
