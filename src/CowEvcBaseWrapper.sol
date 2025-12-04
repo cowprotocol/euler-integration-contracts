@@ -73,30 +73,26 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     }
 
     /// @dev Encode batch items to execute before the settlement
+    /// @notice By default we return the default value (empty array, false)
     /// @return items Array of batch items to execute
-    /// @return signed Whether these items require user signature or prior authorization
+    /// @return needsPermit Whether these items require user signature or prior authorization as an operator
     function _encodeBatchItemsBefore(ParamsLocation)
         internal
         view
         virtual
-        returns (IEVC.BatchItem[] memory items, bool signed)
-    {
-        items = new IEVC.BatchItem[](0);
-        signed = false;
-    }
+        returns (IEVC.BatchItem[] memory items, bool needsPermit)
+    {}
 
     /// @dev Encode batch items to execute after the settlement
+    /// @notice By default we return the default value (empty array, false)
     /// @return items Array of batch items to execute
-    /// @return signed Whether these items require user signature or prior authorization
+    /// @return needsPermit Whether these items require user signature or prior authorization as an operator
     function _encodeBatchItemsAfter(ParamsLocation)
         internal
         view
         virtual
-        returns (IEVC.BatchItem[] memory items, bool signed)
-    {
-        items = new IEVC.BatchItem[](0);
-        signed = false;
-    }
+        returns (IEVC.BatchItem[] memory items, bool needsPermit)
+    {}
 
     /// @dev This function makes strong assumptions on the memory layout of the struct in memory.
     /// It assumes:
