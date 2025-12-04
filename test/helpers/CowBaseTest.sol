@@ -91,6 +91,7 @@ contract CowBaseTest is Test {
         deal(ESUSDS, address(COW_SETTLEMENT), 200e18);
         deal(EWETH, address(COW_SETTLEMENT), 0.2e18);
 
+
         // Set the approval for MilkSwap in the settlement as a convenience
         vm.startPrank(address(COW_SETTLEMENT));
         IERC20(WETH).approve(address(milkSwap), type(uint256).max);
@@ -116,7 +117,7 @@ contract CowBaseTest is Test {
         vm.label(EWETH, "eWETH");
         vm.label(address(COW_SETTLEMENT), "CoW");
         vm.label(address(COW_SETTLEMENT.authenticator()), "CoW Auth");
-        vm.label(address(COW_SETTLEMENT.authenticator()), "CoW Vault Relayer");
+        vm.label(address(COW_SETTLEMENT.vaultRelayer()), "CoW Vault Relayer");
         vm.label(address(EVC), "EVC");
         vm.label(address(milkSwap), "MilkSwap");
     }

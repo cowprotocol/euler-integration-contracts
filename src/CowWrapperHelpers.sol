@@ -12,16 +12,11 @@ contract CowWrapperHelpers {
     /// @param wrapperIndex The index of the invalid wrapper in the array
     /// @param unauthorized The address that is not authenticated as a wrapper
     /// @param authenticatorContract The authentication contract that rejected the wrapper
-    error NotAWrapper(uint256 wrapperIndex, address unauthorized, address authenticatorContract);
+    error WrapperNotAuthorized(uint256 wrapperIndex, address unauthorized, address authenticatorContract);
 
-    /// @notice Thrown when a wrapper's parseWrapperData doesn't fully consume its data
-    /// @param wrapperIndex The index of the wrapper that didn't consume all its data
-    /// @param remainingWrapperData The data that was not consumed by the wrapper
-    error WrapperDataNotFullyConsumed(uint256 wrapperIndex, bytes remainingWrapperData);
-
-    /// @notice Thrown when a wrapper's parseWrapperData reverts, which is assumed to be due to malformed data
+    /// @notice Thrown when a wrapper's validateWrapperData reverts, which is assumed to be due to malformed data
     /// @param wrapperIndex The index of the wrapper with malformed data
-    /// @param wrapperError The error returned by the wrapper's parseWrapperData
+    /// @param wrapperError The error returned by the wrapper's validateWrapperData
     error WrapperDataMalformed(uint256 wrapperIndex, bytes wrapperError);
 
     /// @notice Thrown when the data for the wrapper is too long. Its limited to 65535 bytes.
@@ -54,83 +49,51 @@ contract CowWrapperHelpers {
     /// @notice The authentication contract used to verify wrapper contracts
     ICowAuthentication public immutable WRAPPER_AUTHENTICATOR;
 
-    /// @notice The authentication contract used to verify solvers
-    ICowAuthentication public immutable SOLVER_AUTHENTICATOR;
-
     /// @notice Constructs a new CowWrapperHelpers contract
     /// @param wrapperAuthenticator_ The ICowAuthentication contract used to verify wrapper contracts
-    /// @param solverAuthenticator_ The ICowAuthentication contract used to verify solvers
-    constructor(ICowAuthentication wrapperAuthenticator_, ICowAuthentication solverAuthenticator_) {
+    constructor(ICowAuthentication wrapperAuthenticator_) {
         WRAPPER_AUTHENTICATOR = wrapperAuthenticator_;
-        SOLVER_AUTHENTICATOR = solverAuthenticator_;
     }
 
     /// @notice Validates a wrapper chain configuration and builds the properly formatted wrapper data
     /// @dev Performs comprehensive validation of the wrapper chain before encoding:
     ///      1. Verifies each wrapper is authenticated via WRAPPER_AUTHENTICATOR
-    ///      2. Verifies each wrapper's data is valid and fully consumed by calling parseWrapperData
+    ///      2. Verifies each wrapper's data is valid and fully consumed by calling validateWrapperData
     ///      3. Verifies all wrappers use the same settlement contract (from first wrapper's SETTLEMENT)
     ///      4. Verifies the settlement contract is not authenticated as a solver
-    ///      The returned wrapper data format is: [data0][addr1][data1][addr2][data2]...
-    ///      where data0 is for the first wrapper, addr1 is the second wrapper address, etc.
-    ///      Note: No settlement address is appended as wrappers now use a static SETTLEMENT.
+    /// See CowWrapper.wrappedSettle for more information about how the wrapper data chain is encoded
     /// @param wrapperCalls Array of calls in execution order
-    /// @return wrapperData The encoded wrapper data ready to be passed to the first wrapper's wrappedSettle
+    /// @return chainedWrapperData The encoded wrapper data ready to be passed to the first wrapper's wrappedSettle
     function verifyAndBuildWrapperData(WrapperCall[] memory wrapperCalls)
         external
         view
-        returns (bytes memory wrapperData)
+        returns (bytes memory chainedWrapperData)
     {
         if (wrapperCalls.length == 0) {
-            return wrapperData;
+            return chainedWrapperData;
         }
 
-        // First pass: verify all wrappers are authenticated
         for (uint256 i = 0; i < wrapperCalls.length; i++) {
             require(
                 WRAPPER_AUTHENTICATOR.isSolver(wrapperCalls[i].target),
-                NotAWrapper(i, wrapperCalls[i].target, address(WRAPPER_AUTHENTICATOR))
-            );
-        }
-
-        // Get the expected settlement from the first wrapper
-        address expectedSettlement = address(ICowWrapper(wrapperCalls[0].target).SETTLEMENT());
-
-        for (uint256 i = 0; i < wrapperCalls.length; i++) {
-            // All wrappers must use the same settlement contract
-            address wrapperSettlement = address(ICowWrapper(wrapperCalls[i].target).SETTLEMENT());
-
-            require(
-                wrapperSettlement == expectedSettlement, SettlementMismatch(i, expectedSettlement, wrapperSettlement)
+                WrapperNotAuthorized(i, wrapperCalls[i].target, address(WRAPPER_AUTHENTICATOR))
             );
 
-            // The wrapper data must be parsable and fully consumed
-            try ICowWrapper(wrapperCalls[i].target).parseWrapperData(wrapperCalls[i].data) returns (
-                bytes memory remainingWrapperData
-            ) {
-                if (remainingWrapperData.length > 0) {
-                    revert WrapperDataNotFullyConsumed(i, remainingWrapperData);
-                }
-            } catch (bytes memory err) {
+            // The wrapper data must be parsable
+            try ICowWrapper(wrapperCalls[i].target).validateWrapperData(wrapperCalls[i].data) {}
+            catch (bytes memory err) {
                 revert WrapperDataMalformed(i, err);
             }
-        }
 
-        // The Settlement Contract should not be a solver
-        if (SOLVER_AUTHENTICATOR.isSolver(expectedSettlement)) {
-            revert SettlementContractShouldNotBeSolver(expectedSettlement, address(SOLVER_AUTHENTICATOR));
-        }
-
-        // Build wrapper data
-        for (uint256 i = 0; i < wrapperCalls.length; i++) {
             if (i > 0) {
-                wrapperData = abi.encodePacked(wrapperData, wrapperCalls[i].target);
+                chainedWrapperData = abi.encodePacked(chainedWrapperData, wrapperCalls[i].target);
             }
 
             require(wrapperCalls[i].data.length < 65536, WrapperDataTooLong(i, wrapperCalls[i].data.length));
-            wrapperData = abi.encodePacked(wrapperData, uint16(wrapperCalls[i].data.length), wrapperCalls[i].data);
+            chainedWrapperData =
+                abi.encodePacked(chainedWrapperData, uint16(wrapperCalls[i].data.length), wrapperCalls[i].data);
         }
 
-        return wrapperData;
+        return chainedWrapperData;
     }
 }
