@@ -3,7 +3,7 @@ pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 
-import {ICowSettlement} from "./CowWrapper.sol";
+import {ICowSettlement, CowWrapper} from "./CowWrapper.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
 
@@ -108,13 +108,11 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
         return _getApprovalHash(memoryLocation(params));
     }
 
-    function parseWrapperData(bytes calldata wrapperData)
-        external
-        view
-        override
-        returns (bytes calldata remainingWrapperData)
-    {
-        (,, remainingWrapperData) = _parseOpenPositionParams(wrapperData);
+    /// @inheritdoc CowWrapper
+    function validateWrapperData(bytes calldata wrapperData) external view override {
+        // Validate by attempting to parse the wrapper data
+        // Will revert if the data is malformed
+        _parseOpenPositionParams(wrapperData);
     }
 
     /// @notice Implementation of GPv2Wrapper._wrap - executes EVC operations to open a position

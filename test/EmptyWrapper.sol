@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
-pragma abicoder v2;
 
 import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
 
@@ -13,13 +12,7 @@ contract EmptyWrapper is CowWrapper {
         _next(settleData, remainingWrapperData);
     }
 
-    function parseWrapperData(bytes calldata wrapperData)
-        external
-        pure
-        override
-        returns (bytes calldata remainingWrapperData)
-    {
-        // EmptyWrapper doesn't consume any wrapper data
-        return wrapperData;
+    function validateWrapperData(bytes calldata wrapperData) external pure override {
+        // nothing to validate for the empty wrapper
     }
 }

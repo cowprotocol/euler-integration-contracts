@@ -126,7 +126,7 @@ contract CowBaseTest is Test {
         vm.label(EWBTC, "eWBTC");
         vm.label(address(COW_SETTLEMENT), "CoW");
         vm.label(address(COW_SETTLEMENT.authenticator()), "CoW Auth");
-        vm.label(address(COW_SETTLEMENT.authenticator()), "CoW Vault Relayer");
+        vm.label(address(COW_SETTLEMENT.vaultRelayer()), "CoW Vault Relayer");
         vm.label(address(EVC), "EVC");
         vm.label(address(milkSwap), "MilkSwap");
     }

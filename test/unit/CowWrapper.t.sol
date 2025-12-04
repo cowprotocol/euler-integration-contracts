@@ -1,12 +1,13 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 
 import {Test} from "forge-std/Test.sol";
-import {CowWrapper, ICowSettlement, ICowAuthentication} from "../../src/CowWrapper.sol";
+import {CowWrapper, ICowWrapper, ICowSettlement, ICowAuthentication} from "../../src/CowWrapper.sol";
+import {EmptyWrapper} from "../EmptyWrapper.sol";
+
+import {MockCowSettlement, MockCowAuthentication} from "./mocks/MockCowProtocol.sol";
 
 import {CowWrapperHelpers} from "../../src/CowWrapperHelpers.sol";
-
-import {MockCowSettlement, MockCowAuthentication, MockWrapper} from "./mocks/MockCowProtocol.sol";
 
 contract CowWrapperTest is Test {
     MockCowAuthentication public authenticator;
@@ -14,26 +15,24 @@ contract CowWrapperTest is Test {
     CowWrapperHelpers public helpers;
     address public solver;
 
-    MockWrapper private wrapper1;
-    MockWrapper private wrapper2;
-    MockWrapper private wrapper3;
+    EmptyWrapper private wrapper1;
+    EmptyWrapper private wrapper2;
+    EmptyWrapper private wrapper3;
 
     function setUp() public {
         // Deploy mock contracts
         authenticator = new MockCowAuthentication();
         mockSettlement = new MockCowSettlement(address(authenticator));
-        helpers = new CowWrapperHelpers(
-            ICowAuthentication(address(authenticator)), ICowAuthentication(address(authenticator))
-        );
+        helpers = new CowWrapperHelpers(ICowAuthentication(address(authenticator)));
 
         solver = makeAddr("solver");
         // Add solver to the authenticator
         authenticator.setSolver(solver, true);
 
         // Create test wrappers
-        wrapper1 = new MockWrapper(ICowSettlement(address(mockSettlement)), 65536);
-        wrapper2 = new MockWrapper(ICowSettlement(address(mockSettlement)), 65536);
-        wrapper3 = new MockWrapper(ICowSettlement(address(mockSettlement)), 65536);
+        wrapper1 = new EmptyWrapper(ICowSettlement(address(mockSettlement)));
+        wrapper2 = new EmptyWrapper(ICowSettlement(address(mockSettlement)));
+        wrapper3 = new EmptyWrapper(ICowSettlement(address(mockSettlement)));
 
         // Add all wrappers as solvers
         authenticator.setSolver(address(wrapper1), true);
@@ -139,9 +138,9 @@ contract CowWrapperTest is Test {
         bytes memory wrapperData = helpers.verifyAndBuildWrapperData(wrapperCalls);
 
         // all the wrappers gets called, with wrapper 1 called twice
-        vm.expectCall(address(wrapper1), 0, abi.encodeWithSelector(wrapper1.wrappedSettle.selector), 2);
-        vm.expectCall(address(wrapper2), 0, abi.encodeWithSelector(wrapper2.wrappedSettle.selector), 1);
-        vm.expectCall(address(wrapper3), 0, abi.encodeWithSelector(wrapper3.wrappedSettle.selector), 1);
+        vm.expectCall(address(wrapper1), 0, abi.encodePacked(ICowWrapper.wrappedSettle.selector), 2);
+        vm.expectCall(address(wrapper2), 0, abi.encodePacked(ICowWrapper.wrappedSettle.selector), 1);
+        vm.expectCall(address(wrapper3), 0, abi.encodePacked(ICowWrapper.wrappedSettle.selector), 1);
 
         // the settlement gets called with the full data
         vm.expectCall(address(mockSettlement), new bytes(0));

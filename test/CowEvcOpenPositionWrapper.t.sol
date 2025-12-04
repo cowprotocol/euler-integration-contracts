@@ -232,16 +232,15 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         openPositionWrapper.wrappedSettle(settleData, wrapperData);
     }
 
-    /// @notice Test parseWrapperData function
-    function test_OpenPositionWrapper_ParseWrapperData() external view {
+    /// @notice Test validateWrapperData function
+    function test_OpenPositionWrapper_ValidateWrapperData() external view {
         address account = address(uint160(user) ^ 1);
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
         bytes memory wrapperData = abi.encode(params, new bytes(0));
-        bytes memory remainingData = openPositionWrapper.parseWrapperData(wrapperData);
 
-        // After parsing OpenPositionParams, remaining data should be empty
-        assertEq(remainingData.length, 0, "Remaining data should be empty");
+        // Should not revert for valid wrapper data
+        openPositionWrapper.validateWrapperData(wrapperData);
     }
 
     /// @notice Test setting pre-approved hash
