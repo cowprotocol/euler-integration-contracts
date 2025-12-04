@@ -19,10 +19,6 @@ contract CowWrapperHelpersTest is Test {
 
     uint256 constant TOO_LONG_LENGTH = 65536;
 
-    uint256 constant WRAPPER_1_CONSUMED_BYTES = 1;
-    uint256 constant WRAPPER_2_CONSUMED_BYTES = 4;
-    uint256 constant WRAPPER_3_CONSUMED_BYTES = 8;
-
     function setUp() public {
         wrapperAuth = new MockCowAuthentication();
         helpers = new CowWrapperHelpers(ICowAuthentication(address(wrapperAuth)));
