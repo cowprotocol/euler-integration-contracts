@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8;
 
-import {GPv2Order} from "cow/libraries/GPv2Order.sol";
+import {GPv2Order} from "./helpers/GPv2Order.sol";
 
 import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcBaseWrapper} from "../src/CowEvcOpenPositionWrapper.sol";
 import {CowEvcOpenPositionWrapper} from "../src/CowEvcOpenPositionWrapper.sol";
 import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
-import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
+import {IGPv2AllowListAuthentication} from "./helpers/IGPv2AllowListAuthentication.sol";
 import {PreApprovedHashes} from "../src/PreApprovedHashes.sol";
 
 import {CowBaseTest} from "./helpers/CowBaseTest.sol";
@@ -31,7 +31,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         openPositionWrapper = new CowEvcOpenPositionWrapper(address(EVC), COW_SETTLEMENT);
 
         // Add wrapper as a solver
-        GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
+        IGPv2AllowListAuthentication allowList = IGPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
         address manager = allowList.manager();
         vm.startPrank(manager);
         allowList.addSolver(address(openPositionWrapper));
