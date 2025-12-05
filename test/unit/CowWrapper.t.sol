@@ -56,24 +56,21 @@ contract CowWrapperTest is Test {
             tokens[i] = makeAddr(string(abi.encodePacked("Settle Token #", vm.toString(i + 1))));
             clearingPrices[i] = 100 * (i + 1);
         }
-        return abi.encodeWithSelector(
-            ICowSettlement.settle.selector, tokens, clearingPrices, new ICowSettlement.Trade[](0), _emptyInteractions()
+        return abi.encodeCall(
+            ICowSettlement.settle, (tokens, clearingPrices, new ICowSettlement.Trade[](0), _emptyInteractions())
         );
     }
 
     function test_next_CallsWrapperAndThenNextSettlement() public {
         bytes memory settleData = abi.encodePacked(_createSimpleSettleData(1), hex"123456");
-        bytes memory secondCallWrapperData = hex"0003098765";
-        bytes memory wrapperData = abi.encodePacked(hex"00021234", address(wrapper1), secondCallWrapperData);
+        bytes memory secondCallWrapperData = abi.encodePacked(uint16(3), hex"098765");
+        bytes memory wrapperData = abi.encodePacked(uint16(2), hex"1234", address(wrapper1), secondCallWrapperData);
 
-        // the wrapper gets called exactly twice (once below and again inside the wrapper data calling self)
-        vm.expectCall(address(wrapper1), 0, abi.encodeWithSelector(wrapper1.wrappedSettle.selector), 2);
+        // verify the external wrapper call data
+        vm.expectCall(address(wrapper1), abi.encodeCall(ICowWrapper.wrappedSettle, (settleData, wrapperData)));
 
         // verify the internal wrapper call data
-        vm.expectCall(
-            address(wrapper1),
-            abi.encodeWithSelector(wrapper1.wrappedSettle.selector, settleData, secondCallWrapperData)
-        );
+        vm.expectCall(address(wrapper1), abi.encodeCall(wrapper1.wrappedSettle, (settleData, secondCallWrapperData)));
 
         // the settlement contract gets called once after wrappers (including the surplus data at the end)
         vm.expectCall(address(mockSettlement), 0, settleData, 1);
@@ -146,6 +143,112 @@ contract CowWrapperTest is Test {
         vm.expectCall(address(mockSettlement), new bytes(0));
 
         // Call wrapper1 as the solver
+        vm.prank(solver);
+        wrapper1.wrappedSettle(settleData, wrapperData);
+    }
+
+    function test_wrappedSettle_RevertsOnZeroLengthWrapperData() public {
+        bytes memory settleData = _createSimpleSettleData(0);
+        bytes memory wrapperData = hex""; // Completely empty wrapper data
+
+        vm.prank(solver);
+        vm.expectRevert(); // Should revert with out-of-bounds array access
+        wrapper1.wrappedSettle(settleData, wrapperData);
+    }
+
+    function test_wrappedSettle_RevertsOnOneByteWrapperData() public {
+        bytes memory settleData = _createSimpleSettleData(0);
+        bytes memory wrapperData = hex"01"; // Only 1 byte - not enough to read the 2-byte length
+
+        vm.prank(solver);
+        vm.expectRevert(); // Should revert with out-of-bounds array access
+        wrapper1.wrappedSettle(settleData, wrapperData);
+    }
+
+    function test_wrappedSettle_SucceedsWithZeroLengthIndicator() public {
+        bytes memory settleData = _createSimpleSettleData(0);
+        bytes memory wrapperData = hex"0000"; // 2 bytes indicating 0-length wrapper data
+
+        // Should call settlement directly with no wrapper-specific data
+        vm.expectCall(address(mockSettlement), 0, settleData, 1);
+
+        vm.prank(solver);
+        wrapper1.wrappedSettle(settleData, wrapperData);
+    }
+
+    function test_wrappedSettle_SucceedsWithMaximumLengthWrapperData() public {
+        bytes memory settleData = _createSimpleSettleData(0);
+
+        // Create maximum length wrapper data (65535 bytes)
+        // Format: [2-byte length = 0xFFFF][65535 bytes of data]
+        bytes memory maxData = new bytes(65535);
+        for (uint256 i = 0; i < 65535; i++) {
+            // casting to 'uint8' is safe because its already being truncated ty less than the maximum value by the modulo
+            // forge-lint: disable-next-line(unsafe-typecast)
+            maxData[i] = bytes1(uint8(i % 256));
+        }
+
+        bytes memory wrapperData = abi.encodePacked(uint16(65535), maxData);
+
+        // Should successfully parse the maximum length data and call settlement
+        vm.expectCall(address(mockSettlement), 0, settleData, 1);
+
+        vm.prank(solver);
+        wrapper1.wrappedSettle(settleData, wrapperData);
+    }
+
+    function test_wrappedSettle_RevertsWhenDataShorterThanIndicated() public {
+        bytes memory settleData = _createSimpleSettleData(0);
+
+        // Wrapper data claims to be 100 bytes but only provides 50
+        bytes memory shortData = new bytes(50);
+        bytes memory wrapperData = abi.encodePacked(uint16(100), shortData);
+
+        vm.prank(solver);
+        vm.expectRevert(); // Should revert with out-of-bounds array access
+        wrapper1.wrappedSettle(settleData, wrapperData);
+    }
+
+    function test_wrappedSettle_SucceedsWithMaxLengthAndNextWrapper() public {
+        bytes memory settleData = _createSimpleSettleData(0);
+
+        // Create maximum length wrapper data followed by next wrapper address
+        bytes memory maxData = new bytes(65535);
+        for (uint256 i = 0; i < 65535; i++) {
+            // casting to 'uint8' is safe because its already being truncated ty less than the maximum value by the modulo
+            // forge-lint: disable-next-line(unsafe-typecast)
+            maxData[i] = bytes1(uint8(i % 256));
+        }
+
+        // Format: [2-byte length = 0xFFFF][65535 bytes of data][20-byte next wrapper address][remaining data]
+        bytes memory nextWrapperData = hex"00030000FF"; // 3 bytes of data for next wrapper
+        bytes memory wrapperData = abi.encodePacked(type(uint16).max, maxData, address(wrapper2), nextWrapperData);
+
+        // Should call wrapper2 with the remaining data
+        vm.expectCall(address(wrapper2), 0, abi.encodePacked(ICowWrapper.wrappedSettle.selector), 1);
+
+        vm.prank(solver);
+        wrapper1.wrappedSettle(settleData, wrapperData);
+    }
+
+    function test_wrappedSettle_RevertsWithInsufficientLengthData() public {
+        bytes memory settleData = _createSimpleSettleData(0);
+
+        // Format: [1-byte length = 1 (insufficient)]
+        bytes memory wrapperData = hex"01";
+
+        vm.expectRevert(new bytes(0));
+        vm.prank(solver);
+        wrapper1.wrappedSettle(settleData, wrapperData);
+    }
+
+    function test_wrappedSettle_RevertsWithInsufficientCallData() public {
+        bytes memory settleData = _createSimpleSettleData(0);
+
+        // Format: [2-byte length = 0xa][9 bytes of data (insufficient)]
+        bytes memory wrapperData = hex"000A123412341234123412";
+
+        vm.expectRevert(new bytes(0));
         vm.prank(solver);
         wrapper1.wrappedSettle(settleData, wrapperData);
     }
