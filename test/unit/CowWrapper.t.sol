@@ -70,10 +70,7 @@ contract CowWrapperTest is Test {
         vm.expectCall(address(wrapper1), abi.encodeCall(ICowWrapper.wrappedSettle, (settleData, wrapperData)));
 
         // verify the internal wrapper call data
-        vm.expectCall(
-            address(wrapper1),
-            abi.encodeCall(wrapper1.wrappedSettle, (settleData, secondCallWrapperData))
-        );
+        vm.expectCall(address(wrapper1), abi.encodeCall(wrapper1.wrappedSettle, (settleData, secondCallWrapperData)));
 
         // the settlement contract gets called once after wrappers (including the surplus data at the end)
         vm.expectCall(address(mockSettlement), 0, settleData, 1);

@@ -60,6 +60,7 @@ contract CowWrapperHelpers {
     ///      2. Verifies each wrapper's data is valid and fully consumed by calling validateWrapperData
     ///      3. Verifies all wrappers use the same settlement contract (from first wrapper's SETTLEMENT)
     ///      4. Verifies the settlement contract is not authenticated as a solver
+    /// If any of the verifications fail, the transaction will revert with a detailed custom solidity error.
     /// See CowWrapper.wrappedSettle for more information about how the wrapper data chain is encoded
     /// @param wrapperCalls Array of calls in execution order
     /// @return chainedWrapperData The encoded wrapper data ready to be passed to the first wrapper's wrappedSettle
