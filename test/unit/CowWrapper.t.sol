@@ -66,13 +66,13 @@ contract CowWrapperTest is Test {
         bytes memory secondCallWrapperData = abi.encode(uint16(3), hex"098765");
         bytes memory wrapperData = abi.encodePacked(uint16(2), "1234", address(wrapper1), secondCallWrapperData);
 
-        // the wrapper gets called exactly twice (once below and again inside the wrapper data calling self)
-        vm.expectCall(address(wrapper1), 0, abi.encodeWithSelector(wrapper1.wrappedSettle.selector), 2);
+        // verify the external wrapper call data
+        vm.expectCall(address(wrapper1), abi.encodeCall(ICowWrapper.wrappedSettle, (settleData, wrapperData)));
 
         // verify the internal wrapper call data
         vm.expectCall(
             address(wrapper1),
-            abi.encodeWithSelector(wrapper1.wrappedSettle.selector, settleData, secondCallWrapperData)
+            abi.encodeCall(wrapper1.wrappedSettle, (settleData, secondCallWrapperData))
         );
 
         // the settlement contract gets called once after wrappers (including the surplus data at the end)
