@@ -106,7 +106,7 @@ interface ICowWrapper {
     ///
     function wrappedSettle(bytes calldata settleData, bytes calldata chainedWrapperData) external;
 
-    /// @notice Confirm's validity of wrapper-specific data
+    /// @notice Confirms validity of wrapper-specific data
     /// @dev Used by CowWrapperHelpers to validate wrapper data before execution. Reverts if the wrapper data is not valid for some reason.
     /// @param wrapperData The wrapper-specific data to parse
     function validateWrapperData(bytes calldata wrapperData) external view;
