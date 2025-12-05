@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-pragma solidity >=0.7.6 <0.9.0;
-pragma abicoder v2;
+pragma solidity ^0.8;
 
 import {ICowAuthentication, ICowWrapper} from "./CowWrapper.sol";
 
@@ -61,6 +60,7 @@ contract CowWrapperHelpers {
     ///      2. Verifies each wrapper's data is valid and fully consumed by calling validateWrapperData
     ///      3. Verifies all wrappers use the same settlement contract (from first wrapper's SETTLEMENT)
     ///      4. Verifies the settlement contract is not authenticated as a solver
+    /// If any of the verifications fail, the transaction will revert with a detailed custom solidity error.
     /// See CowWrapper.wrappedSettle for more information about how the wrapper data chain is encoded
     /// @param wrapperCalls Array of calls in execution order
     /// @return chainedWrapperData The encoded wrapper data ready to be passed to the first wrapper's wrappedSettle
@@ -89,11 +89,9 @@ contract CowWrapperHelpers {
                 chainedWrapperData = abi.encodePacked(chainedWrapperData, wrapperCalls[i].target);
             }
 
-            require(wrapperCalls[i].data.length < 65536, WrapperDataTooLong(i, wrapperCalls[i].data.length));
+            require(wrapperCalls[i].data.length <= type(uint16).max, WrapperDataTooLong(i, wrapperCalls[i].data.length));
             chainedWrapperData =
                 abi.encodePacked(chainedWrapperData, uint16(wrapperCalls[i].data.length), wrapperCalls[i].data);
         }
-
-        return chainedWrapperData;
     }
 }
