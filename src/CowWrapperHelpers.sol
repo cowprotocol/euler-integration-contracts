@@ -88,11 +88,9 @@ contract CowWrapperHelpers {
                 chainedWrapperData = abi.encodePacked(chainedWrapperData, wrapperCalls[i].target);
             }
 
-            require(wrapperCalls[i].data.length < 65536, WrapperDataTooLong(i, wrapperCalls[i].data.length));
+            require(wrapperCalls[i].data.length <= type(uint16).max, WrapperDataTooLong(i, wrapperCalls[i].data.length));
             chainedWrapperData =
                 abi.encodePacked(chainedWrapperData, uint16(wrapperCalls[i].data.length), wrapperCalls[i].data);
         }
-
-        return chainedWrapperData;
     }
 }
