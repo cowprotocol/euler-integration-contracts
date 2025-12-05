@@ -63,8 +63,8 @@ contract CowWrapperTest is Test {
 
     function test_next_CallsWrapperAndThenNextSettlement() public {
         bytes memory settleData = abi.encodePacked(_createSimpleSettleData(1), hex"123456");
-        bytes memory secondCallWrapperData = hex"0003098765";
-        bytes memory wrapperData = abi.encodePacked(hex"00021234", address(wrapper1), secondCallWrapperData);
+        bytes memory secondCallWrapperData = abi.encode(uint16(3), hex"098765");
+        bytes memory wrapperData = abi.encodePacked(uint16(2), "1234", address(wrapper1), secondCallWrapperData);
 
         // the wrapper gets called exactly twice (once below and again inside the wrapper data calling self)
         vm.expectCall(address(wrapper1), 0, abi.encodeWithSelector(wrapper1.wrappedSettle.selector), 2);
