@@ -91,7 +91,8 @@ forge snapshot
 
 **Test Helpers**:
 - `MilkSwap.sol`: Simple test DEX for simulating swaps in settlements
-- `GPv2OrderHelper.sol`: Utilities for constructing CoW Protocol orders
+- `GPv2Order.sol`: Vendored CoW Protocol order library for EIP-712 signing
+- `IGPv2AllowListAuthentication.sol`: Interface for CoW Protocol's solver authentication
 - `SignerECDSA.sol`: ECDSA signature utilities for tests
 - `EmptyWrapper.sol`: Minimal wrapper for testing wrapper chaining
 
@@ -204,10 +205,11 @@ This approach is more concise and maintains consistency with the existing codeba
 ## Remappings
 
 Key import remappings:
-- `cow/` → CoW Protocol contracts (`lib/cow/src/contracts`)
 - `evc/` → Ethereum Vault Connector (`lib/euler-vault-kit/lib/ethereum-vault-connector/src/`)
 - `euler-vault-kit/` → Euler vault implementation
 - `openzeppelin/` → OpenZeppelin contracts (via EVC dependency)
+
+Note: CoW Protocol dependencies are vendored in `test/helpers/` for minimal test-only usage. Production code uses the self-contained `src/CowWrapper.sol`.
 
 
 ## When Giving PR feedback
