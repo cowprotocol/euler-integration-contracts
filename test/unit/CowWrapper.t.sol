@@ -56,8 +56,8 @@ contract CowWrapperTest is Test {
             tokens[i] = makeAddr(string(abi.encodePacked("Settle Token #", vm.toString(i + 1))));
             clearingPrices[i] = 100 * (i + 1);
         }
-        return abi.encodeWithSelector(
-            ICowSettlement.settle.selector, tokens, clearingPrices, new ICowSettlement.Trade[](0), _emptyInteractions()
+        return abi.encodeCall(
+            ICowSettlement.settle, (tokens, clearingPrices, new ICowSettlement.Trade[](0), _emptyInteractions())
         );
     }
 
