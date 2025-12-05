@@ -92,7 +92,5 @@ contract CowWrapperHelpers {
             chainedWrapperData =
                 abi.encodePacked(chainedWrapperData, uint16(wrapperCalls[i].data.length), wrapperCalls[i].data);
         }
-
-        return chainedWrapperData;
     }
 }
