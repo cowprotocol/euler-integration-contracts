@@ -63,8 +63,8 @@ contract CowWrapperTest is Test {
 
     function test_next_CallsWrapperAndThenNextSettlement() public {
         bytes memory settleData = abi.encodePacked(_createSimpleSettleData(1), hex"123456");
-        bytes memory secondCallWrapperData = abi.encode(uint16(3), hex"098765");
-        bytes memory wrapperData = abi.encodePacked(uint16(2), "1234", address(wrapper1), secondCallWrapperData);
+        bytes memory secondCallWrapperData = abi.encodePacked(uint16(3), hex"098765");
+        bytes memory wrapperData = abi.encodePacked(uint16(2), hex"1234", address(wrapper1), secondCallWrapperData);
 
         // verify the external wrapper call data
         vm.expectCall(address(wrapper1), abi.encodeCall(ICowWrapper.wrappedSettle, (settleData, wrapperData)));
