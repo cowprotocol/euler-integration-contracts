@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-pragma solidity >=0.8.0 <0.9.0;
+pragma solidity ^0.8;
 
 /**
- * @title CoW Wrapper all-in-one integration file
- * @author CoW Protocol Developers
- * @notice This file is completely self-contained (ie no dependencies) and can be portably copied to whatever projects it is needed.
+ * Title: CoW Wrapper all-in-one integration file
+ * Author: CoW DAO
+ * This file is completely self-contained (ie no dependencies) and can be portably copied to whatever projects it is needed.
  * It contains:
  * * CowWrapper -- an abstract base contract which should be inherited by all wrappers
  * * ICowWrapper -- the required interface for all wrappers
@@ -86,9 +86,24 @@ interface ICowWrapper {
     /// @notice Initiates a wrapped settlement call
     /// @dev This is the entry point for wrapped settlements. The wrapper will execute custom logic
     ///      before calling the next wrapper or settlement contract in the chain.
-    /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data
-    /// @param chainedWrapperData Encoded data for this wrapper and the chain of next wrappers/settlement.
     ///                    Format: [2-byte len][wrapper-specific-data][next-address]([2-byte len][wrapper-specific-data][next-address]...)
+    /// @dev SECURITY: `settleData` is NOT guaranteed to remain unchanged through the wrapper chain.
+    ///      Intermediate wrappers could modify it before passing it along. Do not rely on
+    ///      `settleData` validation for security-critical checks.
+    /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data
+    /// @param chainedWrapperData Encoded wrapper chain with the following format:
+    ///        Structure: [uint16 len1][bytes data1][address wrapper2][uint16 len2][bytes data2][address wrapper3]...
+    ///
+    ///        Each wrapper in the chain consists of:
+    ///        - 2 bytes: uint16 length of wrapper-specific data
+    ///        - `length` bytes: wrapper-specific data for this wrapper
+    ///        - 20 bytes: address of next wrapper (omitted for the final wrapper)
+    ///
+    ///        The final wrapper in the chain omits the next wrapper address and calls SETTLEMENT directly.
+    ///
+    ///        Example: [0x0005][0xAABBCCDDEE][0x1234...ABCD][0x0003][0x112233]
+    ///                 ↑len   ↑data         ↑next wrapper  ↑len   ↑data (final, no next address)
+    ///
     function wrappedSettle(bytes calldata settleData, bytes calldata chainedWrapperData) external;
 
     /// @notice Confirm's validity of wrapper-specific data
@@ -136,7 +151,7 @@ abstract contract CowWrapper is ICowWrapper {
         // Find out how long the next wrapper data is supposed to be
         // We use 2 bytes to decode the length of the wrapper data because it allows for up to 64KB of data for each wrapper.
         // This should be plenty of length for all identified use-cases of wrappers in the forseeable future.
-        uint16 nextWrapperDataLen = uint16(bytes2(chainedWrapperData[0:2]));
+        uint256 nextWrapperDataLen = uint256(uint16(bytes2(chainedWrapperData[0:2])));
 
         // Delegate to the wrapper's custom logic
         uint256 remainingWrapperDataStart = 2 + nextWrapperDataLen;
