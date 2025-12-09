@@ -32,7 +32,7 @@ abstract contract PreApprovedHashes {
         if (approved) {
             preApprovedHashes[msg.sender][hash] = PRE_APPROVED;
         } else {
-            preApprovedHashes[msg.sender][hash] = 0;
+            preApprovedHashes[msg.sender][hash] = CONSUMED_PRE_APPROVED;
         }
         emit PreApprovedHash(msg.sender, hash, approved);
     }
