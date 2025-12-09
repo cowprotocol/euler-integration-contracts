@@ -136,7 +136,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         bytes calldata settleData,
         bytes calldata wrapperData,
         bytes calldata remainingWrapperData,
-        ParamsLocation paramMemoryLocation,
+        ParamsLocation param,
         bytes memory signature,
         address owner,
         uint256 deadline
