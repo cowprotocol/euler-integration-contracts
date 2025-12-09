@@ -7,7 +7,7 @@ pragma solidity ^0.8;
 abstract contract PreApprovedHashes {
     /// @dev Marker value indicating a hash is pre-approved
     uint256 private constant PRE_APPROVED = uint256(keccak256("CowEvcWrapper.PreApproved"));
-    uint256 private constant CONSUMED_PRE_APPROVED = uint256(keccak256("CowEvcWrapper.Consumed"));
+    uint256 private constant CONSUMED = uint256(keccak256("CowEvcWrapper.Consumed"));
 
     /// @notice Storage indicating whether or not a signed calldata hash has been approved by an owner
     /// @dev Maps owner -> hash(signedCalldata) -> approval status
