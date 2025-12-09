@@ -174,6 +174,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         }
 
         // shorten the length of the generated array to its actual length
+        require(itemIndex <= MAX_BATCH_OPERATIONS, ItemsOutOfBounds(itemIndex));
         assembly ("memory-safe") {
             mstore(items, itemIndex)
         }
