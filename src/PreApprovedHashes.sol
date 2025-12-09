@@ -6,8 +6,8 @@ pragma solidity ^0.8;
 /// @dev Allows users to pre-approve specific operations without requiring signatures each time
 abstract contract PreApprovedHashes {
     /// @dev Marker value indicating a hash is pre-approved
-    uint256 private constant PRE_APPROVED = uint256(keccak256("CowEvcWrapper.PreApproved"));
-    uint256 private constant CONSUMED = uint256(keccak256("CowEvcWrapper.Consumed"));
+    uint256 internal constant PRE_APPROVED = uint256(keccak256("PreApprovedHashes.PreApproved"));
+    uint256 internal constant CONSUMED = uint256(keccak256("PreApprovedHashes.Consumed"));
 
     /// @notice Storage indicating whether or not a signed calldata hash has been approved by an owner
     /// @dev Maps owner -> hash(signedCalldata) -> approval status
@@ -27,12 +27,12 @@ abstract contract PreApprovedHashes {
     /// @param hash The keccak256 hash of the signed calldata
     /// @param approved True to approve the hash, false to revoke approval
     function setPreApprovedHash(bytes32 hash, bool approved) external {
-        require(preApprovedHashes[msg.sender][hash] != CONSUMED_PRE_APPROVED, AlreadyConsumed(msg.sender, hash));
+        require(preApprovedHashes[msg.sender][hash] != CONSUMED, AlreadyConsumed(msg.sender, hash));
 
         if (approved) {
             preApprovedHashes[msg.sender][hash] = PRE_APPROVED;
         } else {
-            preApprovedHashes[msg.sender][hash] = CONSUMED_PRE_APPROVED;
+            preApprovedHashes[msg.sender][hash] = CONSUMED;
         }
         emit PreApprovedHash(msg.sender, hash, approved);
     }
@@ -51,7 +51,7 @@ abstract contract PreApprovedHashes {
     /// @return True if the hash was pre-approved and marked as consumed, false otherwise
     function _consumePreApprovedHash(address owner, bytes32 hash) internal returns (bool) {
         if (preApprovedHashes[owner][hash] == PRE_APPROVED) {
-            preApprovedHashes[owner][hash] = CONSUMED_PRE_APPROVED;
+            preApprovedHashes[owner][hash] = CONSUMED;
             emit PreApprovedHashConsumed(owner, hash);
             return true;
         } else {

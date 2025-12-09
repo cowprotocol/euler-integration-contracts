@@ -6,6 +6,7 @@ import {GPv2Order} from "cow/libraries/GPv2Order.sol";
 import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcBaseWrapper} from "../src/CowEvcOpenPositionWrapper.sol";
+
 import {CowEvcOpenPositionWrapper} from "../src/CowEvcOpenPositionWrapper.sol";
 import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
@@ -270,7 +271,11 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         openPositionWrapper.setPreApprovedHash(hash, false);
 
         // Hash should no longer be approved
-        assertEq(openPositionWrapper.preApprovedHashes(user, hash), 0, "Hash should not be approved after revocation");
+        assertEq(
+            openPositionWrapper.preApprovedHashes(user, hash),
+            uint256(keccak256("PreApprovedHashes.Consumed")),
+            "Hash should not be approved after revocation"
+        );
     }
 
     /// @notice Test opening a position with pre-approved hash (no signature needed)

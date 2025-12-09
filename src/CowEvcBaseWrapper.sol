@@ -57,6 +57,13 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Used to ensure that the EVC is calling back this contract with the correct data
     bytes32 internal transient expectedEvcInternalSettleCallHash;
 
+    /**
+     * @param _evc The address of the Ethereum Vault Connector on this network
+     * @param _settlement The address of the CoW settlement contract
+     * @param _domainName The name of this contract that should be used for EIP-712 purposes
+     * @param _domainVersion The version of this contract that should be used for EIP-712 purposes
+     * @param maxBatchOperations How long to make the array for the executed EVC batch operations in _invokeEvc. This value only needs to be at least as large as the maximum possible length of the EVC batch operations. A way to calculate this is (_encodeBatchItemsBefore.length) + 1 + (_encodeBatchItemsAfter().length) (any excess will be automatically trimmed).
+     */
     constructor(
         address _evc,
         ICowSettlement _settlement,
@@ -145,8 +152,8 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
         // add any EVC actions that have to be performed before
         {
-            (IEVC.BatchItem[] memory beforeItems, bool isPermit) = _encodeBatchItemsBefore(paramMemoryLocation);
-            itemIndex = _addEvcBatchItems(items, beforeItems, itemIndex, owner, deadline, signature, isPermit);
+            (IEVC.BatchItem[] memory beforeItems, bool needsPermission) = _encodeBatchItemsBefore(paramMemoryLocation);
+            itemIndex = _addEvcBatchItems(items, beforeItems, itemIndex, owner, deadline, signature, needsPermission);
         }
 
         // add the EVC callback to this (which calls settlement)
@@ -161,8 +168,8 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
         // add the EVC actions that have to be performed after
         {
-            (IEVC.BatchItem[] memory afterItems, bool isPermit) = _encodeBatchItemsAfter(paramMemoryLocation);
-            itemIndex = _addEvcBatchItems(items, afterItems, itemIndex, owner, deadline, signature, isPermit);
+            (IEVC.BatchItem[] memory afterItems, bool needsPermission) = _encodeBatchItemsAfter(paramMemoryLocation);
+            itemIndex = _addEvcBatchItems(items, afterItems, itemIndex, owner, deadline, signature, needsPermission);
         }
 
         // shorten the length of the generated array to its actual length
@@ -185,12 +192,12 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         address owner,
         uint256 deadline,
         bytes memory signature,
-        bool isPermit
+        bool needsPermission
     ) internal view returns (uint256) {
         // There are two ways this contract can be executed: either the user approves this contract as
         // an operator and supplies a pre-approved hash for the operation to take, or they submit a permit hash
         // for this specific instance
-        if (isPermit && signature.length > 0) {
+        if (needsPermission && signature.length > 0) {
             fullItems[itemIndex++] = IEVC.BatchItem({
                 onBehalfOfAccount: address(0),
                 targetContract: address(EVC),
