@@ -32,6 +32,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     bytes32 public immutable DOMAIN_SEPARATOR;
 
     //// @dev The EVC nonce namespace to use when calling `EVC.permit` to authorize this contract.
+    /// See: https://evc.wtf/docs/concepts/internals/permit/#nonce-namespaces
     uint256 public immutable NONCE_NAMESPACE;
 
     uint256 internal immutable PARAMS_SIZE;
