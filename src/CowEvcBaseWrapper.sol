@@ -38,6 +38,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     uint256 internal immutable PARAMS_SIZE;
 
     /// @dev How long to make the `items` array without calculating it. Determines the maximum number of EVC operations that can be batched.
+    /// This value depends on the each concrete wrapper implementation. It should include the settlement and any operations before and after it.
     uint256 internal immutable MAX_BATCH_OPERATIONS;
 
     /// @dev Indicates that the current operation cannot be completed with the given msgSender
