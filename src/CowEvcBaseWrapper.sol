@@ -31,10 +31,12 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Used by EIP-712 signing to prevent signatures from being replayed
     bytes32 public immutable DOMAIN_SEPARATOR;
 
-    //// @dev The EVC nonce namespace to use when calling `EVC.permit` to authorize this contract.
+    /// @dev The EVC nonce namespace to use when calling `EVC.permit` to authorize this contract.
     /// See: https://evc.wtf/docs/concepts/internals/permit/#nonce-namespaces
     uint256 public immutable NONCE_NAMESPACE;
 
+    /// @dev The length of the parameters consumed by this wrapper. Used in order to know how much data to read after the ParamsLocation for the hash.
+    /// Ideally this should be computed by creating the parameters struct and then `abi.encode().length` to ensure its always the correct size.
     uint256 internal immutable PARAMS_SIZE;
 
     /// @dev How long to make the `items` array without calculating it. Determines the maximum number of EVC operations that can be batched.
@@ -80,11 +82,12 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         MAX_BATCH_OPERATIONS = maxBatchOperations;
     }
 
-    /// @dev Encode batch items to execute before the settlement
-    /// @notice By default we return the default value (empty array, false)
+    /// @notice Encode batch items to execute before the settlement
+    /// @dev By default we return the default value (empty array, false)
+    /// @param location The memory storage position where the parameters needed to encode the batch items have been saved
     /// @return items Array of batch items to execute
     /// @return needsPermit Whether these items require user signature or prior authorization as an operator
-    function _encodeBatchItemsBefore(ParamsLocation)
+    function _encodeBatchItemsBefore(ParamsLocation location)
         internal
         view
         virtual
@@ -93,9 +96,10 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
     /// @notice Encode batch items to execute after the settlement
     /// @dev By default we return the default value (empty array, false)
+    /// @param location The memory storage position where the parameters needed to encode the batch items have been saved
     /// @return items Array of batch items to execute
     /// @return needsPermit Whether these items require user signature or prior authorization as an operator
-    function _encodeBatchItemsAfter(ParamsLocation)
+    function _encodeBatchItemsAfter(ParamsLocation location)
         internal
         view
         virtual
@@ -143,6 +147,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     ) internal {
         if (signature.length == 0) {
             _consumePreApprovedHash(owner, _getApprovalHash(paramMemoryLocation));
+            // The deadline is checked by `EVC.permit()`, so we only check it here if we are using a pre-approved hash (aka, no signature) which would bypass that call
             require(deadline >= block.timestamp, OperationDeadlineExceeded(deadline, block.timestamp));
         }
 
