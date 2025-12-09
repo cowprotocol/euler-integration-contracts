@@ -85,20 +85,9 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
     function _parseOpenPositionParams(bytes calldata wrapperData)
         internal
         view
-        returns (OpenPositionParams memory params, bytes memory signature, bytes calldata remainingWrapperData)
+        returns (OpenPositionParams memory params, bytes memory signature)
     {
         (params, signature) = abi.decode(wrapperData, (OpenPositionParams, bytes));
-
-        // Calculate consumed bytes for abi.encode(OpenPositionParams, bytes)
-        // Structure:
-        // - 32 bytes: offset to params (0x40)
-        // - 32 bytes: offset to signature
-        // - x bytes: params data (computed size in constructor to prevent errors)
-        // - 32 bytes: signature length
-        // - N bytes: signature data (padded to 32-byte boundary)
-        uint256 consumed = PARAMS_SIZE + 64 + ((signature.length + 31) & ~uint256(31));
-
-        remainingWrapperData = wrapperData[consumed:];
     }
 
     /// @notice Helper function to compute the hash that would be approved
