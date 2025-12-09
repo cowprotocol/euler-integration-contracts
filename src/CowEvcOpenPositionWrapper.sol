@@ -198,7 +198,7 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
         internal
         override
     {
-        // Use GPv2Wrapper's _internalSettle to call the settlement contract
+        // Use CowWrapper's _internalSettle to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
         _next(settleData, remainingWrapperData);
     }
