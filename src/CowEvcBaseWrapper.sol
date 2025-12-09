@@ -58,15 +58,15 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that the EVC called `evcInternalSettle` in an invalid way
     error InvalidCallback();
 
+    /// @dev Indicates that the constructed EVC operations are exceeding the maximum length allowed. Generally this is a sanity check
+    error ItemsOutOfBounds(uint256 itemIndex, uint256 maxItemIndex);
+
     /// @dev Used to ensure that the EVC is calling back this contract with the correct data
     bytes32 internal transient expectedEvcInternalSettleCallHash;
 
-    constructor(
-        address _evc,
-        ICowSettlement _settlement,
-        bytes32 _domainName,
-        bytes32 _domainVersion
-    ) CowWrapper(_settlement) {
+    constructor(address _evc, ICowSettlement _settlement, bytes32 _domainName, bytes32 _domainVersion)
+        CowWrapper(_settlement)
+    {
         require(_evc.code.length > 0, "EVC address is invalid");
         EVC = IEVC(_evc);
         NONCE_NAMESPACE = uint256(uint160(address(this)));
@@ -138,7 +138,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         uint256 deadline
     ) internal {
         if (signature.length == 0) {
-            _consumePreApprovedHash(owner, _getApprovalHash(paramMemoryLocation));
+            _consumePreApprovedHash(owner, _getApprovalHash(param));
             // The deadline is checked by `EVC.permit()`, so we only check it here if we are using a pre-approved hash (aka, no signature) which would bypass that call
             require(deadline >= block.timestamp, OperationDeadlineExceeded(deadline, block.timestamp));
         }
@@ -150,7 +150,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
         // add any EVC actions that have to be performed before
         {
-            (IEVC.BatchItem[] memory beforeItems, bool needsPermission) = _encodeBatchItemsBefore(paramMemoryLocation);
+            (IEVC.BatchItem[] memory beforeItems, bool needsPermission) = _encodeBatchItemsBefore(param);
             itemIndex = _addEvcBatchItems(items, beforeItems, itemIndex, owner, deadline, signature, needsPermission);
         }
 
@@ -166,12 +166,12 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
         // add the EVC actions that have to be performed after
         {
-            (IEVC.BatchItem[] memory afterItems, bool needsPermission) = _encodeBatchItemsAfter(paramMemoryLocation);
+            (IEVC.BatchItem[] memory afterItems, bool needsPermission) = _encodeBatchItemsAfter(param);
             itemIndex = _addEvcBatchItems(items, afterItems, itemIndex, owner, deadline, signature, needsPermission);
         }
 
         // shorten the length of the generated array to its actual length
-        require(itemIndex <= MAX_BATCH_OPERATIONS, ItemsOutOfBounds(itemIndex));
+        require(itemIndex <= MAX_BATCH_OPERATIONS, ItemsOutOfBounds(itemIndex, MAX_BATCH_OPERATIONS));
         assembly ("memory-safe") {
             mstore(items, itemIndex)
         }

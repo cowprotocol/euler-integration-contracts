@@ -86,7 +86,7 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
 
     function _parseOpenPositionParams(bytes calldata wrapperData)
         internal
-        view
+        pure
         returns (OpenPositionParams memory params, bytes memory signature)
     {
         (params, signature) = abi.decode(wrapperData, (OpenPositionParams, bytes));
@@ -100,7 +100,7 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
     }
 
     /// @inheritdoc CowWrapper
-    function validateWrapperData(bytes calldata wrapperData) external view override {
+    function validateWrapperData(bytes calldata wrapperData) external pure override {
         // Validate by attempting to parse the wrapper data
         // Will revert if the data is malformed
         _parseOpenPositionParams(wrapperData);
@@ -114,7 +114,7 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
         override
     {
         // Decode wrapper data into OpenPositionParams
-        (OpenPositionParams memory params, bytes memory signature,) = _parseOpenPositionParams(wrapperData);
+        (OpenPositionParams memory params, bytes memory signature) = _parseOpenPositionParams(wrapperData);
 
         _invokeEvc(
             settleData,
