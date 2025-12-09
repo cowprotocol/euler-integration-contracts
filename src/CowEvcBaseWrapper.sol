@@ -91,8 +91,8 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         returns (IEVC.BatchItem[] memory items, bool needsPermit)
     {}
 
-    /// @dev Encode batch items to execute after the settlement
-    /// @notice By default we return the default value (empty array, false)
+    /// @notice Encode batch items to execute after the settlement
+    /// @dev By default we return the default value (empty array, false)
     /// @return items Array of batch items to execute
     /// @return needsPermit Whether these items require user signature or prior authorization as an operator
     function _encodeBatchItemsAfter(ParamsLocation)
