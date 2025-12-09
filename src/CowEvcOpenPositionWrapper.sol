@@ -39,7 +39,7 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
     );
 
     constructor(address _evc, ICowSettlement _settlement)
-        CowEvcBaseWrapper(_evc, _settlement, DOMAIN_NAME, DOMAIN_VERSION, 5)
+        CowEvcBaseWrapper(_evc, _settlement, DOMAIN_NAME, DOMAIN_VERSION)
     {
         PARAMS_SIZE =
         abi.encode(
@@ -54,6 +54,8 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
             })
         )
         .length;
+
+        MAX_BATCH_OPERATIONS = 5;
     }
 
     /// @notice The information necessary to open a debt position against an euler vault using collateral as backing.

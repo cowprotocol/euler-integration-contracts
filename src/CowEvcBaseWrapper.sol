@@ -61,26 +61,17 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Used to ensure that the EVC is calling back this contract with the correct data
     bytes32 internal transient expectedEvcInternalSettleCallHash;
 
-    /**
-     * @param _evc The address of the Ethereum Vault Connector on this network
-     * @param _settlement The address of the CoW settlement contract
-     * @param _domainName The name of this contract that should be used for EIP-712 purposes
-     * @param _domainVersion The version of this contract that should be used for EIP-712 purposes
-     * @param maxBatchOperations How long to make the array for the executed EVC batch operations in _invokeEvc. This value only needs to be at least as large as the maximum possible length of the EVC batch operations. A way to calculate this is (_encodeBatchItemsBefore.length) + 1 + (_encodeBatchItemsAfter().length) (any excess will be automatically trimmed).
-     */
     constructor(
         address _evc,
         ICowSettlement _settlement,
         bytes32 _domainName,
-        bytes32 _domainVersion,
-        uint256 maxBatchOperations
+        bytes32 _domainVersion
     ) CowWrapper(_settlement) {
         require(_evc.code.length > 0, "EVC address is invalid");
         EVC = IEVC(_evc);
         NONCE_NAMESPACE = uint256(uint160(address(this)));
         DOMAIN_SEPARATOR =
             keccak256(abi.encode(DOMAIN_TYPE_HASH, _domainName, _domainVersion, block.chainid, address(this)));
-        MAX_BATCH_OPERATIONS = maxBatchOperations;
     }
 
     /// @notice Encode batch items to execute before the settlement
