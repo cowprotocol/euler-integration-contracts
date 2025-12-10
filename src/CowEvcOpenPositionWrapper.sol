@@ -111,7 +111,7 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
         _parseOpenPositionParams(wrapperData);
     }
 
-    /// @notice Implementation of GPv2Wrapper._wrap - executes EVC operations to open a position
+    /// @notice Implementation of CowWrapper._wrap - executes EVC operations to open a position
     /// @param settleData Data which will be used for the parameters in a call to `CowSettlement.settle`
     /// @param wrapperData Additional data containing OpenPositionParams
     function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
