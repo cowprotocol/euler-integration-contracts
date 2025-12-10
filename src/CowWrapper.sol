@@ -86,7 +86,6 @@ interface ICowWrapper {
     /// @notice Initiates a wrapped settlement call
     /// @dev This is the entry point for wrapped settlements. The wrapper will execute custom logic
     ///      before calling the next wrapper or settlement contract in the chain.
-    ///                    Format: [2-byte len][wrapper-specific-data][next-address]([2-byte len][wrapper-specific-data][next-address]...)
     /// @dev SECURITY: `settleData` is NOT guaranteed to remain unchanged through the wrapper chain.
     ///      Intermediate wrappers could modify it before passing it along. Do not rely on
     ///      `settleData` validation for security-critical checks.
