@@ -109,27 +109,25 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         bytes32 structHash;
         bytes32 separator = DOMAIN_SEPARATOR;
         uint256 paramsSize = PARAMS_SIZE;
-        assembly ("memory-safe") {
-            let ptr := mload(0x40)
-
-            // Build structHash = keccak256(typeHash || encodeData(struct))
-            mstore(ptr, typeHash)
-            // Copy struct data from params to ptr + 0x20
-            for { let i := 0 } lt(i, paramsSize) { i := add(i, 0x20) } {
-                mstore(add(add(ptr, 0x20), i), mload(add(params, i)))
-            }
-            structHash := keccak256(ptr, add(0x20, paramsSize))
+        assembly {
+            // Build structHash = keccak256(typeHash || encodeData(params))
+            let wordBeforeParamPtr := sub(params, 0x20)
+            // Subtraction overflow causes the next line to revert with out of gas if params isn't allocated
+            let wordBeforeParam := mload(wordBeforeParamPtr)
+            mstore(wordBeforeParamPtr, typeHash)
+            structHash := keccak256(wordBeforeParamPtr, add(0x20, paramsSize))
+            // Restore original content
+            mstore(wordBeforeParamPtr, wordBeforeParam)
 
             // Build digest = keccak256("\x19\x01" || domainSeparator || structHash)
-            mstore(ptr, "\x19\x01")
+            let ptr := mload(0x40)
             mstore(add(ptr, 0x02), separator)
             mstore(add(ptr, 0x22), structHash)
             digest := keccak256(ptr, 0x42)
         }
     }
 
-    /// @notice Internal settlement function called by EVC
-    /// @dev This function more or less serves as a unified set of security checks that serve as a line of defense for the call stack chain.
+    /// @notice This function is called by EVC and continues the CoW settlement process inside an EVC batch while including any necessary security check.
     function evcInternalSettle(
         bytes calldata settleData,
         bytes calldata wrapperData,
@@ -154,7 +152,8 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     ) internal {
         // There are 2 ways that this contract can validate user operations: 1) the user pre-approves a hash with an on-chain call and grants this contract ability to operate on the user's behalf, or 2) they issue a signature which can be used to call EVC.permit()
         // In case the user is using a hash (1), then there would be no signature supplied to this call and we have to resolve the hash instead
-        // If its flow (2), it happens through the call to EVC.permit() elsewhere, and the EVC becomes responsible for the security.
+        // If its flow (2), it happens through the call to EVC.permit() elsewhere: if the parameters don't match with the user intent, that call is assumed to revert.
+        // In this case, we need to check that `permit` has been called by the actual wrapper implementation.
         bytes32 approvalHash = _getApprovalHash(typeHash, param);
         if (signature.length == 0) {
             _consumePreApprovedHash(owner, approvalHash);
