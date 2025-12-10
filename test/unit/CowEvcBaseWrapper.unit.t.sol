@@ -36,7 +36,7 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
         override
     {}
 
-    function name() external view override returns (string memory) {
+    function name() external pure override returns (string memory) {
         return "Test";
     }
 
