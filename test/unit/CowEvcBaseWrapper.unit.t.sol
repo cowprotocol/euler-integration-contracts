@@ -7,7 +7,7 @@ import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
 
-import "../../src/CowEvcBaseWrapper.sol";
+import {CowEvcBaseWrapper, ICowSettlement, CowWrapper, IEVC} from "../../src/CowEvcBaseWrapper.sol";
 
 contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
     bytes32 public constant TEST_PARAMS_TYPE_HASH = keccak256("TestParams(address owner,uint256 number)");
@@ -46,7 +46,7 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
         return _getApprovalHash(TEST_PARAMS_TYPE_HASH, memoryLocation(params));
     }
 
-    function getExpectedEIP712Hash(TestParams memory params) external view returns (bytes32) {
+    function getExpectedEip712Hash(TestParams memory params) external view returns (bytes32) {
         bytes32 structHash = keccak256(abi.encode(TEST_PARAMS_TYPE_HASH, params.owner, params.number));
         return _hashTypedDataV4(structHash);
     }
@@ -78,11 +78,26 @@ contract CowEvcBaseWrapperTest is Test {
             MockEvcBaseWrapper.TestParams({owner: address(0x123), number: 0x456});
 
         // Compute using OpenZeppelin's EIP712
-        bytes32 expectedDigest = wrapper.getExpectedEIP712Hash(params);
+        bytes32 expectedDigest = wrapper.getExpectedEip712Hash(params);
 
         // Compute using the base wrapper implementation
         bytes32 actualDigest = wrapper.getApprovalHash(params);
 
         assertEq(actualDigest, expectedDigest, "EIP712 digest mismatch");
+    }
+
+    // edge case: in the extremely unlikely case that the `wrappedSettle` function somehow is able to be
+    // parsed/recognized without reverting on, we do this test just to ensure
+    // callback cannot be the EVC.
+    function test_EVC_CannotBeCalledWithWrappedSettle() public {
+        // batch is the only function that is able to execute operatoins on behalf of the caller contract without reverting https://evc.wtf/docs/contracts/technical-reference/contract.EthereumVaultConnector#batch
+        require(
+            CowWrapper.wrappedSettle.selector != IEVC.batch.selector,
+            "EVC.batch and ICowWrapper.wrappedSettle match selectors"
+        );
+
+        // should revert with an empty revert (indicates some sort of parsing issue)
+        vm.expectRevert(bytes(""));
+        CowWrapper(address(mockEvc)).wrappedSettle("", "");
     }
 }

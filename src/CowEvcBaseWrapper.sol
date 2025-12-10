@@ -129,6 +129,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     }
 
     /// @notice Internal settlement function called by EVC
+    /// @dev This function more or less serves as a unified set of security checks that serve as a line of defense for the call stack chain.
     function evcInternalSettle(
         bytes calldata settleData,
         bytes calldata wrapperData,
@@ -137,6 +138,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
         require(expectedEvcInternalSettleCallHash == keccak256(msg.data), InvalidCallback());
         expectedEvcInternalSettleCallHash = bytes32(0);
+
         _evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
 
