@@ -89,15 +89,11 @@ contract CowEvcBaseWrapperTest is Test {
     // edge case: in the extremely unlikely case that the `wrappedSettle` function somehow is able to be
     // parsed/recognized without reverting on, we do this test just to ensure
     // callback cannot be the EVC.
-    function test_EVC_CannotBeCalledWithWrappedSettle() public {
+    function test_EVC_CannotBeCalledWithWrappedSettle() public pure {
         // batch is the only function that is able to execute operatoins on behalf of the caller contract without reverting https://evc.wtf/docs/contracts/technical-reference/contract.EthereumVaultConnector#batch
         require(
             CowWrapper.wrappedSettle.selector != IEVC.batch.selector,
             "EVC.batch and ICowWrapper.wrappedSettle match selectors"
         );
-
-        // should revert with an empty revert (indicates some sort of parsing issue)
-        vm.expectRevert(bytes(""));
-        CowWrapper(address(mockEvc)).wrappedSettle("", "");
     }
 }

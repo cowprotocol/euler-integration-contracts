@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {CowEvcOpenPositionWrapper} from "../../src/CowEvcOpenPositionWrapper.sol";
 import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
+import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
@@ -358,6 +359,86 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
                 CowEvcBaseWrapper.OperationDeadlineExceeded.selector, params.deadline, block.timestamp
             )
         );
+        wrapper.wrappedSettle(settleData, wrapperData);
+    }
+
+    function test_WrappedSettle_RevertsIfHashNotPreApproved() public {
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
+
+        // Calculate hash but DO NOT pre-approve it
+        bytes32 hash = wrapper.getApprovalHash(params);
+
+        // Set operator permissions (required for EVC batch operations)
+        mockEvc.setOperator(OWNER, address(wrapper), true);
+        mockEvc.setOperator(ACCOUNT, address(wrapper), true);
+
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0)); // Empty signature triggers pre-approved hash flow
+
+        // Expect revert with HashNotApproved error
+        vm.prank(SOLVER);
+        vm.expectRevert(abi.encodeWithSelector(PreApprovedHashes.HashNotApproved.selector, OWNER, hash));
+        wrapper.wrappedSettle(settleData, wrapperData);
+    }
+
+    function test_WrappedSettle_RevertsOnTamperedSignature() public {
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
+
+        // Enable signature verification in MockEVC
+        mockEvc.setSignatureVerification(true);
+
+        // Create a private key and corresponding address for the owner
+        uint256 ownerPrivateKey = 0x1234567890123456789012345678901234567890123456789012345678901234;
+        address validOwner = vm.addr(ownerPrivateKey);
+
+        // Update params to use the valid owner
+        params.owner = validOwner;
+
+        // Build the signed calldata that will be included in the permit
+        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+
+        // Create the permit digest as MockEVC would expect it
+        bytes32 permitStructHash = keccak256(
+            abi.encode(
+                keccak256(
+                    "Permit(address signer,address sender,uint256 nonceNamespace,uint256 nonce,uint256 deadline,uint256 value,bytes data)"
+                ),
+                validOwner, // signer
+                address(wrapper), // sender
+                uint256(uint160(address(wrapper))), // nonceNamespace
+                0, // nonce
+                params.deadline, // deadline
+                0, // value
+                keccak256(signedCalldata) // data hash
+            )
+        );
+
+        // Get domain separator from MockEVC
+        bytes32 domainSeparator = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)"),
+                keccak256("Ethereum Vault Connector"),
+                block.chainid,
+                address(mockEvc)
+            )
+        );
+
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, permitStructHash));
+
+        // Sign the digest
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerPrivateKey, digest);
+
+        // Tamper with the signature by flipping a bit in the r value
+        bytes memory tamperedSignature = abi.encodePacked(bytes32(uint256(r) ^ 1), s, v);
+
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeWrapperData(params, tamperedSignature);
+
+        mockEvc.setSuccessfulBatch(true);
+
+        // Expect revert with ECDSA error when signature is tampered
+        vm.prank(SOLVER);
+        vm.expectRevert("ECDSA: invalid signature");
         wrapper.wrappedSettle(settleData, wrapperData);
     }
 

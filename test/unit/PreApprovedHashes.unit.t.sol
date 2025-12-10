@@ -43,7 +43,7 @@ contract PreApprovedHashesUnitTest is Test, PreApprovedHashes {
         c.setPreApprovedHash(hash, true);
 
         // Consume the hash
-        c.testConsumeHash(USER, hash);
+        c.consumeHash(USER, hash);
 
         // Try to approve the consumed hash again
         vm.prank(USER);
@@ -58,7 +58,7 @@ contract PreApprovedHashesUnitTest is Test, PreApprovedHashes {
         c.setPreApprovedHash(hash, true);
 
         // Consume the hash
-        c.testConsumeHash(USER, hash);
+        c.consumeHash(USER, hash);
 
         // Try to revoke the consumed hash
         vm.prank(USER);
@@ -79,7 +79,7 @@ contract PreApprovedHashesUnitTest is Test, PreApprovedHashes {
         vm.expectEmit(true, true, false, true);
         emit PreApprovedHashConsumed(USER, hash);
 
-        c.testConsumeHash(USER, hash);
+        c.consumeHash(USER, hash);
     }
 
     function test_ConsumePreApprovedHash_CannotConsumedTwice() public {
@@ -88,13 +88,12 @@ contract PreApprovedHashesUnitTest is Test, PreApprovedHashes {
         vm.prank(USER);
         c.setPreApprovedHash(hash, true);
 
-        // First consumption
-        bool consumed1 = c.testConsumeHash(USER, hash);
-        assertTrue(consumed1, "First consumption should succeed");
+        // First consumption succeeds
+        c.consumeHash(USER, hash);
 
-        // Second consumption attempt
-        bool consumed2 = c.testConsumeHash(USER, hash);
-        assertFalse(consumed2, "Second consumption should fail");
+        // Second consumption attempt should revert
+        vm.expectRevert(abi.encodeWithSelector(PreApprovedHashes.AlreadyConsumed.selector, USER, hash));
+        c.consumeHash(USER, hash);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -148,11 +147,12 @@ contract PreApprovedHashesUnitTest is Test, PreApprovedHashes {
         vm.prank(owner);
         c.setPreApprovedHash(hash, true);
 
-        bool consumed = c.testConsumeHash(owner, hash);
-        assertTrue(consumed, "Should successfully consume");
+        // First consumption succeeds
+        c.consumeHash(owner, hash);
 
-        bool consumedAgain = c.testConsumeHash(owner, hash);
-        assertFalse(consumedAgain, "Should not consume twice");
+        // Second consumption should revert
+        vm.expectRevert(abi.encodeWithSelector(PreApprovedHashes.AlreadyConsumed.selector, owner, hash));
+        c.consumeHash(owner, hash);
     }
 
     function testFuzz_MultipleUsersAndHashes(address user1, address user2, bytes32 hash1, bytes32 hash2) public {
@@ -176,7 +176,7 @@ contract PreApprovedHashesUnitTest is Test, PreApprovedHashes {
 
 /// @notice Testable version of PreApprovedHashes that exposes internal functions
 contract TestablePreApprovedHashes is PreApprovedHashes {
-    function testConsumeHash(address owner, bytes32 hash) external returns (bool) {
-        return _consumePreApprovedHash(owner, hash);
+    function consumeHash(address owner, bytes32 hash) external {
+        _consumePreApprovedHash(owner, hash);
     }
 }

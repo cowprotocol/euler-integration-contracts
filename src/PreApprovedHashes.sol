@@ -19,8 +19,13 @@ abstract contract PreApprovedHashes {
     /// @notice Event emitted when a pre-approved hash is used and is no longer valid because its consumed
     event PreApprovedHashConsumed(address indexed owner, bytes32 indexed hash);
 
-    /// @notice Revert reason given when a hash has already been consumed, and therefore cannot be set
+    /// @notice Revert reason given when a hash has already been consumed, and therefore cannot be used
+    /// @dev If the hash had simply never been approved in the first place, the error will be HashNotApproved
     error AlreadyConsumed(address owner, bytes32 hash);
+
+    /// @notice Revert reason given when a pre approved hash is being consumed, but it hasnt actually been approved.
+    /// @dev If the hash has been approved in the past, but it was consumed, the error will be AlreadyConsumed
+    error HashNotApproved(address owner, bytes32 hash);
 
     /// @notice Pre-approve a hash of signed calldata for future execution
     /// @dev Once a hash is pre-approved, it can only be consumed once. This prevents replay attacks.
@@ -48,14 +53,14 @@ abstract contract PreApprovedHashes {
     /// @notice Check if a hash is pre-approved for an owner. If it is, changes it to be consumed, and returns true.
     /// @param owner The owner address
     /// @param hash The hash to check
-    /// @return True if the hash was pre-approved and marked as consumed, false otherwise
-    function _consumePreApprovedHash(address owner, bytes32 hash) internal returns (bool) {
+    function _consumePreApprovedHash(address owner, bytes32 hash) internal {
         if (preApprovedHashes[owner][hash] == PRE_APPROVED) {
             preApprovedHashes[owner][hash] = CONSUMED;
             emit PreApprovedHashConsumed(owner, hash);
-            return true;
+        } else if (preApprovedHashes[owner][hash] == CONSUMED) {
+            revert AlreadyConsumed(owner, hash);
         } else {
-            return false;
+            revert HashNotApproved(owner, hash);
         }
     }
 }
