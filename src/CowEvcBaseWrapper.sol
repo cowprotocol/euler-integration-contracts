@@ -109,19 +109,18 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         bytes32 structHash;
         bytes32 separator = DOMAIN_SEPARATOR;
         uint256 paramsSize = PARAMS_SIZE;
-        assembly ("memory-safe") {
-            let ptr := mload(0x40)
-
-            // Build structHash = keccak256(typeHash || encodeData(struct))
-            mstore(ptr, typeHash)
-            // Copy struct data from params to ptr + 0x20
-            for { let i := 0 } lt(i, paramsSize) { i := add(i, 0x20) } {
-                mstore(add(add(ptr, 0x20), i), mload(add(params, i)))
-            }
-            structHash := keccak256(ptr, add(0x20, paramsSize))
+        assembly {
+            // Build structHash = keccak256(typeHash || encodeData(params))
+            let wordBeforeParamPtr := sub(params, 0x20)
+            // Subtraction overflow causes the next line to revert with out of gas if params isn't allocated
+            let wordBeforeParam := mload(wordBeforeParamPtr)
+            mstore(wordBeforeParamPtr, typeHash)
+            structHash := keccak256(wordBeforeParamPtr, add(0x20, paramsSize))
+            // Restore original content
+            mstore(wordBeforeParamPtr, wordBeforeParam)
 
             // Build digest = keccak256("\x19\x01" || domainSeparator || structHash)
-            mstore(ptr, "\x19\x01")
+            let ptr := mload(0x40)
             mstore(add(ptr, 0x02), separator)
             mstore(add(ptr, 0x22), structHash)
             digest := keccak256(ptr, 0x42)
