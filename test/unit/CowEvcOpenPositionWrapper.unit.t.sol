@@ -178,8 +178,10 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     function test_GetApprovalHash_MatchesEIP712() public view {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
 
+        // EIP-712 compliant structHash must include the TYPE_HASH
         bytes32 structHash = keccak256(
             abi.encode(
+                wrapper.OPEN_POSITION_PARAMS_TYPE_HASH(),
                 params.owner,
                 params.account,
                 params.deadline,

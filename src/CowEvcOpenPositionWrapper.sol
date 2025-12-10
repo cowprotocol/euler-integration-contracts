@@ -25,6 +25,11 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
     /// @dev The EIP-712 domain version used for computing the domain separator.
     bytes32 constant DOMAIN_VERSION = keccak256("1");
 
+    /// @dev The EIP-712 type hash for OpenPositionParams struct
+    bytes32 public constant OPEN_POSITION_PARAMS_TYPE_HASH = keccak256(
+        "OpenPositionParams(address owner,address account,uint256 deadline,address collateralVault,address borrowVault,uint256 collateralAmount,uint256 borrowAmount)"
+    );
+
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Open Position";
 
@@ -96,7 +101,7 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
     /// @param params The OpenPositionParams to hash
     /// @return The hash of the signed calldata for these params
     function getApprovalHash(OpenPositionParams memory params) external view returns (bytes32) {
-        return _getApprovalHash(memoryLocation(params));
+        return _getApprovalHash(OPEN_POSITION_PARAMS_TYPE_HASH, memoryLocation(params));
     }
 
     /// @inheritdoc CowWrapper
@@ -117,6 +122,7 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
         (OpenPositionParams memory params, bytes memory signature) = _parseOpenPositionParams(wrapperData);
 
         _invokeEvc(
+            OPEN_POSITION_PARAMS_TYPE_HASH,
             settleData,
             wrapperData,
             remainingWrapperData,

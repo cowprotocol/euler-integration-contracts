@@ -102,13 +102,25 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// It assumes:
     ///  - The struct itself doesn't contain any dynamic-length types.
     ///  - The struct is encoded in memory with zero padding.
-    function _getApprovalHash(ParamsLocation paramsMemoryLocation) internal view returns (bytes32 digest) {
+    /// @param typeHash The EIP-712 type hash for the struct being hashed
+    /// @param params The memory location of the struct data
+    /// @return digest The EIP-712 compliant digest
+    function _getApprovalHash(bytes32 typeHash, ParamsLocation params) internal view returns (bytes32 digest) {
         bytes32 structHash;
         bytes32 separator = DOMAIN_SEPARATOR;
         uint256 paramsSize = PARAMS_SIZE;
         assembly ("memory-safe") {
-            structHash := keccak256(paramsMemoryLocation, paramsSize)
             let ptr := mload(0x40)
+
+            // Build structHash = keccak256(typeHash || encodeData(struct))
+            mstore(ptr, typeHash)
+            // Copy struct data from params to ptr + 0x20
+            for { let i := 0 } lt(i, paramsSize) { i := add(i, 0x20) } {
+                mstore(add(add(ptr, 0x20), i), mload(add(params, i)))
+            }
+            structHash := keccak256(ptr, add(0x20, paramsSize))
+
+            // Build digest = keccak256("\x19\x01" || domainSeparator || structHash)
             mstore(ptr, "\x19\x01")
             mstore(add(ptr, 0x02), separator)
             mstore(add(ptr, 0x22), structHash)
@@ -129,6 +141,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     }
 
     function _invokeEvc(
+        bytes32 typeHash,
         bytes calldata settleData,
         bytes calldata wrapperData,
         bytes calldata remainingWrapperData,
@@ -138,7 +151,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         uint256 deadline
     ) internal {
         if (signature.length == 0) {
-            _consumePreApprovedHash(owner, _getApprovalHash(param));
+            _consumePreApprovedHash(owner, _getApprovalHash(typeHash, param));
             // The deadline is checked by `EVC.permit()`, so we only check it here if we are using a pre-approved hash (aka, no signature) which would bypass that call
             require(deadline >= block.timestamp, OperationDeadlineExceeded(deadline, block.timestamp));
         }
