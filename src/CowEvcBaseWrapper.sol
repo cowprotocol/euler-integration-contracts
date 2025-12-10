@@ -152,7 +152,8 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     ) internal {
         // There are 2 ways that this contract can validate user operations: 1) the user pre-approves a hash with an on-chain call and grants this contract ability to operate on the user's behalf, or 2) they issue a signature which can be used to call EVC.permit()
         // In case the user is using a hash (1), then there would be no signature supplied to this call and we have to resolve the hash instead
-        // If its flow (2), it happens through the call to EVC.permit() elsewhere, and the EVC becomes responsible for the security.
+        // If its flow (2), it happens through the call to EVC.permit() elsewhere: if the parameters don't match with the user intent, that call is assumed to revert.
+        // In this case, we need to check that `permit` has been called by the actual wrapper implementation.
         bytes32 approvalHash = _getApprovalHash(typeHash, param);
         if (signature.length == 0) {
             _consumePreApprovedHash(owner, approvalHash);
