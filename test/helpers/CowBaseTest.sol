@@ -17,8 +17,13 @@ import {MilkSwap} from "./MilkSwap.sol";
 contract Solver {
     function runBatch(address[] memory targets, bytes[] memory datas) external {
         for (uint256 i = 0; i < targets.length; i++) {
-            (bool success,) = targets[i].call(datas[i]);
-            require(success, "Solver: call failed");
+            (bool success, bytes memory returnData) = targets[i].call(datas[i]);
+            if (!success) {
+                // Bubble up the actual revert reason
+                assembly {
+                    revert(add(returnData, 32), mload(returnData))
+                }
+            }
         }
     }
 }

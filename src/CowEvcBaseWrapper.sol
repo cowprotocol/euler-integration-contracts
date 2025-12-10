@@ -219,6 +219,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         // There are two ways this contract can be executed: either the user approves this contract as
         // an operator and supplies a pre-approved hash for the operation to take, or they submit a permit hash
         // for this specific instance. If its the permit hash route, here we call `permit` instead of `batch` raw so that the EVC can authorize it.
+        // If there is an issue with the signature, the EVC will revert the batch call, which will bubble up through this contract to revert the entire wrappedSettle call.
         if (paramsHash != bytes32(0) && signature.length > 0) {
             fullItems[itemIndex++] = IEVC.BatchItem({
                 onBehalfOfAccount: address(0),

@@ -327,6 +327,46 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         assertEq(debtBefore, 0, "User should start with no debt");
     }
 
+    /// @notice Test that invalid signature causes the transaction to revert
+    function test_OpenPositionWrapper_InvalidSignatureReverts() external {
+        vm.skip(bytes(forkRpcUrl).length == 0);
+
+        address account = address(uint160(user) ^ 1);
+
+        // Create params using helper
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
+
+        // Get settlement data
+        SettlementData memory settlement =
+            getOpenPositionSettlement(user, account, WETH, ESUSDS, DEFAULT_BORROW_AMOUNT, DEFAULT_BUY_AMOUNT);
+
+        // Setup user approvals
+        _setupUserSusdsApproval();
+
+        // Create INVALID permit signature by signing with wrong private key (user2's key instead of user's)
+        ecdsa.setPrivateKey(privateKey2); // Wrong private key!
+        bytes memory invalidPermitSignature = ecdsa.signPermit(
+            params.owner,
+            address(openPositionWrapper),
+            uint256(uint160(address(openPositionWrapper))),
+            0,
+            params.deadline,
+            0,
+            openPositionWrapper.getSignedCalldata(params)
+        );
+
+        // Encode settlement and wrapper data
+        bytes memory settleData = abi.encodeCall(
+            ICowSettlement.settle,
+            (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
+        );
+        bytes memory wrapperData = encodeWrapperData(abi.encode(params, invalidPermitSignature));
+
+        // Execute wrapped settlement - should revert with EVC_NotAuthorized due to invalid signature
+        vm.expectRevert(abi.encodeWithSignature("EVC_NotAuthorized()"));
+        executeWrappedSettlement(address(openPositionWrapper), settleData, wrapperData);
+    }
+
     /// @notice Test that the wrapper can handle being called three times in the same chain
     /// @dev Two users open positions in the same direction (long SUSDS), one user opens opposite (long WETH)
     function test_OpenPositionWrapper_ThreeUsers_TwoSameOneOpposite() external {
