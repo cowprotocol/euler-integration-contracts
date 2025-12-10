@@ -155,8 +155,9 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         // There are 2 ways that this contract can validate user operations: 1) the user pre-approves a hash with an on-chain call and grants this contract ability to operate on the user's behalf, or 2) they issue a signature which can be used to call EVC.permit()
         // In case the user is using a hash (1), then there would be no signature supplied to this call and we have to resolve the hash instead
         // If its flow (2), it happens through the call to EVC.permit() elsewhere, and the EVC becomes responsible for the security.
+        bytes32 approvalHash = _getApprovalHash(typeHash, param);
         if (signature.length == 0) {
-            _consumePreApprovedHash(owner, _getApprovalHash(typeHash, param));
+            _consumePreApprovedHash(owner, approvalHash);
             // The deadline is checked by `EVC.permit()`, so we only check it here if we are using a pre-approved hash (aka, no signature) which would bypass that call
             require(deadline >= block.timestamp, OperationDeadlineExceeded(deadline, block.timestamp));
         }
@@ -169,7 +170,9 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         // add any EVC actions that have to be performed before
         {
             (IEVC.BatchItem[] memory beforeItems, bool needsPermission) = _encodeBatchItemsBefore(param);
-            itemIndex = _addEvcBatchItems(items, beforeItems, itemIndex, owner, deadline, signature, needsPermission);
+            itemIndex = _addEvcBatchItems(
+                items, beforeItems, itemIndex, owner, deadline, signature, needsPermission ? approvalHash : bytes32(0)
+            );
         }
 
         // add the EVC callback to this (which calls settlement)
@@ -185,7 +188,9 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         // add the EVC actions that have to be performed after
         {
             (IEVC.BatchItem[] memory afterItems, bool needsPermission) = _encodeBatchItemsAfter(param);
-            itemIndex = _addEvcBatchItems(items, afterItems, itemIndex, owner, deadline, signature, needsPermission);
+            itemIndex = _addEvcBatchItems(
+                items, afterItems, itemIndex, owner, deadline, signature, needsPermission ? approvalHash : bytes32(0)
+            );
         }
 
         // shorten the length of the generated array to its actual length
@@ -209,12 +214,12 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         address owner,
         uint256 deadline,
         bytes memory signature,
-        bool needsPermission
+        bytes32 paramsHash
     ) internal view returns (uint256) {
         // There are two ways this contract can be executed: either the user approves this contract as
         // an operator and supplies a pre-approved hash for the operation to take, or they submit a permit hash
-        // for this specific instance
-        if (needsPermission && signature.length > 0) {
+        // for this specific instance. If its the permit hash route, here we call `permit` instead of `batch` raw so that the EVC can authorize it.
+        if (paramsHash != bytes32(0) && signature.length > 0) {
             fullItems[itemIndex++] = IEVC.BatchItem({
                 onBehalfOfAccount: address(0),
                 targetContract: address(EVC),
@@ -228,7 +233,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
                         EVC.getNonce(bytes19(bytes20(owner)), NONCE_NAMESPACE),
                         deadline,
                         0, // value field (no ETH transferred to the EVC)
-                        abi.encodeCall(EVC.batch, addItems),
+                        abi.encodePacked(abi.encodeCall(EVC.batch, addItems), paramsHash),
                         signature
                     )
                 )

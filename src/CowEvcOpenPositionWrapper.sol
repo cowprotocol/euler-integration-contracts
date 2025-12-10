@@ -144,7 +144,9 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
 
     function getSignedCalldata(OpenPositionParams memory params) external view returns (bytes memory) {
         (IEVC.BatchItem[] memory items,) = _encodeBatchItemsBefore(memoryLocation(params));
-        return abi.encodeCall(IEVC.batch, items);
+        return abi.encodePacked(
+            abi.encodeCall(IEVC.batch, items), _getApprovalHash(OPEN_POSITION_PARAMS_TYPE_HASH, memoryLocation(params))
+        );
     }
 
     function _encodeBatchItemsBefore(ParamsLocation paramsLocation)
