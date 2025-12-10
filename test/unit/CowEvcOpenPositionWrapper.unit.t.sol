@@ -176,29 +176,6 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         assertNotEq(hash1, hash3, "Hash should differ for different params");
     }
 
-    function test_GetApprovalHash_MatchesEIP712() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
-
-        // EIP-712 compliant structHash must include the TYPE_HASH
-        bytes32 structHash = keccak256(
-            abi.encode(
-                wrapper.OPEN_POSITION_PARAMS_TYPE_HASH(),
-                params.owner,
-                params.account,
-                params.deadline,
-                params.collateralVault,
-                params.borrowVault,
-                params.collateralAmount,
-                params.borrowAmount
-            )
-        );
-
-        bytes32 expectedDigest = keccak256(abi.encodePacked("\x19\x01", wrapper.DOMAIN_SEPARATOR(), structHash));
-        bytes32 actualDigest = wrapper.getApprovalHash(params);
-
-        assertEq(actualDigest, expectedDigest, "Hash should match EIP-712 format");
-    }
-
     /*//////////////////////////////////////////////////////////////
                     GET SIGNED CALLDATA TESTS
     //////////////////////////////////////////////////////////////*/

@@ -121,6 +121,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
             // Build digest = keccak256("\x19\x01" || domainSeparator || structHash)
             let ptr := mload(0x40)
+            mstore(ptr, "\x19\x01")
             mstore(add(ptr, 0x02), separator)
             mstore(add(ptr, 0x22), structHash)
             digest := keccak256(ptr, 0x42)
