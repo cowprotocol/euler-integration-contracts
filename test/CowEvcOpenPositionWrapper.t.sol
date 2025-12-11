@@ -75,12 +75,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         });
     }
 
-    /// @notice Setup user approvals for SUSDS deposit
-    function _setupUserSusdsApproval() internal {
-        vm.prank(user);
-        IERC20(SUSDS).approve(ESUSDS, type(uint256).max);
-    }
-
     /// @notice Setup user approvals for pre-approved hash flow
     function _setupUserPreApprovedFlow(address account, bytes32 hash) internal {
         vm.startPrank(user);
@@ -92,11 +86,11 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     }
 
     /// @notice Create permit signature for EVC operator
-    function _createPermitSignature(CowEvcOpenPositionWrapper.OpenPositionParams memory params)
+    function _createPermitSignatureFor(CowEvcOpenPositionWrapper.OpenPositionParams memory params, uint256 userPrivateKey)
         internal
         returns (bytes memory)
     {
-        ecdsa.setPrivateKey(privateKey);
+        ecdsa.setPrivateKey(userPrivateKey);
         return ecdsa.signPermit(
             params.owner,
             address(openPositionWrapper),
@@ -187,13 +181,14 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             getOpenPositionSettlement(user, account, WETH, ESUSDS, DEFAULT_BORROW_AMOUNT, DEFAULT_BUY_AMOUNT);
 
         // Setup user approvals
-        _setupUserSusdsApproval();
+        vm.prank(user);
+        IERC20(SUSDS).approve(ESUSDS, type(uint256).max);
 
         // User signs order
         // Does not need to run here because its done in `setupCowOrder`
 
         // Create permit signature
-        bytes memory permitSignature = _createPermitSignature(params);
+        bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
 
         // Record balances before
         assertEq(IEVault(EWETH).debtOf(account), 0, "User should start with no debt");
@@ -368,7 +363,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             getOpenPositionSettlement(user, account, WETH, ESUSDS, DEFAULT_BORROW_AMOUNT, DEFAULT_BUY_AMOUNT);
 
         // Setup user approvals
-        _setupUserSusdsApproval();
+        vm.prank(user);
+        IERC20(SUSDS).approve(ESUSDS, type(uint256).max);
 
         // Create INVALID permit signature by signing with wrong private key (user2's key instead of user's)
         ecdsa.setPrivateKey(privateKey2); // Wrong private key!
