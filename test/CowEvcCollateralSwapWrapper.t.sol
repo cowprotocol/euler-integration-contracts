@@ -315,6 +315,51 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         assertEq(IERC20(ESUSDS).balanceOf(user), 0, "Main account ESUSDS balance should be 0");
     }
 
+    /// @notice Test that invalid signature causes the transaction to revert
+    function test_CollateralSwapWrapper_InvalidSignatureReverts() external {
+        vm.skip(bytes(forkRpcUrl).length == 0);
+
+        // Create params using helper (use user as both owner and account to avoid subaccount transfers)
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, user);
+
+        // Get settlement data
+        SettlementData memory settlement =
+            getCollateralSwapSettlement(user, user, ESUSDS, EWBTC, DEFAULT_SWAP_AMOUNT, DEFAULT_BUY_AMOUNT);
+
+        // User deposits SUSDS collateral
+        vm.startPrank(user);
+        IERC20(SUSDS).approve(ESUSDS, type(uint256).max);
+        uint256 depositAmount = 1000e18;
+        IERC4626(ESUSDS).deposit(depositAmount, user);
+
+        // User approves vault shares for settlement
+        IEVault(ESUSDS).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+        vm.stopPrank();
+
+        // Create INVALID permit signature by signing with wrong private key (user2's key instead of user's)
+        ecdsa.setPrivateKey(privateKey2); // Wrong private key!
+        bytes memory invalidPermitSignature = ecdsa.signPermit(
+            params.owner,
+            address(collateralSwapWrapper),
+            uint256(uint160(address(collateralSwapWrapper))),
+            0,
+            params.deadline,
+            0,
+            collateralSwapWrapper.getSignedCalldata(params)
+        );
+
+        // Encode settlement and wrapper data
+        bytes memory settleData = abi.encodeCall(
+            ICowSettlement.settle,
+            (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
+        );
+        bytes memory wrapperData = _encodeWrapperData(params, invalidPermitSignature);
+
+        // Execute wrapped settlement - should revert with EVC_NotAuthorized due to invalid signature
+        vm.expectRevert(abi.encodeWithSignature("EVC_NotAuthorized()"));
+        _executeWrappedSettlement(settleData, wrapperData);
+    }
+
     /// @notice Test that unauthorized users cannot call evcInternalSwap directly
     function test_CollateralSwapWrapper_UnauthorizedInternalSwap() external {
         vm.skip(bytes(forkRpcUrl).length == 0);

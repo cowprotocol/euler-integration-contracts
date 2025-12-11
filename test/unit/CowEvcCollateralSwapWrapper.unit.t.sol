@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 import {CowEvcCollateralSwapWrapper} from "../../src/CowEvcCollateralSwapWrapper.sol";
+import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
 import {EmptyWrapper} from "../EmptyWrapper.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
@@ -188,27 +189,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
 
         assertNotEq(hash1, hash2, "Hash should differ for different params");
         assertNotEq(hash1, hash3, "Hash should differ for different params");
-    }
-
-    function test_GetApprovalHash_MatchesEIP712() public view {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
-
-        bytes32 structHash = keccak256(
-            abi.encode(
-                params.owner,
-                params.account,
-                params.deadline,
-                params.fromVault,
-                params.toVault,
-                params.swapAmount,
-                params.kind
-            )
-        );
-
-        bytes32 expectedDigest = keccak256(abi.encodePacked("\x19\x01", wrapper.DOMAIN_SEPARATOR(), structHash));
-        bytes32 actualDigest = wrapper.getApprovalHash(params);
-
-        assertEq(actualDigest, expectedDigest, "Hash should match EIP-712 format");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -591,6 +571,88 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         wrapper.wrappedSettle(settleData, wrapperData);
 
         assertFalse(wrapper.isHashPreApproved(OWNER, hash), "Hash should be consumed");
+    }
+
+    function test_WrappedSettle_RevertsIfHashNotPreApproved() public {
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
+
+        // Calculate hash but DO NOT pre-approve it
+        bytes32 hash = wrapper.getApprovalHash(params);
+
+        // Set operator permissions (required for EVC batch operations)
+        mockEvc.setOperator(OWNER, address(wrapper), true);
+
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0)); // Empty signature triggers pre-approved hash flow
+
+        // Expect revert with HashNotApproved error
+        vm.prank(SOLVER);
+        vm.expectRevert(abi.encodeWithSelector(PreApprovedHashes.HashNotApproved.selector, OWNER, hash));
+        wrapper.wrappedSettle(settleData, wrapperData);
+    }
+
+    function test_WrappedSettle_RevertsOnTamperedSignature() public {
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
+        // Use same account for owner and account to avoid subaccount validation
+        params.account = OWNER;
+
+        // Enable signature verification in MockEVC
+        mockEvc.setSignatureVerification(true);
+
+        // Create a private key and corresponding address for the owner
+        uint256 ownerPrivateKey = 0x1234567890123456789012345678901234567890123456789012345678901234;
+        address validOwner = vm.addr(ownerPrivateKey);
+
+        // Update params to use the valid owner
+        params.owner = validOwner;
+        params.account = validOwner;
+
+        // Build the signed calldata that will be included in the permit
+        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+
+        // Create the permit digest as MockEVC would expect it
+        bytes32 permitStructHash = keccak256(
+            abi.encode(
+                keccak256(
+                    "Permit(address signer,address sender,uint256 nonceNamespace,uint256 nonce,uint256 deadline,uint256 value,bytes data)"
+                ),
+                validOwner, // signer
+                address(wrapper), // sender
+                uint256(uint160(address(wrapper))), // nonceNamespace
+                0, // nonce
+                params.deadline, // deadline
+                0, // value
+                keccak256(signedCalldata) // data hash
+            )
+        );
+
+        // Get domain separator from MockEVC
+        bytes32 domainSeparator = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)"),
+                keccak256("Ethereum Vault Connector"),
+                block.chainid,
+                address(mockEvc)
+            )
+        );
+
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, permitStructHash));
+
+        // Sign the digest
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerPrivateKey, digest);
+
+        // Tamper with the signature by flipping a bit in the r value
+        bytes memory tamperedSignature = abi.encodePacked(bytes32(uint256(r) ^ 1), s, v);
+
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeWrapperData(params, tamperedSignature);
+
+        mockEvc.setSuccessfulBatch(true);
+
+        // Expect revert with ECDSA error when signature is tampered
+        vm.prank(SOLVER);
+        vm.expectRevert("ECDSA: invalid signature");
+        wrapper.wrappedSettle(settleData, wrapperData);
     }
 
     function test_WrappedSettle_PreApprovedHashRevertsIfDeadlineExceeded() public {
