@@ -213,7 +213,12 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         executeWrappedSettlement(address(openPositionWrapper), settleData, wrapperData);
 
         // Verify position was created successfully
-        _verifyPositionOpened(account, DEFAULT_BUY_AMOUNT + SUSDS_MARGIN, DEFAULT_BORROW_AMOUNT, 1 ether);
+        _verifyPositionOpened({
+            account: account,
+            expectedCollateral: DEFAULT_BUY_AMOUNT + SUSDS_MARGIN,
+            expectedDebt: DEFAULT_BORROW_AMOUNT,
+            allowedDelta: 1 ether
+        });
         assertEq(debtBefore, 0, "User should start with no debt");
         assertEq(susdsBalanceBefore, 0, "User should start with no eSUSDS");
     }
