@@ -183,7 +183,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     function test_GetSignedCalldata_EnableCollateralItem() public view {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
 
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         assertEq(items[0].targetContract, address(mockEvc), "First item should target EVC");
@@ -197,7 +197,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     function test_GetSignedCalldata_EnableControllerItem() public view {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
 
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         assertEq(items[1].targetContract, address(mockEvc), "Second item should target EVC");
@@ -209,7 +209,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     function test_GetSignedCalldata_DepositItem() public view {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
 
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         assertEq(items[2].targetContract, COLLATERAL_VAULT, "Third item should target collateral vault");
@@ -224,7 +224,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     function test_GetSignedCalldata_BorrowItem() public view {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
 
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         assertEq(items[3].targetContract, BORROW_VAULT, "Fourth item should target borrow vault");
@@ -372,7 +372,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         params.owner = validOwner;
 
         // Build the signed calldata that will be included in the permit
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
 
         // Create the permit digest as MockEVC would expect it
         bytes32 permitStructHash = keccak256(
@@ -427,7 +427,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
         params.collateralAmount = 0; // Zero collateral
 
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         // Should still have deposit call, just with 0 amount
@@ -438,7 +438,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
         params.borrowAmount = type(uint256).max;
 
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         assertEq(items[3].data, abi.encodeCall(IBorrowing.borrow, (type(uint256).max, OWNER)), "Should borrow max");
@@ -448,7 +448,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
         params.account = OWNER; // Same as owner
 
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         // Should still work, but with same address

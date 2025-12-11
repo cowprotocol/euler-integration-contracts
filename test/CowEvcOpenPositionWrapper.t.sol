@@ -104,7 +104,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             0,
             params.deadline,
             0,
-            openPositionWrapper.getSignedCalldata(params)
+            openPositionWrapper.encodePermitData(params)
         );
     }
 
@@ -366,7 +366,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             0,
             params.deadline,
             0,
-            openPositionWrapper.getSignedCalldata(params)
+            openPositionWrapper.encodePermitData(params)
         );
 
         // Encode settlement and wrapper data
@@ -473,7 +473,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             0,
             params1.deadline,
             0,
-            openPositionWrapper.getSignedCalldata(params1)
+            openPositionWrapper.encodePermitData(params1)
         );
 
         ecdsa.setPrivateKey(privateKey2);
@@ -484,7 +484,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             0,
             params2.deadline,
             0,
-            openPositionWrapper.getSignedCalldata(params2)
+            openPositionWrapper.encodePermitData(params2)
         );
 
         ecdsa.setPrivateKey(privateKey3);
@@ -495,7 +495,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             0,
             params3.deadline,
             0,
-            openPositionWrapper.getSignedCalldata(params3)
+            openPositionWrapper.encodePermitData(params3)
         );
 
         // Create settlement with all three trades
