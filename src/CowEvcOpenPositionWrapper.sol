@@ -25,6 +25,11 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
     /// @dev The EIP-712 domain version used for computing the domain separator.
     bytes32 constant DOMAIN_VERSION = keccak256("1");
 
+    /// @dev The EIP-712 type hash for OpenPositionParams struct
+    bytes32 public constant OPEN_POSITION_PARAMS_TYPE_HASH = keccak256(
+        "OpenPositionParams(address owner,address account,uint256 deadline,address collateralVault,address borrowVault,uint256 collateralAmount,uint256 borrowAmount)"
+    );
+
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Open Position";
 
@@ -39,7 +44,7 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
     );
 
     constructor(address _evc, ICowSettlement _settlement)
-        CowEvcBaseWrapper(_evc, _settlement, DOMAIN_NAME, DOMAIN_VERSION, 6)
+        CowEvcBaseWrapper(_evc, _settlement, DOMAIN_NAME, DOMAIN_VERSION)
     {
         PARAMS_SIZE =
         abi.encode(
@@ -54,6 +59,8 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
             })
         )
         .length;
+
+        MAX_BATCH_OPERATIONS = 5;
     }
 
     /// @notice The information necessary to open a debt position against an euler vault using collateral as backing.
@@ -84,38 +91,27 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
 
     function _parseOpenPositionParams(bytes calldata wrapperData)
         internal
-        view
-        returns (OpenPositionParams memory params, bytes memory signature, bytes calldata remainingWrapperData)
+        pure
+        returns (OpenPositionParams memory params, bytes memory signature)
     {
         (params, signature) = abi.decode(wrapperData, (OpenPositionParams, bytes));
-
-        // Calculate consumed bytes for abi.encode(OpenPositionParams, bytes)
-        // Structure:
-        // - 32 bytes: offset to params (0x40)
-        // - 32 bytes: offset to signature
-        // - x bytes: params data (computed size in constructor to prevent errors)
-        // - 32 bytes: signature length
-        // - N bytes: signature data (padded to 32-byte boundary)
-        uint256 consumed = PARAMS_SIZE + 64 + ((signature.length + 31) & ~uint256(31));
-
-        remainingWrapperData = wrapperData[consumed:];
     }
 
     /// @notice Helper function to compute the hash that would be approved
     /// @param params The OpenPositionParams to hash
     /// @return The hash of the signed calldata for these params
     function getApprovalHash(OpenPositionParams memory params) external view returns (bytes32) {
-        return _getApprovalHash(memoryLocation(params));
+        return _getApprovalHash(OPEN_POSITION_PARAMS_TYPE_HASH, memoryLocation(params));
     }
 
     /// @inheritdoc CowWrapper
-    function validateWrapperData(bytes calldata wrapperData) external view override {
+    function validateWrapperData(bytes calldata wrapperData) external pure override {
         // Validate by attempting to parse the wrapper data
         // Will revert if the data is malformed
         _parseOpenPositionParams(wrapperData);
     }
 
-    /// @notice Implementation of GPv2Wrapper._wrap - executes EVC operations to open a position
+    /// @notice Implementation of CowWrapper._wrap - executes EVC operations to open a position
     /// @param settleData Data which will be used for the parameters in a call to `CowSettlement.settle`
     /// @param wrapperData Additional data containing OpenPositionParams
     function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
@@ -123,9 +119,10 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
         override
     {
         // Decode wrapper data into OpenPositionParams
-        (OpenPositionParams memory params, bytes memory signature,) = _parseOpenPositionParams(wrapperData);
+        (OpenPositionParams memory params, bytes memory signature) = _parseOpenPositionParams(wrapperData);
 
         _invokeEvc(
+            OPEN_POSITION_PARAMS_TYPE_HASH,
             settleData,
             wrapperData,
             remainingWrapperData,
@@ -147,14 +144,16 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
 
     function getSignedCalldata(OpenPositionParams memory params) external view returns (bytes memory) {
         (IEVC.BatchItem[] memory items,) = _encodeBatchItemsBefore(memoryLocation(params));
-        return abi.encodeCall(IEVC.batch, items);
+        return abi.encodePacked(
+            abi.encodeCall(IEVC.batch, items), _getApprovalHash(OPEN_POSITION_PARAMS_TYPE_HASH, memoryLocation(params))
+        );
     }
 
     function _encodeBatchItemsBefore(ParamsLocation paramsLocation)
         internal
         view
         override
-        returns (IEVC.BatchItem[] memory items, bool isSigned)
+        returns (IEVC.BatchItem[] memory items, bool needsPermission)
     {
         OpenPositionParams memory params = paramsFromMemory(paramsLocation);
         items = new IEVC.BatchItem[](4);
@@ -191,14 +190,14 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
             data: abi.encodeCall(IBorrowing.borrow, (params.borrowAmount, params.owner))
         });
 
-        isSigned = true;
+        needsPermission = true;
     }
 
     function _evcInternalSettle(bytes calldata settleData, bytes calldata, bytes calldata remainingWrapperData)
         internal
         override
     {
-        // Use GPv2Wrapper's _internalSettle to call the settlement contract
+        // Use CowWrapper's _internalSettle to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
         _next(settleData, remainingWrapperData);
     }

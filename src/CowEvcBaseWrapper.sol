@@ -31,12 +31,16 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Used by EIP-712 signing to prevent signatures from being replayed
     bytes32 public immutable DOMAIN_SEPARATOR;
 
-    //// @dev The EVC nonce namespace to use when calling `EVC.permit` to authorize this contract.
+    /// @dev The EVC nonce namespace to use when calling `EVC.permit` to authorize this contract.
+    /// See: https://evc.wtf/docs/concepts/internals/permit/#nonce-namespaces
     uint256 public immutable NONCE_NAMESPACE;
 
+    /// @dev The length of the parameters consumed by this wrapper. Used in order to know how much data to read after the ParamsLocation for the hash.
+    /// Ideally this should be computed by creating the parameters struct and then `abi.encode().length` to ensure its always the correct size.
     uint256 internal immutable PARAMS_SIZE;
 
     /// @dev How long to make the `items` array without calculating it. Determines the maximum number of EVC operations that can be batched.
+    /// This value depends on the each concrete wrapper implementation. It should include the settlement and any operations before and after it.
     uint256 internal immutable MAX_BATCH_OPERATIONS;
 
     /// @dev Indicates that the current operation cannot be completed with the given msgSender
@@ -54,40 +58,40 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that the EVC called `evcInternalSettle` in an invalid way
     error InvalidCallback();
 
+    /// @dev Indicates that the constructed EVC operations are exceeding the maximum length allowed. Generally this is a sanity check
+    error ItemsOutOfBounds(uint256 itemIndex, uint256 maxItemIndex);
+
     /// @dev Used to ensure that the EVC is calling back this contract with the correct data
     bytes32 internal transient expectedEvcInternalSettleCallHash;
 
-    constructor(
-        address _evc,
-        ICowSettlement _settlement,
-        bytes32 _domainName,
-        bytes32 _domainVersion,
-        uint256 maxBatchOperations
-    ) CowWrapper(_settlement) {
+    constructor(address _evc, ICowSettlement _settlement, bytes32 _domainName, bytes32 _domainVersion)
+        CowWrapper(_settlement)
+    {
         require(_evc.code.length > 0, "EVC address is invalid");
         EVC = IEVC(_evc);
         NONCE_NAMESPACE = uint256(uint160(address(this)));
         DOMAIN_SEPARATOR =
             keccak256(abi.encode(DOMAIN_TYPE_HASH, _domainName, _domainVersion, block.chainid, address(this)));
-        MAX_BATCH_OPERATIONS = maxBatchOperations;
     }
 
-    /// @dev Encode batch items to execute before the settlement
-    /// @notice By default we return the default value (empty array, false)
+    /// @notice Encode batch items to execute before the settlement
+    /// @dev By default we return the default value (empty array, false)
+    /// @param location The memory storage position where the parameters needed to encode the batch items have been saved
     /// @return items Array of batch items to execute
     /// @return needsPermit Whether these items require user signature or prior authorization as an operator
-    function _encodeBatchItemsBefore(ParamsLocation)
+    function _encodeBatchItemsBefore(ParamsLocation location)
         internal
         view
         virtual
         returns (IEVC.BatchItem[] memory items, bool needsPermit)
     {}
 
-    /// @dev Encode batch items to execute after the settlement
-    /// @notice By default we return the default value (empty array, false)
+    /// @notice Encode batch items to execute after the settlement
+    /// @dev By default we return the default value (empty array, false)
+    /// @param location The memory storage position where the parameters needed to encode the batch items have been saved
     /// @return items Array of batch items to execute
     /// @return needsPermit Whether these items require user signature or prior authorization as an operator
-    function _encodeBatchItemsAfter(ParamsLocation)
+    function _encodeBatchItemsAfter(ParamsLocation location)
         internal
         view
         virtual
@@ -98,12 +102,24 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// It assumes:
     ///  - The struct itself doesn't contain any dynamic-length types.
     ///  - The struct is encoded in memory with zero padding.
-    function _getApprovalHash(ParamsLocation paramsMemoryLocation) internal view returns (bytes32 digest) {
+    /// @param typeHash The EIP-712 type hash for the struct being hashed
+    /// @param params The memory location of the struct data
+    /// @return digest The EIP-712 compliant digest
+    function _getApprovalHash(bytes32 typeHash, ParamsLocation params) internal view returns (bytes32 digest) {
         bytes32 structHash;
         bytes32 separator = DOMAIN_SEPARATOR;
         uint256 paramsSize = PARAMS_SIZE;
-        assembly ("memory-safe") {
-            structHash := keccak256(paramsMemoryLocation, paramsSize)
+        assembly {
+            // Build structHash = keccak256(typeHash || encodeData(params))
+            let wordBeforeParamPtr := sub(params, 0x20)
+            // Subtraction overflow causes the next line to revert with out of gas if params isn't allocated
+            let wordBeforeParam := mload(wordBeforeParamPtr)
+            mstore(wordBeforeParamPtr, typeHash)
+            structHash := keccak256(wordBeforeParamPtr, add(0x20, paramsSize))
+            // Restore original content
+            mstore(wordBeforeParamPtr, wordBeforeParam)
+
+            // Build digest = keccak256("\x19\x01" || domainSeparator || structHash)
             let ptr := mload(0x40)
             mstore(ptr, "\x19\x01")
             mstore(add(ptr, 0x02), separator)
@@ -112,7 +128,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         }
     }
 
-    /// @notice Internal settlement function called by EVC
+    /// @notice This function is called by EVC and continues the CoW settlement process inside an EVC batch while including any necessary security check.
     function evcInternalSettle(
         bytes calldata settleData,
         bytes calldata wrapperData,
@@ -121,20 +137,28 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
         require(expectedEvcInternalSettleCallHash == keccak256(msg.data), InvalidCallback());
         expectedEvcInternalSettleCallHash = bytes32(0);
+
         _evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
 
     function _invokeEvc(
+        bytes32 typeHash,
         bytes calldata settleData,
         bytes calldata wrapperData,
         bytes calldata remainingWrapperData,
-        ParamsLocation paramMemoryLocation,
+        ParamsLocation param,
         bytes memory signature,
         address owner,
         uint256 deadline
     ) internal {
+        // There are 2 ways that this contract can validate user operations: 1) the user pre-approves a hash with an on-chain call and grants this contract ability to operate on the user's behalf, or 2) they issue a signature which can be used to call EVC.permit()
+        // In case the user is using a hash (1), then there would be no signature supplied to this call and we have to resolve the hash instead
+        // If its flow (2), it happens through the call to EVC.permit() elsewhere: if the parameters don't match with the user intent, that call is assumed to revert.
+        // In this case, we need to check that `permit` has been called by the actual wrapper implementation.
+        bytes32 approvalHash = _getApprovalHash(typeHash, param);
         if (signature.length == 0) {
-            _consumePreApprovedHash(owner, _getApprovalHash(paramMemoryLocation));
+            _consumePreApprovedHash(owner, approvalHash);
+            // The deadline is checked by `EVC.permit()`, so we only check it here if we are using a pre-approved hash (aka, no signature) which would bypass that call
             require(deadline >= block.timestamp, OperationDeadlineExceeded(deadline, block.timestamp));
         }
 
@@ -145,8 +169,10 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
         // add any EVC actions that have to be performed before
         {
-            (IEVC.BatchItem[] memory beforeItems, bool isPermit) = _encodeBatchItemsBefore(paramMemoryLocation);
-            itemIndex = _addEvcBatchItems(items, beforeItems, itemIndex, owner, deadline, signature, isPermit);
+            (IEVC.BatchItem[] memory beforeItems, bool needsPermission) = _encodeBatchItemsBefore(param);
+            itemIndex = _addEvcBatchItems(
+                items, beforeItems, itemIndex, owner, deadline, signature, needsPermission ? approvalHash : bytes32(0)
+            );
         }
 
         // add the EVC callback to this (which calls settlement)
@@ -161,11 +187,14 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
         // add the EVC actions that have to be performed after
         {
-            (IEVC.BatchItem[] memory afterItems, bool isPermit) = _encodeBatchItemsAfter(paramMemoryLocation);
-            itemIndex = _addEvcBatchItems(items, afterItems, itemIndex, owner, deadline, signature, isPermit);
+            (IEVC.BatchItem[] memory afterItems, bool needsPermission) = _encodeBatchItemsAfter(param);
+            itemIndex = _addEvcBatchItems(
+                items, afterItems, itemIndex, owner, deadline, signature, needsPermission ? approvalHash : bytes32(0)
+            );
         }
 
         // shorten the length of the generated array to its actual length
+        require(itemIndex <= MAX_BATCH_OPERATIONS, ItemsOutOfBounds(itemIndex, MAX_BATCH_OPERATIONS));
         assembly ("memory-safe") {
             mstore(items, itemIndex)
         }
@@ -185,12 +214,13 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         address owner,
         uint256 deadline,
         bytes memory signature,
-        bool isPermit
+        bytes32 paramsHash
     ) internal view returns (uint256) {
         // There are two ways this contract can be executed: either the user approves this contract as
         // an operator and supplies a pre-approved hash for the operation to take, or they submit a permit hash
-        // for this specific instance
-        if (isPermit && signature.length > 0) {
+        // for this specific instance. If its the permit hash route, here we call `permit` instead of `batch` raw so that the EVC can authorize it.
+        // If there is an issue with the signature, the EVC will revert the batch call, which will bubble up through this contract to revert the entire wrappedSettle call.
+        if (paramsHash != bytes32(0) && signature.length > 0) {
             fullItems[itemIndex++] = IEVC.BatchItem({
                 onBehalfOfAccount: address(0),
                 targetContract: address(EVC),
@@ -204,7 +234,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
                         EVC.getNonce(bytes19(bytes20(owner)), NONCE_NAMESPACE),
                         deadline,
                         0, // value field (no ETH transferred to the EVC)
-                        abi.encodeCall(EVC.batch, addItems),
+                        abi.encodePacked(abi.encodeCall(EVC.batch, addItems), paramsHash),
                         signature
                     )
                 )

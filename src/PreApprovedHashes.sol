@@ -6,8 +6,8 @@ pragma solidity ^0.8;
 /// @dev Allows users to pre-approve specific operations without requiring signatures each time
 abstract contract PreApprovedHashes {
     /// @dev Marker value indicating a hash is pre-approved
-    uint256 private constant PRE_APPROVED = uint256(keccak256("CowEvcWrapper.PreApproved"));
-    uint256 private constant CONSUMED_PRE_APPROVED = uint256(keccak256("CowEvcWrapper.Consumed"));
+    uint256 internal constant PRE_APPROVED = uint256(keccak256("PreApprovedHashes.PreApproved"));
+    uint256 internal constant CONSUMED = uint256(keccak256("PreApprovedHashes.Consumed"));
 
     /// @notice Storage indicating whether or not a signed calldata hash has been approved by an owner
     /// @dev Maps owner -> hash(signedCalldata) -> approval status
@@ -19,20 +19,25 @@ abstract contract PreApprovedHashes {
     /// @notice Event emitted when a pre-approved hash is used and is no longer valid because its consumed
     event PreApprovedHashConsumed(address indexed owner, bytes32 indexed hash);
 
-    /// @notice Revert reason given when a hash has already been consumed, and therefore cannot be set
+    /// @notice Revert reason given when a hash has already been consumed, and therefore cannot be used
+    /// @dev If the hash had simply never been approved in the first place, the error will be HashNotApproved
     error AlreadyConsumed(address owner, bytes32 hash);
+
+    /// @notice Revert reason given when a pre approved hash is being consumed, but it hasnt actually been approved.
+    /// @dev If the hash has been approved in the past, but it was consumed, the error will be AlreadyConsumed
+    error HashNotApproved(address owner, bytes32 hash);
 
     /// @notice Pre-approve a hash of signed calldata for future execution
     /// @dev Once a hash is pre-approved, it can only be consumed once. This prevents replay attacks.
     /// @param hash The keccak256 hash of the signed calldata
     /// @param approved True to approve the hash, false to revoke approval
     function setPreApprovedHash(bytes32 hash, bool approved) external {
-        require(preApprovedHashes[msg.sender][hash] != CONSUMED_PRE_APPROVED, AlreadyConsumed(msg.sender, hash));
+        require(preApprovedHashes[msg.sender][hash] != CONSUMED, AlreadyConsumed(msg.sender, hash));
 
         if (approved) {
             preApprovedHashes[msg.sender][hash] = PRE_APPROVED;
         } else {
-            preApprovedHashes[msg.sender][hash] = 0;
+            preApprovedHashes[msg.sender][hash] = CONSUMED;
         }
         emit PreApprovedHash(msg.sender, hash, approved);
     }
@@ -48,14 +53,14 @@ abstract contract PreApprovedHashes {
     /// @notice Check if a hash is pre-approved for an owner. If it is, changes it to be consumed, and returns true.
     /// @param owner The owner address
     /// @param hash The hash to check
-    /// @return True if the hash was pre-approved and marked as consumed, false otherwise
-    function _consumePreApprovedHash(address owner, bytes32 hash) internal returns (bool) {
+    function _consumePreApprovedHash(address owner, bytes32 hash) internal {
         if (preApprovedHashes[owner][hash] == PRE_APPROVED) {
-            preApprovedHashes[owner][hash] = CONSUMED_PRE_APPROVED;
+            preApprovedHashes[owner][hash] = CONSUMED;
             emit PreApprovedHashConsumed(owner, hash);
-            return true;
+        } else if (preApprovedHashes[owner][hash] == CONSUMED) {
+            revert AlreadyConsumed(owner, hash);
         } else {
-            return false;
+            revert HashNotApproved(owner, hash);
         }
     }
 }

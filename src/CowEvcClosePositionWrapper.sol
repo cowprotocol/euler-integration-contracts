@@ -26,6 +26,11 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
     /// @dev The EIP-712 domain version used for computing the domain separator.
     bytes32 constant DOMAIN_VERSION = keccak256("1");
 
+    /// @dev The EIP-712 type hash for ClosePositionParams struct
+    bytes32 public constant CLOSE_POSITION_PARAMS_TYPE_HASH = keccak256(
+        "ClosePositionParams(address owner,address account,uint256 deadline,address borrowVault,address collateralVault,uint256 collateralAmount,uint256 repayAmount,bytes32 kind)"
+    );
+
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Close Position";
 
@@ -41,7 +46,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
     );
 
     constructor(address _evc, ICowSettlement _settlement)
-        CowEvcBaseWrapper(_evc, _settlement, DOMAIN_NAME, DOMAIN_VERSION, 2)
+        CowEvcBaseWrapper(_evc, _settlement, DOMAIN_NAME, DOMAIN_VERSION)
     {
         PARAMS_SIZE =
         abi.encode(
@@ -57,6 +62,8 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
             })
         )
         .length;
+
+        MAX_BATCH_OPERATIONS = 2;
     }
 
     /// @notice The information necessary to close a debt position against an euler vault by repaying debt and returning collateral
@@ -90,32 +97,21 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
 
     function _parseClosePositionParams(bytes calldata wrapperData)
         internal
-        view
-        returns (ClosePositionParams memory params, bytes memory signature, bytes calldata remainingWrapperData)
+        pure
+        returns (ClosePositionParams memory params, bytes memory signature)
     {
         (params, signature) = abi.decode(wrapperData, (ClosePositionParams, bytes));
-
-        // Calculate consumed bytes for abi.encode(ClosePositionParams, bytes)
-        // Structure:
-        // - 32 bytes: offset to params (0x40)
-        // - 32 bytes: offset to signature
-        // - x bytes: params data (computed size in constructor to prevent errors)
-        // - 32 bytes: signature length
-        // - N bytes: signature data (padded to 32-byte boundary)
-        uint256 consumed = PARAMS_SIZE + 64 + ((signature.length + 31) & ~uint256(31));
-
-        remainingWrapperData = wrapperData[consumed:];
     }
 
     /// @notice Helper function to compute the hash that would be approved
     /// @param params The ClosePositionParams to hash
     /// @return The hash of the signed calldata for these params
     function getApprovalHash(ClosePositionParams memory params) external view returns (bytes32) {
-        return _getApprovalHash(memoryLocation(params));
+        return _getApprovalHash(CLOSE_POSITION_PARAMS_TYPE_HASH, memoryLocation(params));
     }
 
     /// @inheritdoc CowWrapper
-    function validateWrapperData(bytes calldata wrapperData) external view override {
+    function validateWrapperData(bytes calldata wrapperData) external pure override {
         // Validate by attempting to parse the wrapper data
         // Will revert if the data is malformed
         _parseClosePositionParams(wrapperData);
@@ -123,14 +119,16 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
 
     function getSignedCalldata(ClosePositionParams memory params) external view returns (bytes memory) {
         (IEVC.BatchItem[] memory items,) = _encodeBatchItemsAfter(memoryLocation(params));
-        return abi.encodeCall(IEVC.batch, (items));
+        return abi.encodePacked(
+            abi.encodeCall(IEVC.batch, items), _getApprovalHash(CLOSE_POSITION_PARAMS_TYPE_HASH, memoryLocation(params))
+        );
     }
 
     function _encodeBatchItemsAfter(ParamsLocation paramsLocation)
         internal
         view
         override
-        returns (IEVC.BatchItem[] memory items, bool needsPermit)
+        returns (IEVC.BatchItem[] memory items, bool needsPermission)
     {
         ClosePositionParams memory params = paramsFromMemory(paramsLocation);
         items = new IEVC.BatchItem[](1);
@@ -143,7 +141,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
             data: abi.encodeCall(this.helperRepay, (params.borrowVault, params.owner, params.account))
         });
 
-        needsPermit = true;
+        needsPermission = true;
     }
 
     /// @notice Called by the EVC after a CoW swap is completed to repay the user's debt. Will use all available collateral in the user's account to do so.
@@ -174,7 +172,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         IBorrowing(vault).repay(repayAmount, account);
     }
 
-    /// @notice Implementation of GPv2Wrapper._wrap - executes EVC operations to close a position
+    /// @notice Implementation of CowWrapper._wrap - executes EVC operations to close a position
     /// @param settleData Data which will be used for the parameters in a call to `CowSettlement.settle`
     /// @param wrapperData Additional data containing ClosePositionParams
     function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
@@ -182,11 +180,10 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         override
     {
         // Decode wrapper data into ClosePositionParams
-        ClosePositionParams memory params;
-        bytes memory signature;
-        (params, signature,) = _parseClosePositionParams(wrapperData);
+        (ClosePositionParams memory params, bytes memory signature) = _parseClosePositionParams(wrapperData);
 
         _invokeEvc(
+            CLOSE_POSITION_PARAMS_TYPE_HASH,
             settleData,
             wrapperData,
             remainingWrapperData,
@@ -212,7 +209,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         bytes calldata wrapperData,
         bytes calldata remainingWrapperData
     ) internal override {
-        (ClosePositionParams memory params,,) = _parseClosePositionParams(wrapperData);
+        (ClosePositionParams memory params,) = _parseClosePositionParams(wrapperData);
         // If a subaccount is being used, we need to transfer the required amount of collateral for the trade into the owner's wallet.
         // This is required becuase the settlement contract can only pull funds from the wallet that signed the transaction.
         // Since its not possible for a subaccount to sign a transaction due to the private key not existing and their being no
@@ -241,7 +238,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
             );
         }
 
-        // Use GPv2Wrapper's _internalSettle to call the settlement contract
+        // Use CowWrapper's _internalSettle to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
         _next(settleData, remainingWrapperData);
 
