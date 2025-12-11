@@ -188,8 +188,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         bytes memory permitSignature = _createPermitSignature(params);
 
         // Record balances before
-        uint256 susdsBalanceBefore = IERC20(ESUSDS).balanceOf(user);
-        uint256 debtBefore = IEVault(EWETH).debtOf(account);
+        assertEq(IEVault(EWETH).debtOf(account), 0, "User should start with no debt");
+        assertEq(IERC20(ESUSDS).balanceOf(account), 0, "User should start with no eSUSDS");
 
         // Encode settlement and wrapper data
         bytes memory settleData = abi.encodeCall(
@@ -219,8 +219,13 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             expectedDebt: DEFAULT_BORROW_AMOUNT,
             allowedDelta: 1 ether
         });
-        assertEq(debtBefore, 0, "User should start with no debt");
-        assertEq(susdsBalanceBefore, 0, "User should start with no eSUSDS");
+        assertEq(IEVault(EWETH).debtOf(account), params.borrowAmount, "User's account should have gone into debt");
+        assertApproxEqAbs(
+            IERC20(ESUSDS).balanceOf(account), 
+            params.collateralAmount + 2500e18, 
+            10e18,
+            "User's account should have collateral"
+        );
     }
 
     /// @notice Test that unauthorized users cannot call evcInternalSettle directly
