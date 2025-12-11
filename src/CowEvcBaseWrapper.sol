@@ -131,11 +131,14 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         }
     }
 
+    /// @notice Generates the permit data that would be used for the given EVC batch items (presumably generated from params)
     function _encodePermitData(IEVC.BatchItem[] memory items, ParamsLocation params)
         internal
         view
         returns (bytes memory)
     {
+        // The abi.encodeCall() part consists of the batch call that we want to execute. The additional data tacked on the end is to ensure
+        // the provided parameters are all validated against the user signature, even if `items` doesn't completely use the parameters in effect.
         return abi.encodePacked(abi.encodeCall(IEVC.batch, items), _getApprovalHash(params));
     }
 
