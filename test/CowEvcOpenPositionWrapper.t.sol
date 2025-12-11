@@ -157,14 +157,20 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         });
 
         // Setup interactions - swap WETH to SUSDS, deposit to vault, and skim
+        // These are effectively the things that a solver would be doing in this sort of a situation with interactions
         r.interactions = [
             new ICowSettlement.Interaction[](0),
             new ICowSettlement.Interaction[](3),
             new ICowSettlement.Interaction[](0)
         ];
+        // First interaction: convert the borrowed tokens on a DEX (Uniswap, for example)
         r.interactions[1][0] = getSwapInteraction(sellToken, IERC4626(buyVaultToken).asset(), sellAmount);
+        // Second interaction: The converted tokens get transferred to the euler vault (a "deposit")
         r.interactions[1][1] = getDepositInteraction(buyVaultToken, buyAmount + 1 ether);
+        // Third interaction: The Euler Vault recognizes the new tokens and transfers to us the vault tokens
         r.interactions[1][2] = getSkimInteraction(buyVaultToken);
+
+        // By the way, it is technically possible to deposit without having to do a skim. But I find the parameters a bit more convenient, and an extra approval isnt required because we initiate the transfer.
     }
 
     /// @notice Test opening a leveraged position using the new wrapper
