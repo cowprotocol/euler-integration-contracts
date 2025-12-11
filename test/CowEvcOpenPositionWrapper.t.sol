@@ -199,7 +199,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         bytes memory wrapperData = encodeWrapperData(abi.encode(params, permitSignature));
 
         // Expect event emission
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit CowEvcOpenPositionWrapper.CowEvcPositionOpened(
             params.owner,
             params.account,
