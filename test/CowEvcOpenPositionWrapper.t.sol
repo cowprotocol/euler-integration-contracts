@@ -111,17 +111,19 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     /// @notice Verify position was opened successfully
     function _verifyPositionOpened(
         address account,
+        address collateralVaultToken,
+        address borrowVaultToken,
         uint256 expectedCollateral,
         uint256 expectedDebt,
         uint256 allowedDelta
     ) internal view {
         assertApproxEqAbs(
-            IEVault(ESUSDS).convertToAssets(IERC20(ESUSDS).balanceOf(account)),
+            IEVault(collateralVaultToken).convertToAssets(IERC20(collateralVaultToken).balanceOf(account)),
             expectedCollateral,
             allowedDelta,
             "User should have collateral deposited"
         );
-        assertEq(IEVault(EWETH).debtOf(account), expectedDebt, "User should have debt");
+        assertEq(IEVault(borrowVaultToken).debtOf(account), expectedDebt, "User should have debt");
     }
 
     /// @notice Create settlement data for opening a leveraged position
@@ -215,17 +217,12 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         // Verify position was created successfully
         _verifyPositionOpened({
             account: account,
+            collateralVaultToken: ESUSDS,
+            borrowVaultToken: EWETH,
             expectedCollateral: DEFAULT_BUY_AMOUNT + SUSDS_MARGIN,
             expectedDebt: DEFAULT_BORROW_AMOUNT,
             allowedDelta: 1 ether
         });
-        assertEq(IEVault(EWETH).debtOf(account), params.borrowAmount, "User's account should have gone into debt");
-        assertApproxEqAbs(
-            IERC20(ESUSDS).balanceOf(account), 
-            params.collateralAmount + 2500e18, 
-            10e18,
-            "User's account should have collateral"
-        );
     }
 
     /// @notice Test that unauthorized users cannot call evcInternalSettle directly
@@ -317,8 +314,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         // User pre-approves the order on CowSwap
         // Does not need to run here because its executed in `setupCowOrder`
 
-        // Record balances before
-        uint256 debtBefore = IEVault(EWETH).debtOf(account);
+        assertEq(IEVault(EWETH).debtOf(account), 0, "User should start with no debt");
 
         // Encode settlement and wrapper data (empty signature since pre-approved)
         bytes memory settleData = abi.encodeCall(
@@ -342,8 +338,14 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         executeWrappedSettlement(address(openPositionWrapper), settleData, wrapperData);
 
         // Verify the position was created successfully
-        _verifyPositionOpened(account, DEFAULT_BUY_AMOUNT + SUSDS_MARGIN, DEFAULT_BORROW_AMOUNT, 1 ether);
-        assertEq(debtBefore, 0, "User should start with no debt");
+        _verifyPositionOpened({
+            account: account,
+            collateralVaultToken: ESUSDS,
+            borrowVaultToken: EWETH,
+            expectedCollateral: DEFAULT_BUY_AMOUNT + SUSDS_MARGIN,
+            expectedDebt: DEFAULT_BORROW_AMOUNT,
+            allowedDelta: 1 ether
+        });
     }
 
     /// @notice Test that invalid signature causes the transaction to revert
@@ -580,18 +582,33 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Verify all three positions were opened successfully
         // User1: Should have SUSDS collateral and WETH debt
-        _verifyPositionOpened(account1, 1000 ether + 2500 ether, 1 ether, 100 ether);
+        _verifyPositionOpened({
+            account: account1,
+            collateralVaultToken: ESUSDS,
+            borrowVaultToken: EWETH,
+            expectedCollateral: 1000 ether + 2500 ether,
+            expectedDebt: 1 ether,
+            allowedDelta: 100 ether
+        });
 
         // User2: Should have SUSDS collateral and WETH debt (same as User1)
-        _verifyPositionOpened(account2, 1000 ether + 7500 ether, 3 ether, 100 ether);
+        _verifyPositionOpened({
+            account: account2,
+            collateralVaultToken: ESUSDS,
+            borrowVaultToken: EWETH,
+            expectedCollateral: 1000 ether + 7500 ether,
+            expectedDebt: 3 ether,
+            allowedDelta: 100 ether
+        });
 
         // User3: Should have WETH collateral and SUSDS debt
-        assertApproxEqAbs(
-            IEVault(EWETH).convertToAssets(IERC20(EWETH).balanceOf(account3)),
-            1 ether + 2 ether,
-            0.2 ether,
-            "User3 should have WETH collateral deposited"
-        );
-        assertEq(IEVault(ESUSDS).debtOf(account3), 5000 ether, "User3 should have SUSDS debt");
+        _verifyPositionOpened({
+            account: account3,
+            collateralVaultToken: EWETH,
+            borrowVaultToken: ESUSDS,
+            expectedCollateral: 1 ether + 2 ether,
+            expectedDebt: 5000 ether,
+            allowedDelta: 0.1 ether
+        });
     }
 }
