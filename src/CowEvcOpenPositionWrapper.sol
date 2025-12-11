@@ -156,7 +156,7 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
         returns (IEVC.BatchItem[] memory items, bool needsPermission)
     {
         OpenPositionParams memory params = paramsFromMemory(paramsLocation);
-        items = new IEVC.BatchItem[](4);
+        items = new IEVC.BatchItem[](MAX_BATCH_OPERATIONS - 1);
 
         // 1. Enable collateral
         items[0] = IEVC.BatchItem({
