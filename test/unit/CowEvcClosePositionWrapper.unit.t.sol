@@ -215,7 +215,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
         params.repayAmount = 500e18; // Less than debt
 
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         assertEq(items.length, 1, "Should have 1 batch item for partial repay");
@@ -226,7 +226,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
 
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         assertEq(items[0].targetContract, address(wrapper), "First item should target wrapper");
@@ -711,7 +711,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         params.account = validOwner;
 
         // Build the signed calldata that will be included in the permit
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
 
         // Create the permit digest as MockEVC would expect it
         bytes32 permitStructHash = keccak256(
@@ -788,7 +788,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
         params.repayAmount = type(uint256).max;
 
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         // Should create repay item
@@ -801,7 +801,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
         params.account = OWNER; // Same as owner
 
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         assertEq(items[0].onBehalfOfAccount, OWNER, "Should operate on behalf of same account");
@@ -812,7 +812,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
 
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
         assertEq(items.length, 1, "Should have 1 item");
     }

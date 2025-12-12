@@ -25,11 +25,6 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
     /// @dev The EIP-712 domain version used for computing the domain separator.
     bytes32 constant DOMAIN_VERSION = keccak256("1");
 
-    /// @dev The EIP-712 type hash for OpenPositionParams struct
-    bytes32 public constant OPEN_POSITION_PARAMS_TYPE_HASH = keccak256(
-        "OpenPositionParams(address owner,address account,uint256 deadline,address collateralVault,address borrowVault,uint256 collateralAmount,uint256 borrowAmount)"
-    );
-
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Open Position";
 
@@ -61,6 +56,10 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
         .length;
 
         MAX_BATCH_OPERATIONS = 5;
+
+        PARAMS_TYPE_HASH = keccak256(
+            "OpenPositionParams(address owner,address account,uint256 deadline,address collateralVault,address borrowVault,uint256 collateralAmount,uint256 borrowAmount)"
+        );
     }
 
     /// @notice The information necessary to open a debt position against an euler vault using collateral as backing.
@@ -101,7 +100,7 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
     /// @param params The OpenPositionParams to hash
     /// @return The hash of the signed calldata for these params
     function getApprovalHash(OpenPositionParams memory params) external view returns (bytes32) {
-        return _getApprovalHash(OPEN_POSITION_PARAMS_TYPE_HASH, memoryLocation(params));
+        return _getApprovalHash(memoryLocation(params));
     }
 
     /// @inheritdoc CowWrapper
@@ -122,7 +121,6 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
         (OpenPositionParams memory params, bytes memory signature) = _parseOpenPositionParams(wrapperData);
 
         _invokeEvc(
-            OPEN_POSITION_PARAMS_TYPE_HASH,
             settleData,
             wrapperData,
             remainingWrapperData,
@@ -142,11 +140,12 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
         );
     }
 
-    function getSignedCalldata(OpenPositionParams memory params) external view returns (bytes memory) {
+    /// @notice Called by an offchain process to determine what data should be signed in a call to `wrappedSettle`.
+    /// @param params The parameters object provided as input to the wrapper
+    /// @return The `EVC` call that would be submitted to `EVC.permit`. This would need to be signed as documented https://evc.wtf/docs/concepts/internals/permit.
+    function encodePermitData(OpenPositionParams memory params) external view returns (bytes memory) {
         (IEVC.BatchItem[] memory items,) = _encodeBatchItemsBefore(memoryLocation(params));
-        return abi.encodePacked(
-            abi.encodeCall(IEVC.batch, items), _getApprovalHash(OPEN_POSITION_PARAMS_TYPE_HASH, memoryLocation(params))
-        );
+        return _encodePermitData(items, memoryLocation(params));
     }
 
     function _encodeBatchItemsBefore(ParamsLocation paramsLocation)
@@ -156,7 +155,7 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
         returns (IEVC.BatchItem[] memory items, bool needsPermission)
     {
         OpenPositionParams memory params = paramsFromMemory(paramsLocation);
-        items = new IEVC.BatchItem[](4);
+        items = new IEVC.BatchItem[](MAX_BATCH_OPERATIONS - 1);
 
         // 1. Enable collateral
         items[0] = IEVC.BatchItem({

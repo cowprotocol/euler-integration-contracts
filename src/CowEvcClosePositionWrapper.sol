@@ -26,11 +26,6 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
     /// @dev The EIP-712 domain version used for computing the domain separator.
     bytes32 constant DOMAIN_VERSION = keccak256("1");
 
-    /// @dev The EIP-712 type hash for ClosePositionParams struct
-    bytes32 public constant CLOSE_POSITION_PARAMS_TYPE_HASH = keccak256(
-        "ClosePositionParams(address owner,address account,uint256 deadline,address borrowVault,address collateralVault,uint256 collateralAmount,uint256 repayAmount,bytes32 kind)"
-    );
-
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Close Position";
 
@@ -64,6 +59,10 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         .length;
 
         MAX_BATCH_OPERATIONS = 2;
+
+        PARAMS_TYPE_HASH = keccak256(
+            "ClosePositionParams(address owner,address account,uint256 deadline,address borrowVault,address collateralVault,uint256 collateralAmount,uint256 repayAmount,bytes32 kind)"
+        );
     }
 
     /// @notice The information necessary to close a debt position against an euler vault by repaying debt and returning collateral
@@ -107,7 +106,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
     /// @param params The ClosePositionParams to hash
     /// @return The hash of the signed calldata for these params
     function getApprovalHash(ClosePositionParams memory params) external view returns (bytes32) {
-        return _getApprovalHash(CLOSE_POSITION_PARAMS_TYPE_HASH, memoryLocation(params));
+        return _getApprovalHash(memoryLocation(params));
     }
 
     /// @inheritdoc CowWrapper
@@ -117,11 +116,12 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         _parseClosePositionParams(wrapperData);
     }
 
-    function getSignedCalldata(ClosePositionParams memory params) external view returns (bytes memory) {
+    /// @notice Called by an offchain process to determine what data should be signed in a call to `wrappedSettle`.
+    /// @param params The parameters object provided as input to the wrapper
+    /// @return The `EVC` call that would be submitted to `EVC.permit`. This would need to be signed as documented https://evc.wtf/docs/concepts/internals/permit.
+    function encodePermitData(ClosePositionParams memory params) external view returns (bytes memory) {
         (IEVC.BatchItem[] memory items,) = _encodeBatchItemsAfter(memoryLocation(params));
-        return abi.encodePacked(
-            abi.encodeCall(IEVC.batch, items), _getApprovalHash(CLOSE_POSITION_PARAMS_TYPE_HASH, memoryLocation(params))
-        );
+        return _encodePermitData(items, memoryLocation(params));
     }
 
     function _encodeBatchItemsAfter(ParamsLocation paramsLocation)
@@ -183,7 +183,6 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         (ClosePositionParams memory params, bytes memory signature) = _parseClosePositionParams(wrapperData);
 
         _invokeEvc(
-            CLOSE_POSITION_PARAMS_TYPE_HASH,
             settleData,
             wrapperData,
             remainingWrapperData,
