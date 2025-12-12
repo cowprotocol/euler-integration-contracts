@@ -13,21 +13,6 @@ import {ICowSettlement} from "../../src/CowWrapper.sol";
 
 import {MilkSwap} from "./MilkSwap.sol";
 
-// intermediate contrct that acts as solver and creates a "batched" transaction
-contract Solver {
-    function runBatch(address[] memory targets, bytes[] memory datas) external {
-        for (uint256 i = 0; i < targets.length; i++) {
-            (bool success, bytes memory returnData) = targets[i].call(datas[i]);
-            if (!success) {
-                // Bubble up the actual revert reason
-                assembly {
-                    revert(add(returnData, 32), mload(returnData))
-                }
-            }
-        }
-    }
-}
-
 contract CowBaseTest is Test {
     uint256 mainnetFork;
     uint256 constant BLOCK_NUMBER = 22546006;
@@ -57,11 +42,7 @@ contract CowBaseTest is Test {
     uint256 privateKey2;
     uint256 privateKey3;
 
-    Solver internal solver;
-
     function setUp() public virtual {
-        solver = new Solver();
-
         if (bytes(forkRpcUrl).length == 0) {
             revert("Must supply FORK_RPC_URL");
         }
@@ -75,12 +56,12 @@ contract CowBaseTest is Test {
         (user2, privateKey2) = makeAddrAndKey("user 2");
         (user3, privateKey3) = makeAddrAndKey("user 3");
 
-        // Add wrapper and our fake solver as solver
+        // Add test contract as solver so we can call wrappedSettle directly
         GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
         address manager = allowList.manager();
         // vm.deal(address(manager), 1e18);
         vm.startPrank(manager);
-        allowList.addSolver(address(solver));
+        allowList.addSolver(address(this));
         vm.stopPrank();
 
         // Setup some liquidity for MilkSwap
@@ -236,12 +217,4 @@ contract CowBaseTest is Test {
         return abi.encodePacked(uint16(paramsAndSignature.length), paramsAndSignature);
     }
 
-    /// @notice Execute wrapped settlement through solver
-    function executeWrappedSettlement(address wrapper, bytes memory settleData, bytes memory wrapperData) internal {
-        address[] memory targets = new address[](1);
-        bytes[] memory datas = new bytes[](1);
-        targets[0] = wrapper;
-        datas[0] = abi.encodeWithSignature("wrappedSettle(bytes,bytes)", settleData, wrapperData);
-        solver.runBatch(targets, datas);
-    }
 }

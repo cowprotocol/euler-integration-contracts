@@ -213,7 +213,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         );
 
         // Execute wrapped settlement
-        executeWrappedSettlement(address(openPositionWrapper), settleData, wrapperData);
+        CowWrapper(address(openPositionWrapper)).wrappedSettle(settleData, wrapperData);
 
         // Verify position was created successfully
         _verifyPositionOpened({
@@ -246,7 +246,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         bytes memory wrapperData = "";
 
         // Try to call wrappedSettle as non-solver
-        vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, address(this)));
+        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, user));
         openPositionWrapper.wrappedSettle(settleData, wrapperData);
     }
 
@@ -336,7 +337,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         );
 
         // Execute wrapped settlement
-        executeWrappedSettlement(address(openPositionWrapper), settleData, wrapperData);
+        CowWrapper(address(openPositionWrapper)).wrappedSettle(settleData, wrapperData);
 
         // Verify the position was created successfully
         _verifyPositionOpened({
@@ -387,7 +388,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Execute wrapped settlement - should revert with EVC_NotAuthorized due to invalid signature
         vm.expectRevert(abi.encodeWithSignature("EVC_NotAuthorized()"));
-        executeWrappedSettlement(address(openPositionWrapper), settleData, wrapperData);
+        CowWrapper(address(openPositionWrapper)).wrappedSettle(settleData, wrapperData);
     }
 
     /// @notice Test that the wrapper can handle being called three times in the same chain
@@ -573,14 +574,10 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             wrapper3Data
         );
 
-        // Execute wrapped settlement through solver
+        // Execute wrapped settlement
         // Note: We don't use expectEmit here because there are many Transfer events
         // from the complex multi-user settlement that interfere with strict event matching
-        address[] memory targets = new address[](1);
-        bytes[] memory datas = new bytes[](1);
-        targets[0] = address(openPositionWrapper);
-        datas[0] = abi.encodeCall(openPositionWrapper.wrappedSettle, (settleData, wrapperData));
-        solver.runBatch(targets, datas);
+        openPositionWrapper.wrappedSettle(settleData, wrapperData);
 
         // Verify all three positions were opened successfully
         // User1: Should have SUSDS collateral and WETH debt
