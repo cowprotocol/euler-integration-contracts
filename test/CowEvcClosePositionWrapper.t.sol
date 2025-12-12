@@ -153,7 +153,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             0,
             params.deadline,
             0,
-            closePositionWrapper.getSignedCalldata(params)
+            closePositionWrapper.encodePermitData(params)
         );
     }
 
@@ -250,7 +250,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         );
 
         // Execute wrapped settlement
-        executeWrappedSettlement(address(closePositionWrapper), settleData, wrapperData);
+        CowWrapper(address(closePositionWrapper)).wrappedSettle(settleData, wrapperData);
 
         // Verify the position was closed successfully
         assertEq(IEVault(EWETH).debtOf(account), 0, "User should have no debt after closing");
@@ -281,7 +281,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         bytes memory wrapperData = hex"0000";
 
         // Try to call wrappedSettle as non-solver
-        vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, address(this)));
+        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, user));
         closePositionWrapper.wrappedSettle(settleData, wrapperData);
     }
 
@@ -336,7 +337,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         );
 
         // Execute wrapped settlement
-        executeWrappedSettlement(address(closePositionWrapper), settleData, wrapperData);
+        CowWrapper(address(closePositionWrapper)).wrappedSettle(settleData, wrapperData);
 
         // Verify partial repayment
         uint256 debtAfter = IEVault(EWETH).debtOf(account);
@@ -442,7 +443,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         );
 
         // Execute wrapped settlement
-        executeWrappedSettlement(address(closePositionWrapper), settleData, wrapperData);
+        CowWrapper(address(closePositionWrapper)).wrappedSettle(settleData, wrapperData);
 
         // Verify the position was closed successfully
         assertEq(IEVault(EWETH).debtOf(account), 0, "User should have no debt after closing");
@@ -480,7 +481,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             0,
             params.deadline,
             0,
-            closePositionWrapper.getSignedCalldata(params)
+            closePositionWrapper.encodePermitData(params)
         );
 
         // Encode settlement and wrapper data
@@ -492,7 +493,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Execute wrapped settlement - should revert with EVC_NotAuthorized due to invalid signature
         vm.expectRevert(abi.encodeWithSignature("EVC_NotAuthorized()"));
-        executeWrappedSettlement(address(closePositionWrapper), settleData, wrapperData);
+        CowWrapper(address(closePositionWrapper)).wrappedSettle(settleData, wrapperData);
     }
 
     /// @notice Test that the wrapper can handle being called three times in the same chain
@@ -627,11 +628,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         );
 
         // Execute wrapped settlement
-        address[] memory targets = new address[](1);
-        bytes[] memory datas = new bytes[](1);
-        targets[0] = address(closePositionWrapper);
-        datas[0] = abi.encodeCall(closePositionWrapper.wrappedSettle, (settleData, wrapperData));
-        solver.runBatch(targets, datas);
+        closePositionWrapper.wrappedSettle(settleData, wrapperData);
 
         // Verify all positions closed successfully
         assertEq(IEVault(EWETH).debtOf(account1), 0, "User1 should have no WETH debt after closing");
