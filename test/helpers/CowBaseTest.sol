@@ -216,5 +216,4 @@ contract CowBaseTest is Test {
     function encodeWrapperData(bytes memory paramsAndSignature) internal pure returns (bytes memory) {
         return abi.encodePacked(uint16(paramsAndSignature.length), paramsAndSignature);
     }
-
 }

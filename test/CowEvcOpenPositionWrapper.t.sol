@@ -86,10 +86,10 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     }
 
     /// @notice Create permit signature for EVC operator
-    function _createPermitSignatureFor(CowEvcOpenPositionWrapper.OpenPositionParams memory params, uint256 userPrivateKey)
-        internal
-        returns (bytes memory)
-    {
+    function _createPermitSignatureFor(
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params,
+        uint256 userPrivateKey
+    ) internal returns (bytes memory) {
         ecdsa.setPrivateKey(userPrivateKey);
         return ecdsa.signPermit(
             params.owner,
