@@ -212,15 +212,14 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, user);
 
         // Get settlement data
-        SettlementData memory settlement =
-            getCollateralSwapSettlement({
-                owner: user,
-                receiver: user,
-                sellVaultToken: ESUSDS,
-                buyVaultToken: EWBTC,
-                sellAmount: DEFAULT_SWAP_AMOUNT,
-                buyAmount: DEFAULT_BUY_AMOUNT
-            });
+        SettlementData memory settlement = getCollateralSwapSettlement({
+            owner: user,
+            receiver: user,
+            sellVaultToken: ESUSDS,
+            buyVaultToken: EWBTC,
+            sellAmount: DEFAULT_SWAP_AMOUNT,
+            buyAmount: DEFAULT_BUY_AMOUNT
+        });
 
         // User deposits SUSDS collateral
         vm.startPrank(user);
@@ -274,15 +273,14 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data - receiver is the subaccount
-        SettlementData memory settlement =
-            getCollateralSwapSettlement({
-                owner: user,
-                receiver: account,
-                sellVaultToken: ESUSDS,
-                buyVaultToken: EWBTC,
-                sellAmount: DEFAULT_SWAP_AMOUNT,
-                buyAmount: DEFAULT_BUY_AMOUNT
-            });
+        SettlementData memory settlement = getCollateralSwapSettlement({
+            owner: user,
+            receiver: account,
+            sellVaultToken: ESUSDS,
+            buyVaultToken: EWBTC,
+            sellAmount: DEFAULT_SWAP_AMOUNT,
+            buyAmount: DEFAULT_BUY_AMOUNT
+        });
 
         // User deposits SUSDS collateral to subaccount
         vm.startPrank(user);
@@ -337,15 +335,14 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, user);
 
         // Get settlement data
-        SettlementData memory settlement =
-            getCollateralSwapSettlement({
-                owner: user,
-                receiver: user,
-                sellVaultToken: ESUSDS,
-                buyVaultToken: EWBTC,
-                sellAmount: DEFAULT_SWAP_AMOUNT,
-                buyAmount: DEFAULT_BUY_AMOUNT
-            });
+        SettlementData memory settlement = getCollateralSwapSettlement({
+            owner: user,
+            receiver: user,
+            sellVaultToken: ESUSDS,
+            buyVaultToken: EWBTC,
+            sellAmount: DEFAULT_SWAP_AMOUNT,
+            buyAmount: DEFAULT_BUY_AMOUNT
+        });
 
         // User deposits SUSDS collateral
         vm.startPrank(user);
@@ -445,15 +442,14 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         params.swapAmount = sellAmount; // Override swap amount for this test
 
         // Get settlement data
-        SettlementData memory settlement =
-            getCollateralSwapSettlement({
-                owner: user,
-                receiver: account,
-                sellVaultToken: ESUSDS,
-                buyVaultToken: EWBTC,
-                sellAmount: sellAmount,
-                buyAmount: buyAmount
-            });
+        SettlementData memory settlement = getCollateralSwapSettlement({
+            owner: user,
+            receiver: account,
+            sellVaultToken: ESUSDS,
+            buyVaultToken: EWBTC,
+            sellAmount: sellAmount,
+            buyAmount: buyAmount
+        });
 
         // User signs the order on cowswap (already done in setupCowOrder)
 
