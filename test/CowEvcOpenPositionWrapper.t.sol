@@ -178,7 +178,14 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Get settlement data
         SettlementData memory settlement =
-            getOpenPositionSettlement(user, account, WETH, ESUSDS, DEFAULT_BORROW_AMOUNT, DEFAULT_BUY_AMOUNT);
+            getOpenPositionSettlement({
+                owner: user,
+                receiver: account,
+                sellToken: WETH,
+                buyVaultToken: ESUSDS,
+                sellAmount: DEFAULT_BORROW_AMOUNT,
+                buyAmount: DEFAULT_BUY_AMOUNT
+            });
 
         // Setup user approvals
         vm.prank(user);
@@ -307,7 +314,14 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Get settlement data
         SettlementData memory settlement =
-            getOpenPositionSettlement(user, account, WETH, ESUSDS, DEFAULT_BORROW_AMOUNT, DEFAULT_BUY_AMOUNT);
+            getOpenPositionSettlement({
+                owner: user,
+                receiver: account,
+                sellToken: WETH,
+                buyVaultToken: ESUSDS,
+                sellAmount: DEFAULT_BORROW_AMOUNT,
+                buyAmount: DEFAULT_BUY_AMOUNT
+            });
 
         // Setup user approvals and pre-approve hash
         bytes32 hash = openPositionWrapper.getApprovalHash(params);
@@ -326,7 +340,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         bytes memory wrapperData = encodeWrapperData(abi.encode(params, new bytes(0)));
 
         // Expect event emission
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit CowEvcOpenPositionWrapper.CowEvcPositionOpened(
             params.owner,
             params.account,
@@ -361,7 +375,14 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Get settlement data
         SettlementData memory settlement =
-            getOpenPositionSettlement(user, account, WETH, ESUSDS, DEFAULT_BORROW_AMOUNT, DEFAULT_BUY_AMOUNT);
+            getOpenPositionSettlement({
+                owner: user,
+                receiver: account,
+                sellToken: WETH,
+                buyVaultToken: ESUSDS,
+                sellAmount: DEFAULT_BORROW_AMOUNT,
+                buyAmount: DEFAULT_BUY_AMOUNT
+            });
 
         // Setup user approvals
         vm.prank(user);
@@ -528,13 +549,43 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         ICowSettlement.Trade[] memory trades = new ICowSettlement.Trade[](3);
 
         // Trade 1: User1 sells WETH for eSUSDS
-        (trades[0],,) = setupCowOrder(tokens, 1, 2, params1.borrowAmount, 0, validTo, user, account1, false);
+        (trades[0],,) = setupCowOrder({
+            tokens: tokens,
+            sellTokenIndex: 1,
+            buyTokenIndex: 2,
+            sellAmount: params1.borrowAmount,
+            buyAmount: 0,
+            validTo: validTo,
+            owner: user,
+            receiver: account1,
+            isBuy: false
+        });
 
         // Trade 2: User2 sells WETH for eSUSDS (same direction as User1)
-        (trades[1],,) = setupCowOrder(tokens, 1, 2, params2.borrowAmount, 0, validTo, user2, account2, false);
+        (trades[1],,) = setupCowOrder({
+            tokens: tokens,
+            sellTokenIndex: 1,
+            buyTokenIndex: 2,
+            sellAmount: params2.borrowAmount,
+            buyAmount: 0,
+            validTo: validTo,
+            owner: user2,
+            receiver: account2,
+            isBuy: false
+        });
 
         // Trade 3: User3 sells SUSDS for eWETH (opposite direction)
-        (trades[2],,) = setupCowOrder(tokens, 0, 3, params3.borrowAmount, 0, validTo, user3, account3, false);
+        (trades[2],,) = setupCowOrder({
+            tokens: tokens,
+            sellTokenIndex: 0,
+            buyTokenIndex: 3,
+            sellAmount: params3.borrowAmount,
+            buyAmount: 0,
+            validTo: validTo,
+            owner: user3,
+            receiver: account3,
+            isBuy: false
+        });
 
         // Setup interactions to handle the swaps and deposits
         ICowSettlement.Interaction[][3] memory interactions;
