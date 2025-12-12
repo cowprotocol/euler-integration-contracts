@@ -177,15 +177,14 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement =
-            getOpenPositionSettlement({
-                owner: user,
-                receiver: account,
-                sellToken: WETH,
-                buyVaultToken: ESUSDS,
-                sellAmount: DEFAULT_BORROW_AMOUNT,
-                buyAmount: DEFAULT_BUY_AMOUNT
-            });
+        SettlementData memory settlement = getOpenPositionSettlement({
+            owner: user,
+            receiver: account,
+            sellToken: WETH,
+            buyVaultToken: ESUSDS,
+            sellAmount: DEFAULT_BORROW_AMOUNT,
+            buyAmount: DEFAULT_BUY_AMOUNT
+        });
 
         // Setup user approvals
         vm.prank(user);
@@ -313,15 +312,14 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement =
-            getOpenPositionSettlement({
-                owner: user,
-                receiver: account,
-                sellToken: WETH,
-                buyVaultToken: ESUSDS,
-                sellAmount: DEFAULT_BORROW_AMOUNT,
-                buyAmount: DEFAULT_BUY_AMOUNT
-            });
+        SettlementData memory settlement = getOpenPositionSettlement({
+            owner: user,
+            receiver: account,
+            sellToken: WETH,
+            buyVaultToken: ESUSDS,
+            sellAmount: DEFAULT_BORROW_AMOUNT,
+            buyAmount: DEFAULT_BUY_AMOUNT
+        });
 
         // Setup user approvals and pre-approve hash
         bytes32 hash = openPositionWrapper.getApprovalHash(params);
@@ -374,15 +372,14 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement =
-            getOpenPositionSettlement({
-                owner: user,
-                receiver: account,
-                sellToken: WETH,
-                buyVaultToken: ESUSDS,
-                sellAmount: DEFAULT_BORROW_AMOUNT,
-                buyAmount: DEFAULT_BUY_AMOUNT
-            });
+        SettlementData memory settlement = getOpenPositionSettlement({
+            owner: user,
+            receiver: account,
+            sellToken: WETH,
+            buyVaultToken: ESUSDS,
+            sellAmount: DEFAULT_BORROW_AMOUNT,
+            buyAmount: DEFAULT_BUY_AMOUNT
+        });
 
         // Setup user approvals
         vm.prank(user);
