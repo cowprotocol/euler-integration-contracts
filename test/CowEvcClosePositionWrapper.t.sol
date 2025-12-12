@@ -231,15 +231,14 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement =
-            getClosePositionSettlement({
-                owner: user,
-                receiver: user,
-                sellVaultToken: ESUSDS,
-                buyToRepayToken: WETH,
-                sellAmount: DEFAULT_SELL_AMOUNT,
-                buyAmount: DEFAULT_BUY_AMOUNT
-            });
+        SettlementData memory settlement = getClosePositionSettlement({
+            owner: user,
+            receiver: user,
+            sellVaultToken: ESUSDS,
+            buyToRepayToken: WETH,
+            sellAmount: DEFAULT_SELL_AMOUNT,
+            buyAmount: DEFAULT_BUY_AMOUNT
+        });
 
         // User signs order (already done in setupCowOrder)
 
@@ -455,15 +454,14 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement =
-            getClosePositionSettlement({
-                owner: user,
-                receiver: user,
-                sellVaultToken: ESUSDS,
-                buyToRepayToken: WETH,
-                sellAmount: DEFAULT_SELL_AMOUNT,
-                buyAmount: DEFAULT_BUY_AMOUNT
-            });
+        SettlementData memory settlement = getClosePositionSettlement({
+            owner: user,
+            receiver: user,
+            sellVaultToken: ESUSDS,
+            buyToRepayToken: WETH,
+            sellAmount: DEFAULT_SELL_AMOUNT,
+            buyAmount: DEFAULT_BUY_AMOUNT
+        });
 
         // Setup pre-approved flow
         bytes32 hash = closePositionWrapper.getApprovalHash(params);
@@ -524,15 +522,14 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement =
-            getClosePositionSettlement({
-                owner: user,
-                receiver: user,
-                sellVaultToken: ESUSDS,
-                buyToRepayToken: WETH,
-                sellAmount: DEFAULT_SELL_AMOUNT,
-                buyAmount: DEFAULT_BUY_AMOUNT
-            });
+        SettlementData memory settlement = getClosePositionSettlement({
+            owner: user,
+            receiver: user,
+            sellVaultToken: ESUSDS,
+            buyToRepayToken: WETH,
+            sellAmount: DEFAULT_SELL_AMOUNT,
+            buyAmount: DEFAULT_BUY_AMOUNT
+        });
 
         // Setup approvals
         _setupClosePositionApprovalsFor(user, account, ESUSDS, WETH);
