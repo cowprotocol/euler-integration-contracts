@@ -97,7 +97,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             0,
             params.deadline,
             0,
-            collateralSwapWrapper.getSignedCalldata(params)
+            collateralSwapWrapper.encodePermitData(params)
         );
     }
 
@@ -109,15 +109,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     {
         bytes memory wrapperData = abi.encode(params, signature);
         return abi.encodePacked(uint16(wrapperData.length), wrapperData);
-    }
-
-    /// @notice Execute wrapped settlement through solver
-    function _executeWrappedSettlement(bytes memory settleData, bytes memory wrapperData) internal {
-        address[] memory targets = new address[](1);
-        bytes[] memory datas = new bytes[](1);
-        targets[0] = address(collateralSwapWrapper);
-        datas[0] = abi.encodeCall(collateralSwapWrapper.wrappedSettle, (settleData, wrapperData));
-        solver.runBatch(targets, datas);
     }
 
     /// @notice Setup user approvals for collateral swap on subaccount
@@ -173,8 +164,17 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // Get trade data
         r.trades = new ICowSettlement.Trade[](1);
-        (r.trades[0], r.orderData, r.orderUid) =
-            setupCowOrder(r.tokens, 0, 1, sellAmount, buyAmount, validTo, owner, receiver, false);
+        (r.trades[0], r.orderData, r.orderUid) = setupCowOrder({
+            tokens: r.tokens,
+            sellTokenIndex: 0,
+            buyTokenIndex: 1,
+            sellAmount: sellAmount,
+            buyAmount: buyAmount,
+            validTo: validTo,
+            owner: owner,
+            receiver: receiver,
+            isBuy: false
+        });
 
         // Setup interactions - withdraw from sell vault, swap underlying assets, deposit to buy vault
         r.interactions = [
@@ -213,7 +213,14 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // Get settlement data
         SettlementData memory settlement =
-            getCollateralSwapSettlement(user, user, ESUSDS, EWBTC, DEFAULT_SWAP_AMOUNT, DEFAULT_BUY_AMOUNT);
+            getCollateralSwapSettlement({
+                owner: user,
+                receiver: user,
+                sellVaultToken: ESUSDS,
+                buyVaultToken: EWBTC,
+                sellAmount: DEFAULT_SWAP_AMOUNT,
+                buyAmount: DEFAULT_BUY_AMOUNT
+            });
 
         // User deposits SUSDS collateral
         vm.startPrank(user);
@@ -240,13 +247,13 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         bytes memory wrapperData = _encodeWrapperData(params, permitSignature);
 
         // Expect event emission
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
             params.owner, params.account, params.fromVault, params.toVault, params.swapAmount, params.kind
         );
 
         // Execute wrapped settlement
-        _executeWrappedSettlement(settleData, wrapperData);
+        CowWrapper(address(collateralSwapWrapper)).wrappedSettle(settleData, wrapperData);
 
         // Verify the collateral was swapped successfully
         assertEq(
@@ -268,7 +275,14 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // Get settlement data - receiver is the subaccount
         SettlementData memory settlement =
-            getCollateralSwapSettlement(user, account, ESUSDS, EWBTC, DEFAULT_SWAP_AMOUNT, DEFAULT_BUY_AMOUNT);
+            getCollateralSwapSettlement({
+                owner: user,
+                receiver: account,
+                sellVaultToken: ESUSDS,
+                buyVaultToken: EWBTC,
+                sellAmount: DEFAULT_SWAP_AMOUNT,
+                buyAmount: DEFAULT_BUY_AMOUNT
+            });
 
         // User deposits SUSDS collateral to subaccount
         vm.startPrank(user);
@@ -295,13 +309,13 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
 
         // Expect event emission
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
             params.owner, params.account, params.fromVault, params.toVault, params.swapAmount, params.kind
         );
 
         // Execute wrapped settlement
-        _executeWrappedSettlement(settleData, wrapperData);
+        CowWrapper(address(collateralSwapWrapper)).wrappedSettle(settleData, wrapperData);
 
         // Verify the collateral was swapped successfully
         assertEq(
@@ -324,7 +338,14 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // Get settlement data
         SettlementData memory settlement =
-            getCollateralSwapSettlement(user, user, ESUSDS, EWBTC, DEFAULT_SWAP_AMOUNT, DEFAULT_BUY_AMOUNT);
+            getCollateralSwapSettlement({
+                owner: user,
+                receiver: user,
+                sellVaultToken: ESUSDS,
+                buyVaultToken: EWBTC,
+                sellAmount: DEFAULT_SWAP_AMOUNT,
+                buyAmount: DEFAULT_BUY_AMOUNT
+            });
 
         // User deposits SUSDS collateral
         vm.startPrank(user);
@@ -345,7 +366,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             0,
             params.deadline,
             0,
-            collateralSwapWrapper.getSignedCalldata(params)
+            collateralSwapWrapper.encodePermitData(params)
         );
 
         // Encode settlement and wrapper data
@@ -357,7 +378,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // Execute wrapped settlement - should revert with EVC_NotAuthorized due to invalid signature
         vm.expectRevert(abi.encodeWithSignature("EVC_NotAuthorized()"));
-        _executeWrappedSettlement(settleData, wrapperData);
+        CowWrapper(address(collateralSwapWrapper)).wrappedSettle(settleData, wrapperData);
     }
 
     /// @notice Test that unauthorized users cannot call evcInternalSwap directly
@@ -380,7 +401,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         bytes memory wrapperData = hex"0000";
 
         // Try to call wrappedSettle as non-solver
-        vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, address(this)));
+        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, user));
         collateralSwapWrapper.wrappedSettle(settleData, wrapperData);
     }
 
@@ -406,9 +428,14 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         address account = address(uint160(user) ^ uint8(0x01));
 
         // Set up a leveraged position
-        setupLeveragedPositionFor(
-            user, account, ESUSDS, EWETH, collateralAmount + borrowAmount * 2500e18 / 0.99e18, borrowAmount
-        );
+        setupLeveragedPositionFor({
+            owner: user,
+            account: account,
+            collateralVault: ESUSDS,
+            borrowVault: EWETH,
+            collateralAmount: collateralAmount + borrowAmount * 2500e18 / 0.99e18,
+            borrowAmount: borrowAmount
+        });
 
         uint256 sellAmount = 1000 ether + 2500 ether; // Sell 3500 ESUSDS
         uint256 buyAmount = 0.0325e8; // Expect to receive ~0.0325 EWBTC (8 decimals)
@@ -419,7 +446,14 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // Get settlement data
         SettlementData memory settlement =
-            getCollateralSwapSettlement(user, account, ESUSDS, EWBTC, sellAmount, buyAmount);
+            getCollateralSwapSettlement({
+                owner: user,
+                receiver: account,
+                sellVaultToken: ESUSDS,
+                buyVaultToken: EWBTC,
+                sellAmount: sellAmount,
+                buyAmount: buyAmount
+            });
 
         // User signs the order on cowswap (already done in setupCowOrder)
 
@@ -439,13 +473,13 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
 
         // Expect event emission
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
             params.owner, params.account, params.fromVault, params.toVault, params.swapAmount, params.kind
         );
 
         // Execute wrapped settlement
-        _executeWrappedSettlement(settleData, wrapperData);
+        CowWrapper(address(collateralSwapWrapper)).wrappedSettle(settleData, wrapperData);
 
         // Verify the collateral was swapped successfully while maintaining debt
         assertEq(
@@ -478,13 +512,34 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         vm.label(account3, "account 3");
 
         // Setup User1: Long SUSDS (SUSDS collateral, WETH debt). 1 ETH debt
-        setupLeveragedPositionFor(user, account1, ESUSDS, EWETH, 2750 ether, 1 ether);
+        setupLeveragedPositionFor({
+            owner: user,
+            account: account1,
+            collateralVault: ESUSDS,
+            borrowVault: EWETH,
+            collateralAmount: 2750 ether,
+            borrowAmount: 1 ether
+        });
 
         // Setup User2: Long SUSDS (SUSDS collateral, WETH debt). 3 ETH debt
-        setupLeveragedPositionFor(user2, account2, ESUSDS, EWETH, 8500 ether, 3 ether);
+        setupLeveragedPositionFor({
+            owner: user2,
+            account: account2,
+            collateralVault: ESUSDS,
+            borrowVault: EWETH,
+            collateralAmount: 8500 ether,
+            borrowAmount: 3 ether
+        });
 
         // Setup User3: Long WBTC (WETH collateral, WBTC debt). 2 ETH debt
-        setupLeveragedPositionFor(user3, account3, EWBTC, EWETH, 0.075e8, 2 ether);
+        setupLeveragedPositionFor({
+            owner: user3,
+            account: account3,
+            collateralVault: EWBTC,
+            borrowVault: EWETH,
+            collateralAmount: 0.075e8,
+            borrowAmount: 2 ether
+        });
 
         // Verify positions exist
         assertEq(IEVault(EWETH).debtOf(account1), 1 ether, "Account 1 should have WETH debt");
@@ -558,9 +613,39 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         clearingPrices[1] = 100000 ether * 1e10; // eWBTC price
 
         ICowSettlement.Trade[] memory trades = new ICowSettlement.Trade[](3);
-        (trades[0],,) = setupCowOrder(tokens, 0, 1, params1.swapAmount, 0, validTo, user, account1, false);
-        (trades[1],,) = setupCowOrder(tokens, 0, 1, 1e24, params2.swapAmount, validTo, user2, account2, true);
-        (trades[2],,) = setupCowOrder(tokens, 1, 0, 1e24, params3.swapAmount, validTo, user3, account3, true);
+        (trades[0],,) = setupCowOrder({
+            tokens: tokens,
+            sellTokenIndex: 0,
+            buyTokenIndex: 1,
+            sellAmount: params1.swapAmount,
+            buyAmount: 0,
+            validTo: validTo,
+            owner: user,
+            receiver: account1,
+            isBuy: false
+        });
+        (trades[1],,) = setupCowOrder({
+            tokens: tokens,
+            sellTokenIndex: 0,
+            buyTokenIndex: 1,
+            sellAmount: 1e24,
+            buyAmount: params2.swapAmount,
+            validTo: validTo,
+            owner: user2,
+            receiver: account2,
+            isBuy: true
+        });
+        (trades[2],,) = setupCowOrder({
+            tokens: tokens,
+            sellTokenIndex: 1,
+            buyTokenIndex: 0,
+            sellAmount: 1e24,
+            buyAmount: params3.swapAmount,
+            validTo: validTo,
+            owner: user3,
+            receiver: account3,
+            isBuy: true
+        });
 
         // Setup interactions
         ICowSettlement.Interaction[][3] memory interactions;
@@ -600,11 +685,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         );
 
         // Execute wrapped settlement
-        address[] memory targets = new address[](1);
-        bytes[] memory datas = new bytes[](1);
-        targets[0] = address(collateralSwapWrapper);
-        datas[0] = abi.encodeCall(CowWrapper.wrappedSettle, (settleData, wrapperData));
-        solver.runBatch(targets, datas);
+        collateralSwapWrapper.wrappedSettle(settleData, wrapperData);
 
         // Verify all positions closed successfully
         assertEq(IEVault(EWETH).debtOf(account1), 1 ether, "User1 should have WETH debt");

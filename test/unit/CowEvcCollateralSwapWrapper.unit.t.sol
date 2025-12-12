@@ -198,7 +198,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
     function test_GetSignedCalldata_EnablesNewCollateral() public view {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
 
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         assertEq(items.length, 1, "Should have 1 batch item");
@@ -213,7 +213,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
     function test_GetSignedCalldata_UsesCorrectAccount() public view {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
 
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         assertEq(items[0].onBehalfOfAccount, address(0), "Should have zero onBehalfOfAccount");
@@ -608,7 +608,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         params.account = validOwner;
 
         // Build the signed calldata that will be included in the permit
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
 
         // Create the permit digest as MockEVC would expect it
         bytes32 permitStructHash = keccak256(
@@ -689,7 +689,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             kind: KIND_SELL
         });
 
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         // Should still have the enable collateral item
@@ -707,7 +707,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             kind: KIND_SELL
         });
 
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         assertEq(items.length, 1, "Should have 1 item with max swap amount");
@@ -728,7 +728,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             kind: KIND_SELL
         });
 
-        bytes memory signedCalldata = wrapper.getSignedCalldata(params);
+        bytes memory signedCalldata = wrapper.encodePermitData(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         // Verify it's enabling the correct toVault

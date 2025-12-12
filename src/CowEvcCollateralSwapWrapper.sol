@@ -22,11 +22,6 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
     /// @dev The EIP-712 domain version used for computing the domain separator.
     bytes32 constant DOMAIN_VERSION = keccak256("1");
 
-    /// @dev The EIP-712 type hash for CollateralSwapParams struct
-    bytes32 public constant COLLATERAL_SWAP_PARAMS_TYPE_HASH = keccak256(
-        "CollateralSwapParams(address owner,address account,uint256 deadline,address fromVault,address toVault,uint256 swapAmount,bytes32 kind)"
-    );
-
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Collateral Swap";
 
@@ -58,6 +53,10 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         .length;
 
         MAX_BATCH_OPERATIONS = 2;
+
+        PARAMS_TYPE_HASH = keccak256(
+            "CollateralSwapParams(address owner,address account,uint256 deadline,address fromVault,address toVault,uint256 swapAmount,bytes32 kind)"
+        );
     }
 
     /// @notice The information necessary to swap collateral between vaults
@@ -98,7 +97,7 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
     /// @param params The CollateralSwapParams to hash
     /// @return The hash of the signed calldata for these params
     function getApprovalHash(CollateralSwapParams memory params) external view returns (bytes32) {
-        return _getApprovalHash(COLLATERAL_SWAP_PARAMS_TYPE_HASH, memoryLocation(params));
+        return _getApprovalHash(memoryLocation(params));
     }
 
     /// @inheritdoc CowWrapper
@@ -108,15 +107,12 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         _parseCollateralSwapParams(wrapperData);
     }
 
-    /// @notice Helper function to compute the `data` field needed for the `EVC.permit` call executed by this function
-    /// @param params The CollateralSwapParams needed to construct the permit
-    /// @return The `data` field of the EVC.permit call which should be signed
-    function getSignedCalldata(CollateralSwapParams memory params) external view returns (bytes memory) {
+    /// @notice Called by an offchain process to determine what data should be signed in a call to `wrappedSettle`.
+    /// @param params The parameters object provided as input to the wrapper
+    /// @return The `EVC` call that would be submitted to `EVC.permit`. This would need to be signed as documented https://evc.wtf/docs/concepts/internals/permit.
+    function encodePermitData(CollateralSwapParams memory params) external view returns (bytes memory) {
         (IEVC.BatchItem[] memory items,) = _encodeBatchItemsAfter(memoryLocation(params));
-        return abi.encodePacked(
-            abi.encodeCall(IEVC.batch, items),
-            _getApprovalHash(COLLATERAL_SWAP_PARAMS_TYPE_HASH, memoryLocation(params))
-        );
+        return _encodePermitData(items, memoryLocation(params));
     }
 
     function _encodeBatchItemsAfter(ParamsLocation paramsLocation)
@@ -150,7 +146,6 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         (CollateralSwapParams memory params, bytes memory signature) = _parseCollateralSwapParams(wrapperData);
 
         _invokeEvc(
-            COLLATERAL_SWAP_PARAMS_TYPE_HASH,
             settleData,
             wrapperData,
             remainingWrapperData,
