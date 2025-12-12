@@ -10,8 +10,6 @@ import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.
 import {CowEvcBaseWrapper, ICowSettlement, CowWrapper, IEVC} from "../../src/CowEvcBaseWrapper.sol";
 
 contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
-    bytes32 public constant TEST_PARAMS_TYPE_HASH = keccak256("TestParams(address owner,uint256 number)");
-
     struct TestParams {
         address owner;
         uint256 number;
@@ -23,6 +21,7 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
     {
         PARAMS_SIZE = abi.encode(TestParams({owner: address(0), number: 0})).length;
         MAX_BATCH_OPERATIONS = 1;
+        PARAMS_TYPE_HASH = keccak256("TestParams(address owner,uint256 number)");
     }
 
     function _evcInternalSettle(
@@ -43,11 +42,11 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
     function validateWrapperData(bytes calldata wrapperData) external view override {}
 
     function getApprovalHash(TestParams memory params) external view returns (bytes32) {
-        return _getApprovalHash(TEST_PARAMS_TYPE_HASH, memoryLocation(params));
+        return _getApprovalHash(memoryLocation(params));
     }
 
     function getExpectedEip712Hash(TestParams memory params) external view returns (bytes32) {
-        bytes32 structHash = keccak256(abi.encode(TEST_PARAMS_TYPE_HASH, params.owner, params.number));
+        bytes32 structHash = keccak256(abi.encode(PARAMS_TYPE_HASH, params.owner, params.number));
         return _hashTypedDataV4(structHash);
     }
 

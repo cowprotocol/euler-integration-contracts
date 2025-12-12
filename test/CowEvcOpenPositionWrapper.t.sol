@@ -75,12 +75,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         });
     }
 
-    /// @notice Setup user approvals for SUSDS deposit
-    function _setupUserSusdsApproval() internal {
-        vm.prank(user);
-        IERC20(SUSDS).approve(ESUSDS, type(uint256).max);
-    }
-
     /// @notice Setup user approvals for pre-approved hash flow
     function _setupUserPreApprovedFlow(address account, bytes32 hash) internal {
         vm.startPrank(user);
@@ -92,11 +86,11 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     }
 
     /// @notice Create permit signature for EVC operator
-    function _createPermitSignature(CowEvcOpenPositionWrapper.OpenPositionParams memory params)
-        internal
-        returns (bytes memory)
-    {
-        ecdsa.setPrivateKey(privateKey);
+    function _createPermitSignatureFor(
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params,
+        uint256 userPrivateKey
+    ) internal returns (bytes memory) {
+        ecdsa.setPrivateKey(userPrivateKey);
         return ecdsa.signPermit(
             params.owner,
             address(openPositionWrapper),
@@ -104,24 +98,26 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             0,
             params.deadline,
             0,
-            openPositionWrapper.getSignedCalldata(params)
+            openPositionWrapper.encodePermitData(params)
         );
     }
 
     /// @notice Verify position was opened successfully
     function _verifyPositionOpened(
         address account,
+        address collateralVaultToken,
+        address borrowVaultToken,
         uint256 expectedCollateral,
         uint256 expectedDebt,
         uint256 allowedDelta
     ) internal view {
         assertApproxEqAbs(
-            IEVault(ESUSDS).convertToAssets(IERC20(ESUSDS).balanceOf(account)),
+            IEVault(collateralVaultToken).convertToAssets(IERC20(collateralVaultToken).balanceOf(account)),
             expectedCollateral,
             allowedDelta,
             "User should have collateral deposited"
         );
-        assertEq(IEVault(EWETH).debtOf(account), expectedDebt, "User should have debt");
+        assertEq(IEVault(borrowVaultToken).debtOf(account), expectedDebt, "User should have debt");
     }
 
     /// @notice Create settlement data for opening a leveraged position
@@ -142,18 +138,33 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         (r.tokens, r.clearingPrices) = getTokensAndPrices();
 
         r.trades = new ICowSettlement.Trade[](1);
-        (r.trades[0], r.orderData, r.orderUid) =
-            setupCowOrder(r.tokens, 0, 1, sellAmount, buyAmount, validTo, owner, receiver, false);
+        (r.trades[0], r.orderData, r.orderUid) = setupCowOrder({
+            tokens: r.tokens,
+            sellTokenIndex: 0,
+            buyTokenIndex: 1,
+            sellAmount: sellAmount,
+            buyAmount: buyAmount,
+            validTo: validTo,
+            owner: owner,
+            receiver: receiver,
+            isBuy: false
+        });
 
         // Setup interactions - swap WETH to SUSDS, deposit to vault, and skim
+        // These are effectively the things that a solver would be doing in this sort of a situation with interactions
         r.interactions = [
             new ICowSettlement.Interaction[](0),
             new ICowSettlement.Interaction[](3),
             new ICowSettlement.Interaction[](0)
         ];
+        // First interaction: convert the borrowed tokens on a DEX (Uniswap, for example)
         r.interactions[1][0] = getSwapInteraction(sellToken, IERC4626(buyVaultToken).asset(), sellAmount);
+        // Second interaction: The converted tokens get transferred to the euler vault (a "deposit")
         r.interactions[1][1] = getDepositInteraction(buyVaultToken, buyAmount + 1 ether);
+        // Third interaction: The Euler Vault recognizes the new tokens and transfers to us the vault tokens
         r.interactions[1][2] = getSkimInteraction(buyVaultToken);
+
+        // By the way, it is technically possible to deposit without having to do a skim. But I find the parameters a bit more convenient, and an extra approval isnt required because we initiate the transfer.
     }
 
     /// @notice Test opening a leveraged position using the new wrapper
@@ -170,17 +181,18 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             getOpenPositionSettlement(user, account, WETH, ESUSDS, DEFAULT_BORROW_AMOUNT, DEFAULT_BUY_AMOUNT);
 
         // Setup user approvals
-        _setupUserSusdsApproval();
+        vm.prank(user);
+        IERC20(SUSDS).approve(ESUSDS, type(uint256).max);
 
         // User signs order
         // Does not need to run here because its done in `setupCowOrder`
 
         // Create permit signature
-        bytes memory permitSignature = _createPermitSignature(params);
+        bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
 
         // Record balances before
-        uint256 susdsBalanceBefore = IERC20(ESUSDS).balanceOf(user);
-        uint256 debtBefore = IEVault(EWETH).debtOf(account);
+        assertEq(IEVault(EWETH).debtOf(account), 0, "User should start with no debt");
+        assertEq(IERC20(ESUSDS).balanceOf(account), 0, "User should start with no eSUSDS");
 
         // Encode settlement and wrapper data
         bytes memory settleData = abi.encodeCall(
@@ -190,7 +202,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         bytes memory wrapperData = encodeWrapperData(abi.encode(params, permitSignature));
 
         // Expect event emission
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit CowEvcOpenPositionWrapper.CowEvcPositionOpened(
             params.owner,
             params.account,
@@ -201,12 +213,17 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         );
 
         // Execute wrapped settlement
-        executeWrappedSettlement(address(openPositionWrapper), settleData, wrapperData);
+        CowWrapper(address(openPositionWrapper)).wrappedSettle(settleData, wrapperData);
 
         // Verify position was created successfully
-        _verifyPositionOpened(account, DEFAULT_BUY_AMOUNT + SUSDS_MARGIN, DEFAULT_BORROW_AMOUNT, 1 ether);
-        assertEq(debtBefore, 0, "User should start with no debt");
-        assertEq(susdsBalanceBefore, 0, "User should start with no eSUSDS");
+        _verifyPositionOpened({
+            account: account,
+            collateralVaultToken: ESUSDS,
+            borrowVaultToken: EWETH,
+            expectedCollateral: DEFAULT_BUY_AMOUNT + SUSDS_MARGIN,
+            expectedDebt: DEFAULT_BORROW_AMOUNT,
+            allowedDelta: 1 ether
+        });
     }
 
     /// @notice Test that unauthorized users cannot call evcInternalSettle directly
@@ -229,7 +246,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         bytes memory wrapperData = "";
 
         // Try to call wrappedSettle as non-solver
-        vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, address(this)));
+        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, user));
         openPositionWrapper.wrappedSettle(settleData, wrapperData);
     }
 
@@ -298,8 +316,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         // User pre-approves the order on CowSwap
         // Does not need to run here because its executed in `setupCowOrder`
 
-        // Record balances before
-        uint256 debtBefore = IEVault(EWETH).debtOf(account);
+        assertEq(IEVault(EWETH).debtOf(account), 0, "User should start with no debt");
 
         // Encode settlement and wrapper data (empty signature since pre-approved)
         bytes memory settleData = abi.encodeCall(
@@ -320,11 +337,17 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         );
 
         // Execute wrapped settlement
-        executeWrappedSettlement(address(openPositionWrapper), settleData, wrapperData);
+        CowWrapper(address(openPositionWrapper)).wrappedSettle(settleData, wrapperData);
 
         // Verify the position was created successfully
-        _verifyPositionOpened(account, DEFAULT_BUY_AMOUNT + SUSDS_MARGIN, DEFAULT_BORROW_AMOUNT, 1 ether);
-        assertEq(debtBefore, 0, "User should start with no debt");
+        _verifyPositionOpened({
+            account: account,
+            collateralVaultToken: ESUSDS,
+            borrowVaultToken: EWETH,
+            expectedCollateral: DEFAULT_BUY_AMOUNT + SUSDS_MARGIN,
+            expectedDebt: DEFAULT_BORROW_AMOUNT,
+            allowedDelta: 1 ether
+        });
     }
 
     /// @notice Test that invalid signature causes the transaction to revert
@@ -341,7 +364,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             getOpenPositionSettlement(user, account, WETH, ESUSDS, DEFAULT_BORROW_AMOUNT, DEFAULT_BUY_AMOUNT);
 
         // Setup user approvals
-        _setupUserSusdsApproval();
+        vm.prank(user);
+        IERC20(SUSDS).approve(ESUSDS, type(uint256).max);
 
         // Create INVALID permit signature by signing with wrong private key (user2's key instead of user's)
         ecdsa.setPrivateKey(privateKey2); // Wrong private key!
@@ -352,7 +376,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             0,
             params.deadline,
             0,
-            openPositionWrapper.getSignedCalldata(params)
+            openPositionWrapper.encodePermitData(params)
         );
 
         // Encode settlement and wrapper data
@@ -364,7 +388,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Execute wrapped settlement - should revert with EVC_NotAuthorized due to invalid signature
         vm.expectRevert(abi.encodeWithSignature("EVC_NotAuthorized()"));
-        executeWrappedSettlement(address(openPositionWrapper), settleData, wrapperData);
+        CowWrapper(address(openPositionWrapper)).wrappedSettle(settleData, wrapperData);
     }
 
     /// @notice Test that the wrapper can handle being called three times in the same chain
@@ -459,7 +483,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             0,
             params1.deadline,
             0,
-            openPositionWrapper.getSignedCalldata(params1)
+            openPositionWrapper.encodePermitData(params1)
         );
 
         ecdsa.setPrivateKey(privateKey2);
@@ -470,7 +494,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             0,
             params2.deadline,
             0,
-            openPositionWrapper.getSignedCalldata(params2)
+            openPositionWrapper.encodePermitData(params2)
         );
 
         ecdsa.setPrivateKey(privateKey3);
@@ -481,7 +505,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             0,
             params3.deadline,
             0,
-            openPositionWrapper.getSignedCalldata(params3)
+            openPositionWrapper.encodePermitData(params3)
         );
 
         // Create settlement with all three trades
@@ -550,29 +574,40 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             wrapper3Data
         );
 
-        // Execute wrapped settlement through solver
+        // Execute wrapped settlement
         // Note: We don't use expectEmit here because there are many Transfer events
         // from the complex multi-user settlement that interfere with strict event matching
-        address[] memory targets = new address[](1);
-        bytes[] memory datas = new bytes[](1);
-        targets[0] = address(openPositionWrapper);
-        datas[0] = abi.encodeCall(openPositionWrapper.wrappedSettle, (settleData, wrapperData));
-        solver.runBatch(targets, datas);
+        openPositionWrapper.wrappedSettle(settleData, wrapperData);
 
         // Verify all three positions were opened successfully
         // User1: Should have SUSDS collateral and WETH debt
-        _verifyPositionOpened(account1, 1000 ether + 2500 ether, 1 ether, 100 ether);
+        _verifyPositionOpened({
+            account: account1,
+            collateralVaultToken: ESUSDS,
+            borrowVaultToken: EWETH,
+            expectedCollateral: 1000 ether + 2500 ether,
+            expectedDebt: 1 ether,
+            allowedDelta: 100 ether
+        });
 
         // User2: Should have SUSDS collateral and WETH debt (same as User1)
-        _verifyPositionOpened(account2, 1000 ether + 7500 ether, 3 ether, 100 ether);
+        _verifyPositionOpened({
+            account: account2,
+            collateralVaultToken: ESUSDS,
+            borrowVaultToken: EWETH,
+            expectedCollateral: 1000 ether + 7500 ether,
+            expectedDebt: 3 ether,
+            allowedDelta: 100 ether
+        });
 
         // User3: Should have WETH collateral and SUSDS debt
-        assertApproxEqAbs(
-            IEVault(EWETH).convertToAssets(IERC20(EWETH).balanceOf(account3)),
-            1 ether + 2 ether,
-            0.2 ether,
-            "User3 should have WETH collateral deposited"
-        );
-        assertEq(IEVault(ESUSDS).debtOf(account3), 5000 ether, "User3 should have SUSDS debt");
+        _verifyPositionOpened({
+            account: account3,
+            collateralVaultToken: EWETH,
+            borrowVaultToken: ESUSDS,
+            expectedCollateral: 1 ether + 2 ether,
+            expectedDebt: 5000 ether,
+            allowedDelta: 0.1 ether
+        });
     }
 }
