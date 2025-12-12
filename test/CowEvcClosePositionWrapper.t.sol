@@ -180,8 +180,17 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Get trade data
         r.trades = new ICowSettlement.Trade[](1);
-        (r.trades[0], r.orderData, r.orderUid) =
-            setupCowOrder(r.tokens, 0, 1, sellAmount, buyAmount, validTo, owner, receiver, true);
+        (r.trades[0], r.orderData, r.orderUid) = setupCowOrder({
+            tokens: r.tokens,
+            sellTokenIndex: 0,
+            buyTokenIndex: 1,
+            sellAmount: sellAmount,
+            buyAmount: buyAmount,
+            validTo: validTo,
+            owner: owner,
+            receiver: receiver,
+            isBuy: true
+        });
 
         // Setup interactions - withdraw from vault, swap to repayment token
         r.interactions = [
@@ -205,7 +214,14 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         address account = address(uint160(user) ^ uint8(0x01));
 
         // First, set up a leveraged position
-        setupLeveragedPositionFor(user, account, ESUSDS, EWETH, collateralAmount, borrowAmount);
+        setupLeveragedPositionFor({
+            owner: user,
+            account: account,
+            collateralVault: ESUSDS,
+            borrowVault: EWETH,
+            collateralAmount: collateralAmount,
+            borrowAmount: borrowAmount
+        });
 
         // Verify position exists
         uint256 debtBefore = IEVault(EWETH).debtOf(account);
@@ -216,7 +232,14 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Get settlement data
         SettlementData memory settlement =
-            getClosePositionSettlement(user, user, ESUSDS, WETH, DEFAULT_SELL_AMOUNT, DEFAULT_BUY_AMOUNT);
+            getClosePositionSettlement({
+                owner: user,
+                receiver: user,
+                sellVaultToken: ESUSDS,
+                buyToRepayToken: WETH,
+                sellAmount: DEFAULT_SELL_AMOUNT,
+                buyAmount: DEFAULT_BUY_AMOUNT
+            });
 
         // User signs order (already done in setupCowOrder)
 
@@ -238,7 +261,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         bytes memory wrapperData = encodeWrapperData(abi.encode(params, permitSignature));
 
         // Expect event emission
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit CowEvcClosePositionWrapper.CowEvcPositionClosed(
             params.owner,
             params.account,
@@ -298,7 +321,14 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         address account = address(uint160(user) ^ uint8(0x01));
 
         // First, set up a leveraged position
-        setupLeveragedPositionFor(user, account, ESUSDS, EWETH, collateralAmount, borrowAmount);
+        setupLeveragedPositionFor({
+            owner: user,
+            account: account,
+            collateralVault: ESUSDS,
+            borrowVault: EWETH,
+            collateralAmount: collateralAmount,
+            borrowAmount: borrowAmount
+        });
 
         // Create params with custom amounts and KIND_SELL
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
@@ -307,7 +337,14 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         params.kind = GPv2Order.KIND_SELL;
 
         // Get settlement data
-        SettlementData memory settlement = getClosePositionSettlement(user, user, ESUSDS, WETH, sellAmount, buyAmount);
+        SettlementData memory settlement = getClosePositionSettlement({
+            owner: user,
+            receiver: user,
+            sellVaultToken: ESUSDS,
+            buyToRepayToken: WETH,
+            sellAmount: sellAmount,
+            buyAmount: buyAmount
+        });
 
         // User signs order (already done in setupCowOrder)
 
@@ -325,7 +362,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         bytes memory wrapperData = encodeWrapperData(abi.encode(params, permitSignature));
 
         // Expect event emission
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit CowEvcClosePositionWrapper.CowEvcPositionClosed(
             params.owner,
             params.account,
@@ -405,14 +442,28 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         address account = address(uint160(user) ^ uint8(0x01));
 
         // First, set up a leveraged position
-        setupLeveragedPositionFor(user, account, ESUSDS, EWETH, collateralAmount, borrowAmount);
+        setupLeveragedPositionFor({
+            owner: user,
+            account: account,
+            collateralVault: ESUSDS,
+            borrowVault: EWETH,
+            collateralAmount: collateralAmount,
+            borrowAmount: borrowAmount
+        });
 
         // Create params using helper
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
         SettlementData memory settlement =
-            getClosePositionSettlement(user, user, ESUSDS, WETH, DEFAULT_SELL_AMOUNT, DEFAULT_BUY_AMOUNT);
+            getClosePositionSettlement({
+                owner: user,
+                receiver: user,
+                sellVaultToken: ESUSDS,
+                buyToRepayToken: WETH,
+                sellAmount: DEFAULT_SELL_AMOUNT,
+                buyAmount: DEFAULT_BUY_AMOUNT
+            });
 
         // Setup pre-approved flow
         bytes32 hash = closePositionWrapper.getApprovalHash(params);
@@ -431,7 +482,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         bytes memory wrapperData = encodeWrapperData(abi.encode(params, new bytes(0)));
 
         // Expect event emission
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit CowEvcClosePositionWrapper.CowEvcPositionClosed(
             params.owner,
             params.account,
@@ -460,14 +511,28 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         address account = address(uint160(user) ^ 1);
 
         // First, set up a leveraged position
-        setupLeveragedPositionFor(user, account, ESUSDS, EWETH, collateralAmount, borrowAmount);
+        setupLeveragedPositionFor({
+            owner: user,
+            account: account,
+            collateralVault: ESUSDS,
+            borrowVault: EWETH,
+            collateralAmount: collateralAmount,
+            borrowAmount: borrowAmount
+        });
 
         // Create params using helper
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
         SettlementData memory settlement =
-            getClosePositionSettlement(user, user, ESUSDS, WETH, DEFAULT_SELL_AMOUNT, DEFAULT_BUY_AMOUNT);
+            getClosePositionSettlement({
+                owner: user,
+                receiver: user,
+                sellVaultToken: ESUSDS,
+                buyToRepayToken: WETH,
+                sellAmount: DEFAULT_SELL_AMOUNT,
+                buyAmount: DEFAULT_BUY_AMOUNT
+            });
 
         // Setup approvals
         _setupClosePositionApprovalsFor(user, account, ESUSDS, WETH);
@@ -512,13 +577,34 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         address account3 = address(uint160(user3) ^ 1);
 
         // Setup User1: Long SUSDS (SUSDS collateral, WETH debt). ~1 ETH debt
-        setupLeveragedPositionFor(user, account1, ESUSDS, EWETH, 3500 ether, 1 ether);
+        setupLeveragedPositionFor({
+            owner: user,
+            account: account1,
+            collateralVault: ESUSDS,
+            borrowVault: EWETH,
+            collateralAmount: 3500 ether,
+            borrowAmount: 1 ether
+        });
 
         // Setup User2: Long SUSDS (SUSDS collateral, WETH debt). ~3 ETH debt
-        setupLeveragedPositionFor(user2, account2, ESUSDS, EWETH, 10000 ether, 3 ether);
+        setupLeveragedPositionFor({
+            owner: user2,
+            account: account2,
+            collateralVault: ESUSDS,
+            borrowVault: EWETH,
+            collateralAmount: 10000 ether,
+            borrowAmount: 3 ether
+        });
 
         // Setup User3: Long WETH (WETH collateral, SUSDS debt). ~5000 SUSDS debt
-        setupLeveragedPositionFor(user3, account3, EWETH, ESUSDS, 3 ether, 5000 ether);
+        setupLeveragedPositionFor({
+            owner: user3,
+            account: account3,
+            collateralVault: EWETH,
+            borrowVault: ESUSDS,
+            collateralAmount: 3 ether,
+            borrowAmount: 5000 ether
+        });
 
         // Verify positions exist
         assertEq(IEVault(EWETH).debtOf(account1), 1 ether, "User1 should have WETH debt");
@@ -585,12 +671,39 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         clearingPrices[3] = 2495 ether; // eWETH price
 
         ICowSettlement.Trade[] memory trades = new ICowSettlement.Trade[](3);
-        (trades[0],,) =
-            setupCowOrder(tokens, 2, 1, params1.collateralAmount, params1.repayAmount, validTo, user, user, true);
-        (trades[1],,) =
-            setupCowOrder(tokens, 2, 1, params2.collateralAmount, params2.repayAmount, validTo, user2, user2, true);
-        (trades[2],,) =
-            setupCowOrder(tokens, 3, 0, params3.collateralAmount, params3.repayAmount, validTo, user3, user3, true);
+        (trades[0],,) = setupCowOrder({
+            tokens: tokens,
+            sellTokenIndex: 2,
+            buyTokenIndex: 1,
+            sellAmount: params1.collateralAmount,
+            buyAmount: params1.repayAmount,
+            validTo: validTo,
+            owner: user,
+            receiver: user,
+            isBuy: true
+        });
+        (trades[1],,) = setupCowOrder({
+            tokens: tokens,
+            sellTokenIndex: 2,
+            buyTokenIndex: 1,
+            sellAmount: params2.collateralAmount,
+            buyAmount: params2.repayAmount,
+            validTo: validTo,
+            owner: user2,
+            receiver: user2,
+            isBuy: true
+        });
+        (trades[2],,) = setupCowOrder({
+            tokens: tokens,
+            sellTokenIndex: 3,
+            buyTokenIndex: 0,
+            sellAmount: params3.collateralAmount,
+            buyAmount: params3.repayAmount,
+            validTo: validTo,
+            owner: user3,
+            receiver: user3,
+            isBuy: true
+        });
 
         // Setup interactions
         ICowSettlement.Interaction[][3] memory interactions;
