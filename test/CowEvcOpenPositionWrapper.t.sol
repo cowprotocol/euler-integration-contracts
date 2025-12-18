@@ -390,7 +390,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         bytes memory invalidPermitSignature = ecdsa.signPermit(
             params.owner,
             address(openPositionWrapper),
-            uint256(uint160(address(openPositionWrapper))),
+            openPositionWrapper.NONCE_NAMESPACE(),
             0,
             params.deadline,
             0,
