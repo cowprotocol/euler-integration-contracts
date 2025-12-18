@@ -196,9 +196,15 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         // Create permit signature
         bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
 
-        // Record balances before
-        assertEq(IEVault(EWETH).debtOf(account), 0, "User should start with no debt");
-        assertEq(IERC20(ESUSDS).balanceOf(account), 0, "User should start with no eSUSDS");
+        // Verify that no position is open
+        _verifyPositionOpened({
+            account: account,
+            collateralVaultToken: ESUSDS,
+            borrowVaultToken: EWETH,
+            expectedCollateral: 0,
+            expectedDebt: 0,
+            allowedDelta: 0
+        });
 
         // Encode settlement and wrapper data
         bytes memory settleData = abi.encodeCall(
@@ -219,7 +225,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         );
 
         // Execute wrapped settlement
-        CowWrapper(address(openPositionWrapper)).wrappedSettle(settleData, wrapperData);
+        openPositionWrapper.wrappedSettle(settleData, wrapperData);
 
         // Verify position was created successfully
         _verifyPositionOpened({
@@ -326,7 +332,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         _setupUserPreApprovedFlow(account, hash);
 
         // User pre-approves the order on CowSwap
-        // Does not need to run here because its executed in `setupCowOrder`
+        // Does not need to run here because it was signed as part of the settlement creation
 
         assertEq(IEVault(EWETH).debtOf(account), 0, "User should start with no debt");
 
@@ -390,7 +396,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         bytes memory invalidPermitSignature = ecdsa.signPermit(
             params.owner,
             address(openPositionWrapper),
-            uint256(uint160(address(openPositionWrapper))),
+            openPositionWrapper.NONCE_NAMESPACE(),
             0,
             params.deadline,
             0,

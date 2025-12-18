@@ -140,7 +140,7 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
         );
     }
 
-    /// @notice Called by an offchain process to determine what data should be signed in a call to `wrappedSettle`.
+    /// @notice Called by an offchain process to determine what data should be signed by users in case they choose to use the permit flow for authentication.
     /// @param params The parameters object provided as input to the wrapper
     /// @return The `EVC` call that would be submitted to `EVC.permit`. This would need to be signed as documented https://evc.wtf/docs/concepts/internals/permit.
     function encodePermitData(OpenPositionParams memory params) external view returns (bytes memory) {
