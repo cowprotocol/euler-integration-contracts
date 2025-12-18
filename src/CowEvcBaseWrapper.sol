@@ -40,7 +40,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     uint256 internal immutable PARAMS_SIZE;
 
     /// @dev The EIP-712 type hash of the parameters structure used by this wrapper.
-    bytes32 internal immutable PARAMS_TYPE_HASH;
+    bytes32 public immutable PARAMS_TYPE_HASH;
 
     /// @dev How long to make the `items` array without calculating it. Determines the maximum number of EVC operations that can be batched.
     /// This value depends on the each concrete wrapper implementation. It should include the settlement and any operations before and after it.
