@@ -146,12 +146,18 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
 
     /// @notice Called by the EVC after a CoW swap is completed to repay the user's debt. Will use all available collateral in the user's account to do so.
     /// @param vault The Euler vault in which the repayment should be made
-    /// @param owner The address that should be receiving any surplus dust that may exist after the repayment is complete
+    /// @param owner The owner associated with the given account. This the owner is used to provide the funds for the repayment.
     /// @param account The subaccount that should be receiving the repayment of debt
     function helperRepay(address vault, address owner, address account) external {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
         (address onBehalfOfAccount,) = EVC.getCurrentOnBehalfOfAccount(address(0));
         require(onBehalfOfAccount == account, Unauthorized(onBehalfOfAccount));
+
+        // Subaccounts in the EVC can be any account that shares the highest 19 bits as the owner.
+        // Here we verify that the subaccount address has been specified as expected.
+        // This is a really important security check because without verifying the subaccount,
+        // any user could potentially repay
+        require(bytes19(bytes20(owner)) == bytes19(bytes20(account)), SubaccountMustBeControlledByOwner(account, owner));
 
         IERC20 asset = IERC20(IERC4626(vault).asset());
 

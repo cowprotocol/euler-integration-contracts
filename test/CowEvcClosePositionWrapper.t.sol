@@ -744,4 +744,158 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             "User3 should have some EWETH collateral after closing"
         );
     }
+
+    /// @notice Test that a malicious solver cannot use a postInteraction with EVC.permit to pull funds from an unauthorized user
+    /// @dev Verifies that even with an attacker's permit signature, calling helperRepay with a different owner fails
+    function test_ClosePositionWrapper_PostInteractionWithPermitUnauthorizedOwner() external {
+        vm.skip(bytes(forkRpcUrl).length == 0);
+
+        uint256 borrowAmount = 1e18;
+        uint256 collateralAmount = USDS_MARGIN + 2495e18;
+
+        address account = address(uint160(user) ^ uint8(0x01));
+        address attacker = user2;
+        address attackerAccount = address(uint160(attacker) ^ uint8(0x01));
+
+        vm.label(user, "Victim");
+        vm.label(account, "Victim Account");
+        vm.label(attackerAccount, "Attacker Account");
+        vm.label(attacker, "Attacker");
+
+        // Setup a leveraged position for user (legit position)
+        setupLeveragedPositionFor({
+            owner: user,
+            account: account,
+            collateralVault: EUSDS,
+            borrowVault: EWETH,
+            collateralAmount: collateralAmount,
+            borrowAmount: borrowAmount
+        });
+
+        // Setup a leveraged position for the attacker
+        uint256 attackerBorrowAmount = 1e18;
+        uint256 attackerCollateralAmount = USDS_MARGIN + 2495e18;
+        setupLeveragedPositionFor({
+            owner: attacker,
+            account: attackerAccount,
+            collateralVault: EUSDS,
+            borrowVault: EWETH,
+            collateralAmount: attackerCollateralAmount,
+            borrowAmount: attackerBorrowAmount
+        });
+
+        // Create normal close params for legitimate user
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(attacker, attackerAccount);
+
+        // Get settlement data for the legitimate position close
+        SettlementData memory settlement = getClosePositionSettlement({
+            owner: attacker,
+            receiver: attacker,
+            sellAmount: attackerCollateralAmount / 2,
+            buyAmount: attackerBorrowAmount / 2
+        });
+
+        // Setup normal approvals for user who is preparing to close their position
+        _setupClosePositionApprovalsFor(user, account, EUSDS, WETH);
+
+        // Setup approvals for the attacker
+        _setupClosePositionApprovalsFor(attacker, attackerAccount, EUSDS, WETH);
+
+        // Give the attacker extra WETH
+        deal(WETH, attacker, 10e18);
+        deal(EUSDS, attacker, 10e18);
+
+        // Create permit signature from user
+        bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
+
+        // The attacker (as a malicious solver) tries to craft a postInteraction
+        // that uses EVC.permit to authorize calling helperRepay with the attacker's account
+        // instead of the legitimate user's account. This would attempt to pull funds from
+        // the attacker's account without proper authorization context.
+
+        // Create the malicious call to helperRepay with attacker's account
+        IEVC.BatchItem[] memory maliciousBatch = new IEVC.BatchItem[](1);
+        maliciousBatch[0] = IEVC.BatchItem({
+            onBehalfOfAccount: attackerAccount,
+            targetContract: address(closePositionWrapper),
+            value: 0,
+            data: abi.encodeCall(closePositionWrapper.helperRepay, (EWETH, user, attackerAccount))
+        });
+
+        vm.expectRevert(
+            abi.encodeWithSelector(CowEvcBaseWrapper.SubaccountMustBeControlledByOwner.selector, attackerAccount, user)
+        );
+        vm.prank(attacker);
+        EVC.batch(maliciousBatch);
+
+        //bytes memory maliciousBatchCall = abi.encodeCall(EVC.batch, (maliciousBatch));
+
+        // Create an EVC.permit call signed by the attacker
+        // This permit would authorize the wrapper to call itself with the attacker's parameters
+        ecdsa.setPrivateKey(privateKey2); // Use attacker's private key
+        /*bytes memory permitSignatureFromAttacker = ecdsa.signPermit(
+            attacker, // signer
+            address(COW_SETTLEMENT), // sender (the attacker is authorizing this)
+            uint256(uint160(address(closePositionWrapper))), // nonceNamespace
+            1, // nonce
+            block.timestamp + 1 hours, // deadline
+            0, // value
+            maliciousBatchCall // data
+        );
+
+        vm.expectRevert();
+        EVC.permit(
+            attacker, // signer
+            address(COW_SETTLEMENT), // sender
+            uint256(uint160(address(closePositionWrapper))), // nonceNamespace
+            1, // nonce (+1 because we already consumed the first nonce)
+            block.timestamp + 1 hours, // deadline
+            0, // value
+            maliciousBatchCall, // data
+            permitSignatureFromAttacker // signature
+        );*/
+
+        // Create the postInteraction that calls EVC.permit
+        /*ICowSettlement.Interaction memory maliciousPostInteraction = ICowSettlement.Interaction({
+            target: address(EVC),
+            value: 0,
+            callData: abi.encodeCall(
+                EVC.permit,
+                (
+                    attacker, // signer
+                    address(COW_SETTLEMENT), // sender
+                    uint256(uint160(address(closePositionWrapper))), // nonceNamespace
+                    1, // nonce (+1 because we already consumed the first nonce)
+                    block.timestamp + 1 hours, // deadline
+                    0, // value
+                    maliciousBatchCall, // data
+                    permitSignatureFromAttacker // signature
+                )
+            )
+        });
+
+        // Create modified interactions with the malicious postInteraction
+        ICowSettlement.Interaction[][3] memory modifiedInteractions;
+        modifiedInteractions[0] = settlement.interactions[0]; // preInteractions (empty)
+        modifiedInteractions[1] = settlement.interactions[1]; // intraInteractions
+        modifiedInteractions[2] = new ICowSettlement.Interaction[](1);
+        modifiedInteractions[2][0] = maliciousPostInteraction;
+
+        // Re-encode settlement data with modified interactions containing the malicious permit
+        bytes memory maliciousSettleData = abi.encodeCall(
+            ICowSettlement.settle,
+            (settlement.tokens, settlement.clearingPrices, settlement.trades, modifiedInteractions)
+        );
+
+        bytes memory wrapperData = encodeWrapperData(abi.encode(params, permitSignature));
+
+        // The transaction should revert because even though the attacker has signed a permit,
+        // the helperRepay function tries to pull funds from the attacker's account.
+        // The function checks that onBehalfOfAccount matches the account parameter,
+        // but since this is being called in a postInteraction context, the EVC batch
+        // is still operating on behalf of the original account, not the attacker.
+        // This causes an authorization mismatch or transfer failure.
+        vm.expectRevert();
+        CowWrapper(address(closePositionWrapper)).wrappedSettle(maliciousSettleData, wrapperData);*/
+    }
 }

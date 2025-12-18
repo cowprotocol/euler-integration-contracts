@@ -94,5 +94,9 @@ contract CowEvcBaseWrapperTest is Test {
             CowWrapper.wrappedSettle.selector != IEVC.batch.selector,
             "EVC.batch and ICowWrapper.wrappedSettle match selectors"
         );
+        require(
+            CowWrapper.wrappedSettle.selector != IEVC.call.selector,
+            "EVC.call and ICowWrapper.wrappedSettle match selectors"
+        );
     }
 }
