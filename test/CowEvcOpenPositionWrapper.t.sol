@@ -326,7 +326,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         _setupUserPreApprovedFlow(account, hash);
 
         // User pre-approves the order on CowSwap
-        // Does not need to run here because its executed in `setupCowOrder`
+        // Does not need to run here because it was signed as part of the settlement creation
 
         assertEq(IEVault(EWETH).debtOf(account), 0, "User should start with no debt");
 
