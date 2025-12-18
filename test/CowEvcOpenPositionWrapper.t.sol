@@ -219,7 +219,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         );
 
         // Execute wrapped settlement
-        CowWrapper(address(openPositionWrapper)).wrappedSettle(settleData, wrapperData);
+        openPositionWrapper.wrappedSettle(settleData, wrapperData);
 
         // Verify position was created successfully
         _verifyPositionOpened({
