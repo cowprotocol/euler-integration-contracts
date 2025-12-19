@@ -11,12 +11,13 @@ import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
 /// @title CowEvcClosePositionWrapper
 /// @notice A specialized wrapper for closing leveraged positions with EVC
 /// @dev This wrapper hardcodes the EVC operations needed to close a position:
-///      1. Execute settlement to acquire repayment assets
-///      2. Repay debt and return remaining assets to user
+///      1. Transfer the required collateral from the subaccount to the owner within the EVC batch so that the settlement contract can access (if required)
+///      2. Execute settlement to acquire repayment assets
+///      3. Repay debt and return remaining assets to the subaccount
 /// @dev The settle call by this order should be performing the necessary swap
 /// from collateralVault -> IERC20(borrowVault.asset()). The recipient of the
-/// swap should *THIS* contract so that it can repay on behalf of the owner. Furthermore,
-/// the order should be of type GPv2Order.KIND_BUY to prevent excess from being sent to the contract.
+/// swap should be the owner of the subaccount. Following this, the account will repay the loan by leveraging an approval from the owner account in `helperRepay`.
+/// The order should be of type GPv2Order.KIND_BUY to prevent excess from being sent to the contract.
 /// If a full close is being performed, leave a small buffer for intrest accumultation, and the dust will
 /// be returned to the owner's wallet.
 contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
@@ -25,6 +26,8 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
 
     /// @dev The EIP-712 domain version used for computing the domain separator.
     bytes32 constant DOMAIN_VERSION = keccak256("1");
+
+    address transient public repayCallOwner;
 
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Close Position";
@@ -52,7 +55,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
                 borrowVault: address(0),
                 collateralVault: address(0),
                 collateralAmount: 0,
-                repayAmount: 0,
+                maxRepayAmount: 0,
                 kind: bytes32(0)
             })
         )
@@ -61,7 +64,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         MAX_BATCH_OPERATIONS = 2;
 
         PARAMS_TYPE_HASH = keccak256(
-            "ClosePositionParams(address owner,address account,uint256 deadline,address borrowVault,address collateralVault,uint256 collateralAmount,uint256 repayAmount,bytes32 kind)"
+            "ClosePositionParams(address owner,address account,uint256 deadline,address borrowVault,address collateralVault,uint256 collateralAmount,uint256 maxRepayAmount,bytes32 kind)"
         );
     }
 
@@ -84,13 +87,16 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         /// @dev The Euler vault used as collateral
         address collateralVault;
 
-        /// @dev The amount of collateral to swap from the collateral vault
+        /// @dev The amount of collateral to swap from the collateral vault, in terms of collateral vault shares.
+        /// This should be equal to `sellAmount` on the CoW order, and
+        /// the full amount will be transferred from the wallet.
+        /// In the case of KIND_BUY order, Any excess untraded for funds will be returned to the subaccount.
         uint256 collateralAmount;
 
-        /// @dev The amount of debt to repay. If greater than the actual debt, the full debt is repaid
-        uint256 repayAmount;
+        /// @dev In all cases, the maximum amount of debt to repay. For kind = KIND_BUY, this should be the same as `buyAmount` in the CoW order. For kind = KIND_SELL, this should be equal to or greater than `buyAmount`, . The actual repay amount is constrained by this value, the actual debt of the account, and the balance of the owner's wallet following the CoW trade. If the repay amount is greater than the actual debt, the full debt is repaid, and the remainder "dust" will be left in the owner account.
+        uint256 maxRepayAmount;
 
-        /// @dev Whether the `collateralAmount` or `repayAmount` is the exact amount. Either `GPv2Order.KIND_BUY` or `GPv2Order.KIND_SELL`
+        /// @dev Whether the `collateralAmount` or `maxRepayAmount` should be considered the exact trade amount on the CoW order. Either `GPv2Order.KIND_SELL` or `GPv2Order.KIND_BUY` respectively.
         bytes32 kind;
     }
 
@@ -131,14 +137,16 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         returns (IEVC.BatchItem[] memory items, bool needsPermission)
     {
         ClosePositionParams memory params = paramsFromMemory(paramsLocation);
-        items = new IEVC.BatchItem[](1);
+        items = new IEVC.BatchItem[](MAX_BATCH_OPERATIONS - 1);
 
         // 1. Repay debt and return remaining assets
         items[0] = IEVC.BatchItem({
             onBehalfOfAccount: params.account,
             targetContract: address(this),
             value: 0,
-            data: abi.encodeCall(this.helperRepay, (params.borrowVault, params.owner, params.account))
+            data: abi.encodeCall(
+                this.helperRepay, (params.borrowVault, params.account, params.maxRepayAmount)
+            )
         });
 
         needsPermission = true;
@@ -146,12 +154,15 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
 
     /// @notice Called by the EVC after a CoW swap is completed to repay the user's debt. Will use all available collateral in the user's account to do so.
     /// @param vault The Euler vault in which the repayment should be made
-    /// @param owner The owner associated with the given account. This the owner is used to provide the funds for the repayment.
     /// @param account The subaccount that should be receiving the repayment of debt
-    function helperRepay(address vault, address owner, address account) external {
+    function helperRepay(address vault, address account, uint256 maxRepayAmount) external {
+        address owner = repayCallOwner;
+        require(owner != address(0), Unauthorized(address(0))); 
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
         (address onBehalfOfAccount,) = EVC.getCurrentOnBehalfOfAccount(address(0));
         require(onBehalfOfAccount == account, Unauthorized(onBehalfOfAccount));
+
+        repayCallOwner = address(0);
 
         // Subaccounts in the EVC can be any account that shares the highest 19 bits as the owner.
         // Here we verify that the subaccount address has been specified as expected.
@@ -163,19 +174,28 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
 
         uint256 debtAmount = IBorrowing(vault).debtOf(account);
 
-        // repay as much debt as we can
+        // what is the maximum amount of debt that can
+        // be repaid from the owner account?
         uint256 repayAmount = asset.balanceOf(owner);
+
+        // we can't repay more than the available debt amount
         if (repayAmount > debtAmount) {
             // the user intends to repay all their debt. we will revert if their balance is not sufficient.
             repayAmount = debtAmount;
+        }
+
+        // we also can't repay more than the user specified max repayment amount
+        if (repayAmount > maxRepayAmount) {
+            repayAmount = maxRepayAmount;
         }
 
         // pull funds from the user (they should have approved spending by this contract)
         SafeERC20Lib.safeTransferFrom(asset, owner, address(this), repayAmount, address(0));
 
         // repay what was requested on the vault
-        asset.approve(vault, repayAmount);
+        safeApprove(asset, vault, repayAmount);
         IBorrowing(vault).repay(repayAmount, account);
+        safeApprove(asset, vault, 0);
     }
 
     /// @notice Implementation of CowWrapper._wrap - executes EVC operations to close a position
@@ -204,7 +224,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
             params.borrowVault,
             params.collateralVault,
             params.collateralAmount,
-            params.repayAmount,
+            params.maxRepayAmount,
             params.kind
         );
     }
@@ -261,6 +281,10 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
                 );
             }
         }
+        
+        // `repay` should be called through the EVC.permit right after this, 
+        // so we can make sure 
+        repayCallOwner = params.owner;
     }
 
     function memoryLocation(ClosePositionParams memory params) internal pure returns (ParamsLocation location) {
@@ -272,6 +296,67 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
     function paramsFromMemory(ParamsLocation location) internal pure returns (ClosePositionParams memory params) {
         assembly {
             params := location
+        }
+    }
+
+    /**
+     * @dev Imitates a Solidity high-level call (i.e. a regular function call to a contract), relaxing the requirement
+     * on the return value: the return value is optional (but if data is returned, it must not be false).
+     * @param token The token targeted by the call.
+     * @param data The call data (encoded using abi.encode or one of its variants).
+     *
+     * This is a variant of {_callOptionalReturn} that silents catches all reverts and returns a bool instead.
+     */
+    function _callOptionalReturnBool(IERC20 token, bytes memory data) private returns (bool) {
+        // We need to perform a low level call here, to bypass Solidity's return data size checking mechanism, since
+        // we're implementing it ourselves. We cannot use {Address-functionCall} here since this should return false
+        // and not revert is the subcall reverts.
+
+        (bool success, bytes memory returndata) = address(token).call(data);
+        return success && (returndata.length == 0 || abi.decode(returndata, (bool))) && address(token).code.length > 0;
+    }
+
+    error SafeERC20FailedOperation(address);
+
+    /**
+     * @dev Imitates a Solidity high-level call (i.e. a regular function call to a contract), relaxing the requirement
+     * on the return value: the return value is optional (but if data is returned, it must not be false).
+     * @param token The token targeted by the call.
+     * @param data The call data (encoded using abi.encode or one of its variants).
+     */
+    function _callOptionalReturn(address token, bytes memory data) private returns (bytes memory) {
+        // We need to perform a low level call here, to bypass Solidity's return data size checking mechanism, since
+        // we're implementing it ourselves. We use {Address-functionCall} to perform this call, which verifies that
+        // the target address contains contract code and also asserts for success in the low-level call.
+
+        (bool success, bytes memory returndata) = token.call(data);
+        if (!success) {
+            revert("");
+        } else {
+            // only check if target is a contract if the call was successful and the return data is empty
+            // otherwise we already know that it was a contract
+            if (returndata.length == 0 && token.code.length == 0) {
+                revert("");
+            }
+            return returndata;
+        }
+
+        if (returndata.length != 0 && !abi.decode(returndata, (bool))) {
+            revert SafeERC20FailedOperation(address(token));
+        }
+    }
+
+    /**
+     * @dev Mostly copied from OpenZeppelin SafeERC20. Set the calling contract's allowance toward `spender` to `value`. If `token` returns no value,
+     * non-reverting calls are assumed to be successful. Meant to be used with tokens that require the approval
+     * to be set to zero before setting it to a non-zero value, such as USDT.
+     */
+    function safeApprove(IERC20 token, address spender, uint256 value) internal {
+        bytes memory approvalCall = abi.encodeCall(token.approve, (spender, value));
+
+        if (!_callOptionalReturnBool(token, approvalCall)) {
+            _callOptionalReturn(address(token), abi.encodeCall(token.approve, (spender, 0)));
+            _callOptionalReturn(address(token), approvalCall);
         }
     }
 }
