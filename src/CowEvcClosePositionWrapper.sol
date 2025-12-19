@@ -8,6 +8,8 @@ import {IERC4626, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.s
 import {SafeERC20Lib} from "euler-vault-kit/src/EVault/shared/lib/SafeERC20Lib.sol";
 import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
 
+import {ISignatureTransfer} from "euler-vault-kit/lib/permit2/src/interfaces/ISignatureTransfer.sol";
+
 /// @title CowEvcClosePositionWrapper
 /// @notice A specialized wrapper for closing leveraged positions with EVC
 /// @dev This wrapper hardcodes the EVC operations needed to close a position:
@@ -27,7 +29,11 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
     /// @dev The EIP-712 domain version used for computing the domain separator.
     bytes32 constant DOMAIN_VERSION = keccak256("1");
 
-    address transient public repayCallOwner;
+    bytes8 transient public subaccountTicker;
+
+    ISignatureTransfer internal constant PERMIT2 =
+        ISignatureTransfer(address(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+
 
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Close Position";
@@ -126,11 +132,11 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
     /// @param params The parameters object provided as input to the wrapper
     /// @return The `EVC` call that would be submitted to `EVC.permit`. This would need to be signed as documented https://evc.wtf/docs/concepts/internals/permit.
     function encodePermitData(ClosePositionParams memory params) external view returns (bytes memory) {
-        (IEVC.BatchItem[] memory items,) = _encodeBatchItemsAfter(memoryLocation(params));
+        (IEVC.BatchItem[] memory items,) = _encodeBatchItemsBefore(memoryLocation(params));
         return _encodePermitData(items, memoryLocation(params));
     }
 
-    /*function _encodeBatchItemsAfter(ParamsLocation paramsLocation)
+    function _encodeBatchItemsBefore(ParamsLocation paramsLocation)
         internal
         view
         override
@@ -139,18 +145,16 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         ClosePositionParams memory params = paramsFromMemory(paramsLocation);
         items = new IEVC.BatchItem[](MAX_BATCH_OPERATIONS - 1);
 
-        // 1. Repay debt and return remaining assets
-        /*items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: params.account,
-            targetContract: address(this),
+        // 1. Transfer collateral to the owner
+        items[0] = IEVC.BatchItem({
+            onBehalfOfAccount: address(params.account),
+            targetContract: params.collateralVault,
             value: 0,
-            data: abi.encodeCall(
-                this.helperRepay, (params.borrowVault, params.account, params.maxRepayAmount)
-            )
+            data: abi.encodeCall(IERC20.transfer, (params.owner, params.collateralAmount))
         });
 
         needsPermission = true;
-    }*/
+    }
 
     /// @notice Implementation of CowWrapper._wrap - executes EVC operations to close a position
     /// @param settleData Data which will be used for the parameters in a call to `CowSettlement.settle`
@@ -188,40 +192,19 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         bytes calldata wrapperData,
         bytes calldata remainingWrapperData
     ) internal override {
-        (ClosePositionParams memory params,) = _parseClosePositionParams(wrapperData);
-        // If a subaccount is being used, we need to transfer the required amount of collateral for the trade into the owner's wallet.
-        // This is required becuase the settlement contract can only pull funds from the wallet that signed the transaction.
-        // Since its not possible for a subaccount to sign a transaction due to the private key not existing and their being no
-        // contract deployed to the subaccount address, transferring to the owner's account is the only option.
-        // Additionally, we don't transfer this collateral directly to the settlement contract because the settlement contract
-        // requires receiving of funds from the user's wallet, and cannot be put in the contract in advance.
+        (ClosePositionParams memory params, bytes memory signature) = _parseClosePositionParams(wrapperData);
+
         uint256 balanceBefore;
-        if (params.owner != params.account) {
-            // Subaccounts in the EVC can be any account that shares the highest 19 bits as the owner.
-            // Here we briefly verify that the subaccount address has been specified as expected.
-            require(
-                bytes19(bytes20(params.owner)) == bytes19(bytes20(params.account)),
-                SubaccountMustBeControlledByOwner(params.account, params.owner)
-            );
-
-            uint256 transferAmount = params.collateralAmount;
-
-            if (params.kind == KIND_BUY) {
-                // transfer the full balance from the subaccount to avoid price calculation
-                transferAmount = IERC20(params.collateralVault).balanceOf(params.account);
-                balanceBefore = IERC20(params.collateralVault).balanceOf(params.owner);
-            }
-
-            SafeERC20Lib.safeTransferFrom(
-                IERC20(params.collateralVault), params.account, params.owner, transferAmount, address(0)
-            );
+        if (params.account != params.owner) {
+            // the balance before would have been the current balance without the collateral amount (which was transferred from the subaccount)
+            balanceBefore = IERC20(params.collateralVault).balanceOf(params.owner) - params.collateralAmount;
         }
 
         // Use CowWrapper's _internalSettle to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
         _next(settleData, remainingWrapperData);
 
-        if (params.kind == KIND_BUY) {
+        if (params.kind == KIND_BUY && params.account != params.owner) {
             // return any remainder to the subaccount
             uint256 balanceAfter = IERC20(params.collateralVault).balanceOf(params.owner);
 
