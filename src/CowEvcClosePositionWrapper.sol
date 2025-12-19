@@ -131,7 +131,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         returns (IEVC.BatchItem[] memory items, bool needsPermission)
     {
         ClosePositionParams memory params = paramsFromMemory(paramsLocation);
-        items = new IEVC.BatchItem[](1);
+        items = new IEVC.BatchItem[](MAX_BATCH_OPERATIONS - 1);
 
         // 1. Repay debt and return remaining assets
         items[0] = IEVC.BatchItem({
