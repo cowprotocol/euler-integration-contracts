@@ -75,7 +75,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowVault: EWETH,
             collateralVault: ESUSDS,
             collateralAmount: DEFAULT_SELL_AMOUNT,
-            maxDebt: 0,
+            minRepay: DEFAULT_BUY_AMOUNT,
             kind: GPv2Order.KIND_BUY
         });
     }
@@ -337,7 +337,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Create params with custom amounts
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
         params.collateralAmount = sellAmount;
-        params.maxDebt = 0.5e18;
+        params.minRepay = 1.5e18;  // debt (2e18) - remaining (0.5e18) = 1.5e18 to repay
         params.kind = GPv2Order.KIND_SELL;
 
         // Get settlement data
@@ -624,7 +624,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowVault: EWETH,
             collateralVault: ESUSDS,
             collateralAmount: 2550 ether,
-            maxDebt: 0,
+            minRepay: 1.001 ether,  // full repay of 1 ether debt
             kind: GPv2Order.KIND_BUY
         });
 
@@ -635,7 +635,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowVault: EWETH,
             collateralVault: ESUSDS,
             collateralAmount: 7600 ether,
-            maxDebt: 0,
+            minRepay: 3.003 ether,  // full repay of 3 ether debt
             kind: GPv2Order.KIND_BUY
         });
 
@@ -646,7 +646,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowVault: ESUSDS,
             collateralVault: EWETH,
             collateralAmount: 2.1 ether,
-            maxDebt: 0,
+            minRepay: 5005 ether,  // full repay of 5000 ether debt
             kind: GPv2Order.KIND_BUY
         });
 
