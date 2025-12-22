@@ -6,6 +6,8 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {CowWrapper, ICowSettlement} from "./CowWrapper.sol";
 import {PreApprovedHashes} from "./PreApprovedHashes.sol";
 
+import {Inbox} from "./Inbox.sol";
+
 /// @title CowEvcBaseWrapper
 /// @notice Shared components for implementing Euler wrappers.
 abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
@@ -153,6 +155,35 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         expectedEvcInternalSettleCallHash = bytes32(0);
 
         _evcInternalSettle(settleData, wrapperData, remainingWrapperData);
+    }
+
+    function getInbox(address owner) external returns (address) {
+        return _getInbox(owner);
+    }
+
+    function _getInbox(address owner) internal returns (address) {
+        bytes32 salt = bytes32(uint256(uint160(owner)));
+        address expectedAddress = address(uint160(uint256(keccak256(abi.encodePacked(
+            bytes1(0xff),
+            address(this),
+            salt,
+            keccak256(type(Inbox).creationCode)
+        )))));
+
+        if (expectedAddress.code.length == 0) {
+            new Inbox{salt: salt}();
+        }
+
+        return expectedAddress;
+    }
+
+    function _callInbox(address inbox, address target, bytes memory data) internal {
+        (bool success, bytes memory reason) = inbox.call(abi.encodePacked(target, data));
+        if (!success) {
+            assembly ("memory-safe") {
+                revert(add(0x20, reason), mload(reason))
+            }
+        }
     }
 
     function _invokeEvc(

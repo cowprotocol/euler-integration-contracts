@@ -25,6 +25,10 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
     uint256 constant DEFAULT_SELL_AMOUNT = 2510 ether;
     uint256 constant DEFAULT_BUY_AMOUNT = 1.001 ether;
 
+    // when repaying, if no time passes, we should have exactly 0.001 eth left over
+    uint256 constant DEFAULT_BUY_REPAID = 1 ether;
+    uint256 constant DEFAULT_BUY_LEFTOVER = 0.001 ether;
+
     function setUp() public override {
         super.setUp();
 
@@ -71,7 +75,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowVault: EWETH,
             collateralVault: ESUSDS,
             collateralAmount: DEFAULT_SELL_AMOUNT,
-            maxRepayAmount: DEFAULT_BUY_AMOUNT,
+            maxDebt: 0,
             kind: GPv2Order.KIND_BUY
         });
     }
@@ -162,7 +166,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
     /// @dev Sells vault shares to buy repayment token (WETH)
     function getClosePositionSettlement(
         address owner,
-        address receiver,
+        address account,
         address sellVaultToken,
         address buyToRepayToken,
         uint256 sellAmount,
@@ -189,7 +193,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             buyAmount: buyAmount,
             validTo: validTo,
             owner: owner,
-            receiver: receiver,
+            receiver: closePositionWrapper.getInbox(account),
             isBuy: true
         });
 
@@ -234,7 +238,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Get settlement data
         SettlementData memory settlement = getClosePositionSettlement({
             owner: user,
-            receiver: user,
+            account: account,
             sellVaultToken: ESUSDS,
             buyToRepayToken: WETH,
             sellAmount: DEFAULT_SELL_AMOUNT,
@@ -268,8 +272,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             params.borrowVault,
             params.collateralVault,
             params.collateralAmount,
-            params.maxRepayAmount,
-            params.kind
+            DEFAULT_BUY_REPAID,
+            DEFAULT_BUY_LEFTOVER
         );
 
         // Execute wrapped settlement
@@ -330,16 +334,16 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowAmount: borrowAmount
         });
 
-        // Create params with custom amounts and KIND_SELL
+        // Create params with custom amounts
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
         params.collateralAmount = sellAmount;
-        params.maxRepayAmount = buyAmount;
+        params.maxDebt = 0.5e18;
         params.kind = GPv2Order.KIND_SELL;
 
         // Get settlement data
         SettlementData memory settlement = getClosePositionSettlement({
             owner: user,
-            receiver: user,
+            account: account,
             sellVaultToken: ESUSDS,
             buyToRepayToken: WETH,
             sellAmount: sellAmount,
@@ -369,8 +373,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             params.borrowVault,
             params.collateralVault,
             params.collateralAmount,
-            params.maxRepayAmount,
-            params.kind
+            buyAmount,
+            0
         );
 
         // Execute wrapped settlement
@@ -387,7 +391,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         address account = address(uint160(user) ^ uint8(0x01));
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
         params.collateralAmount = 0;
-        params.maxRepayAmount = type(uint256).max;
 
         bytes memory wrapperData = abi.encode(params, new bytes(65));
 
@@ -402,7 +405,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         address account = address(uint160(user) ^ uint8(0x01));
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
         params.collateralAmount = 0;
-        params.maxRepayAmount = type(uint256).max;
 
         bytes32 hash = closePositionWrapper.getApprovalHash(params);
 
@@ -457,7 +459,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Get settlement data
         SettlementData memory settlement = getClosePositionSettlement({
             owner: user,
-            receiver: user,
+            account: account,
             sellVaultToken: ESUSDS,
             buyToRepayToken: WETH,
             sellAmount: DEFAULT_SELL_AMOUNT,
@@ -488,8 +490,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             params.borrowVault,
             params.collateralVault,
             params.collateralAmount,
-            params.maxRepayAmount,
-            params.kind
+            DEFAULT_BUY_REPAID,
+            DEFAULT_BUY_LEFTOVER
         );
 
         // Execute wrapped settlement
@@ -525,7 +527,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Get settlement data
         SettlementData memory settlement = getClosePositionSettlement({
             owner: user,
-            receiver: user,
+            account: account,
             sellVaultToken: ESUSDS,
             buyToRepayToken: WETH,
             sellAmount: DEFAULT_SELL_AMOUNT,
@@ -622,7 +624,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowVault: EWETH,
             collateralVault: ESUSDS,
             collateralAmount: 2550 ether,
-            maxRepayAmount: 1.001 ether,
+            maxDebt: 0,
             kind: GPv2Order.KIND_BUY
         });
 
@@ -633,7 +635,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowVault: EWETH,
             collateralVault: ESUSDS,
             collateralAmount: 7600 ether,
-            maxRepayAmount: 3.003 ether,
+            maxDebt: 0,
             kind: GPv2Order.KIND_BUY
         });
 
@@ -644,7 +646,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowVault: ESUSDS,
             collateralVault: EWETH,
             collateralAmount: 2.1 ether,
-            maxRepayAmount: 5005 ether,
+            maxDebt: 0,
             kind: GPv2Order.KIND_BUY
         });
 
@@ -674,10 +676,10 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             sellTokenIndex: 2,
             buyTokenIndex: 1,
             sellAmount: params1.collateralAmount,
-            buyAmount: params1.maxRepayAmount,
+            buyAmount: 1.001 ether,
             validTo: validTo,
             owner: user,
-            receiver: user,
+            receiver: closePositionWrapper.getInbox(account1),
             isBuy: true
         });
         (trades[1],,) = setupCowOrder({
@@ -685,10 +687,10 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             sellTokenIndex: 2,
             buyTokenIndex: 1,
             sellAmount: params2.collateralAmount,
-            buyAmount: params2.maxRepayAmount,
+            buyAmount: 3.003 ether,
             validTo: validTo,
             owner: user2,
-            receiver: user2,
+            receiver: closePositionWrapper.getInbox(account2),
             isBuy: true
         });
         (trades[2],,) = setupCowOrder({
@@ -696,10 +698,10 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             sellTokenIndex: 3,
             buyTokenIndex: 0,
             sellAmount: params3.collateralAmount,
-            buyAmount: params3.maxRepayAmount,
+            buyAmount: 5005 ether,
             validTo: validTo,
             owner: user3,
-            receiver: user3,
+            receiver: closePositionWrapper.getInbox(account3),
             isBuy: true
         });
 
@@ -711,9 +713,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // We pull the money out of the euler vaults
         interactions[1][0] = getWithdrawInteraction(
-            ESUSDS, (params1.maxRepayAmount + params2.maxRepayAmount) * clearingPrices[1] / clearingPrices[0]
+            ESUSDS, (1.001 ether + 3.003 ether) * clearingPrices[1] / clearingPrices[0]
         );
-        interactions[1][1] = getWithdrawInteraction(EWETH, params3.maxRepayAmount * clearingPrices[0] / clearingPrices[1]);
+        interactions[1][1] = getWithdrawInteraction(EWETH, 5005 ether * clearingPrices[0] / clearingPrices[1]);
 
         // We swap. We only need to swap the difference of the 3 closes (since coincidence of wants)
         // It comes out to 5000 SUSDS needs to become WETH
