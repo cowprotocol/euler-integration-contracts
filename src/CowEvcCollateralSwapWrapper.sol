@@ -16,6 +16,8 @@ import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
 ///      3. Execute settlement to swap collateral (new collateral is deposited directly into user's account)
 ///      All operations are atomic within EVC batch
 contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
+    error InvalidSettlement(address fromVault, address toVault, uint256 fromVaultPrice, uint256 toVaultPrice);
+
     /// @dev The EIP-712 domain name used for computing the domain separator.
     bytes32 constant DOMAIN_NAME = keccak256("CowEvcCollateralSwapWrapper");
 
@@ -31,7 +33,8 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         address account,
         address indexed fromVault,
         address indexed toVault,
-        uint256 swapAmount,
+        uint256 fromAmount,
+        uint256 toAmount,
         bytes32 kind
     );
 
@@ -46,13 +49,14 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
                 deadline: 0,
                 fromVault: address(0),
                 toVault: address(0),
-                swapAmount: 0,
+                fromAmount: 0,
+                toAmount: 0,
                 kind: bytes32(0)
             })
         )
         .length;
 
-        MAX_BATCH_OPERATIONS = 2;
+        MAX_BATCH_OPERATIONS = 3;
 
         PARAMS_TYPE_HASH = keccak256(
             "CollateralSwapParams(address owner,address account,uint256 deadline,address fromVault,address toVault,uint256 swapAmount,bytes32 kind)"
@@ -78,8 +82,11 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         /// @dev The destination collateral vault (what we're swapping to)
         address toVault;
 
-        /// @dev The amount of collateral to swap from the source vault
-        uint256 swapAmount;
+        /// @dev The amount of fromVault traded in. Same as `sellAmount` in the CoW order
+        uint256 fromAmount;
+
+        /// @dev The amount of toVault traded out. Same as `buyAmount` in the CoW order
+        uint256 toAmount;
 
         /// @dev Effectively determines whether this is an exactIn or exactOut order. Must be either KIND_BUY or KIND_SELL as defined in GPv2Order. Should be the same as whats in the actual order.
         bytes32 kind;
@@ -111,25 +118,32 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
     /// @param params The parameters object provided as input to the wrapper
     /// @return The `EVC` call that would be submitted to `EVC.permit`. This would need to be signed as documented https://evc.wtf/docs/concepts/internals/permit.
     function encodePermitData(CollateralSwapParams memory params) external view returns (bytes memory) {
-        (IEVC.BatchItem[] memory items,) = _encodeBatchItemsAfter(memoryLocation(params));
+        (IEVC.BatchItem[] memory items,) = _encodeBatchItemsBefore(memoryLocation(params));
         return _encodePermitData(items, memoryLocation(params));
     }
 
-    function _encodeBatchItemsAfter(ParamsLocation paramsLocation)
+    function _encodeBatchItemsBefore(ParamsLocation paramsLocation)
         internal
         view
         override
         returns (IEVC.BatchItem[] memory items, bool needsPermission)
     {
         CollateralSwapParams memory params = paramsFromMemory(paramsLocation);
-        items = new IEVC.BatchItem[](1);
+        items = new IEVC.BatchItem[](MAX_BATCH_OPERATIONS - 1);
 
-        // Enable the destination collateral vault for the account
+        // For the permissioned operation, transfer collateral from subaccount to owner
         items[0] = IEVC.BatchItem({
+            onBehalfOfAccount: address(params.account),
+            targetContract: params.fromVault,
+            value: 0,
+            data: abi.encodeCall(IERC20.transfer, (address(this), params.fromAmount))
+        });
+        // also, enable the new account for collateral
+        items[1] = IEVC.BatchItem({
             onBehalfOfAccount: address(0),
             targetContract: address(EVC),
             value: 0,
-            data: abi.encodeCall(IEVC.enableCollateral, (params.account, params.toVault))
+            data: abi.encodeCall(EVC.enableCollateral, (params.account, params.toVault))
         });
 
         needsPermission = true;
@@ -145,6 +159,14 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         // Decode wrapper data into CollateralSwapParams
         (CollateralSwapParams memory params, bytes memory signature) = _parseCollateralSwapParams(wrapperData);
 
+        // Subaccounts in the EVC can be any account that shares the highest 19 bits as the owner.
+        // Here we verify that the subaccount address is, in fact, a subaccount of the owner.
+        // Otherwise it's conceivably possible that a transfer could happen between an owner with an unauthorized subaccount.
+        require(
+            bytes19(bytes20(params.owner)) == bytes19(bytes20(params.account)),
+            SubaccountMustBeControlledByOwner(params.account, params.owner)
+        );
+
         _invokeEvc(
             settleData,
             wrapperData,
@@ -154,10 +176,6 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
             params.owner,
             params.deadline
         );
-
-        emit CowEvcCollateralSwapped(
-            params.owner, params.account, params.fromVault, params.toVault, params.swapAmount, params.kind
-        );
     }
 
     function _evcInternalSettle(
@@ -166,31 +184,43 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         bytes calldata remainingWrapperData
     ) internal override {
         (CollateralSwapParams memory params,) = _parseCollateralSwapParams(wrapperData);
-        // If a subaccount is being used, we need to transfer the required amount of collateral for the trade into the owner's wallet.
-        // This is required becuase the settlement contract can only pull funds from the wallet that signed the transaction.
-        // Since its not possible for a subaccount to sign a transaction due to the private key not existing and their being no
-        // contract deployed to the subaccount address, transferring to the owner's account is the only option.
-        // Additionally, we don't transfer this collateral directly to the settlement contract because the settlement contract
-        // requires receiving of funds from the user's wallet, and cannot be put in the contract in advance.
-        uint256 balanceBefore;
-        if (params.owner != params.account) {
-            // Subaccounts in the EVC can be any account that shares the highest 19 bits as the owner.
-            // Here we briefly verify that the subaccount address has been specified as expected.
-            require(
-                bytes19(bytes20(params.owner)) == bytes19(bytes20(params.account)),
-                SubaccountMustBeControlledByOwner(params.account, params.owner)
-            );
+        (address[] memory tokens, uint256[] memory prices,,) =
+            abi.decode(settleData[4:], (address[], uint256[], ICowSettlement.Trade[], ICowSettlement.Interaction[][3]));
 
-            uint256 transferAmount = params.swapAmount;
-
-            if (params.kind == KIND_BUY) {
-                // transfer as much as we can (we will send the remainder back later)
-                transferAmount = IERC20(params.fromVault).balanceOf(params.account);
-                balanceBefore = IERC20(params.fromVault).balanceOf(params.owner);
+        uint256 fromVaultTokenPrice;
+        uint256 toVaultTokenPrice;
+        for (uint256 i = 0; i < tokens.length; i++) {
+            if (tokens[i] == address(params.fromVault)) {
+                fromVaultTokenPrice = prices[i];
+            } else if (tokens[i] == address(params.toVault)) {
+                toVaultTokenPrice = prices[i];
             }
+        }
 
-            SafeERC20Lib.safeTransferFrom(
-                IERC20(params.fromVault), params.account, params.owner, transferAmount, address(0)
+        require(
+            fromVaultTokenPrice > 0 && toVaultTokenPrice > 0,
+            InvalidSettlement(params.fromVault, params.toVault, fromVaultTokenPrice, toVaultTokenPrice)
+        );
+
+        // For KIND_BUY orders, we need to calculate how much collateral is actually needed and send back the remainder
+        uint256 fromAmount;
+        uint256 toAmount;
+        if (params.kind == KIND_BUY) {
+            // Calculate and send only what's needed for the swap, send remainder back to account
+            fromAmount = params.toAmount * toVaultTokenPrice / fromVaultTokenPrice;
+            toAmount = params.toAmount;
+            SafeERC20Lib.safeTransfer(IERC20(params.fromVault), params.owner, fromAmount);
+
+            uint256 remainingBalance = IERC20(params.fromVault).balanceOf(address(this));
+            if (remainingBalance > 0) {
+                SafeERC20Lib.safeTransfer(IERC20(params.fromVault), params.account, remainingBalance);
+            }
+        } else {
+            fromAmount = params.fromAmount;
+            toAmount = params.fromAmount * fromVaultTokenPrice / toVaultTokenPrice;
+            // For KIND_SELL: send all collateral to owner and let settlement send remainder back
+            SafeERC20Lib.safeTransfer(
+                IERC20(params.fromVault), params.owner, IERC20(params.fromVault).balanceOf(address(this))
             );
         }
 
@@ -198,16 +228,11 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         // wrapperData is empty since we've already processed it in _wrap
         _next(settleData, remainingWrapperData);
 
-        if (params.kind == KIND_BUY) {
-            // return any remainder to the subaccount
-            uint256 balanceAfter = IERC20(params.fromVault).balanceOf(params.owner);
-
-            if (balanceAfter > balanceBefore) {
-                SafeERC20Lib.safeTransferFrom(
-                    IERC20(params.fromVault), params.owner, params.account, balanceAfter - balanceBefore, address(0)
-                );
-            }
-        }
+        // Emit event - funds are now in the account from the settlement
+        uint256 receivedAmount = IERC20(params.toVault).balanceOf(params.account);
+        emit CowEvcCollateralSwapped(
+            params.owner, params.account, params.fromVault, params.toVault, fromAmount, toAmount, params.kind
+        );
     }
 
     function memoryLocation(CollateralSwapParams memory params) internal pure returns (ParamsLocation location) {

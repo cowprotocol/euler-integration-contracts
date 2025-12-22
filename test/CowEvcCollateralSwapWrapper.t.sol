@@ -74,7 +74,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             deadline: block.timestamp + 1 hours,
             fromVault: EUSDS,
             toVault: EWBTC,
-            swapAmount: DEFAULT_SWAP_AMOUNT,
+            fromAmount: DEFAULT_SWAP_AMOUNT,
+            toAmount: DEFAULT_BUY_AMOUNT,
             kind: GPv2Order.KIND_SELL
         });
     }
@@ -140,7 +141,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     /// @dev Sells vault shares from one vault to buy shares in another
     function getCollateralSwapSettlement(
         address owner,
-        address receiver,
+        address account,
         address sellVaultToken,
         address buyVaultToken,
         uint256 sellAmount,
@@ -167,7 +168,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             buyAmount: buyAmount,
             validTo: validTo,
             owner: owner,
-            receiver: receiver,
+            receiver: account,
             isBuy: false
         });
 
@@ -202,7 +203,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Get settlement data
         SettlementData memory settlement = getCollateralSwapSettlement({
             owner: user,
-            receiver: user,
+            account: user,
             sellVaultToken: EUSDS,
             buyVaultToken: EWBTC,
             sellAmount: DEFAULT_SWAP_AMOUNT,
@@ -234,9 +235,15 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         bytes memory wrapperData = _encodeWrapperData(params, permitSignature);
 
         // Expect event emission
-        vm.expectEmit();
+        vm.expectEmit(true, true, true, false);
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
-            params.owner, params.account, params.fromVault, params.toVault, params.swapAmount, params.kind
+            params.owner,
+            params.account,
+            params.fromVault,
+            params.toVault,
+            params.fromAmount,
+            params.toAmount,
+            params.kind
         );
 
         // Execute wrapped settlement
@@ -263,7 +270,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Get settlement data - receiver is the subaccount
         SettlementData memory settlement = getCollateralSwapSettlement({
             owner: user,
-            receiver: account,
+            account: account,
             sellVaultToken: EUSDS,
             buyVaultToken: EWBTC,
             sellAmount: DEFAULT_SWAP_AMOUNT,
@@ -295,9 +302,15 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
 
         // Expect event emission
-        vm.expectEmit();
+        vm.expectEmit(true, true, true, false);
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
-            params.owner, params.account, params.fromVault, params.toVault, params.swapAmount, params.kind
+            params.owner,
+            params.account,
+            params.fromVault,
+            params.toVault,
+            params.fromAmount,
+            params.toAmount,
+            params.kind
         );
 
         // Execute wrapped settlement
@@ -325,7 +338,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Get settlement data
         SettlementData memory settlement = getCollateralSwapSettlement({
             owner: user,
-            receiver: user,
+            account: user,
             sellVaultToken: EUSDS,
             buyVaultToken: EWBTC,
             sellAmount: DEFAULT_SWAP_AMOUNT,
@@ -422,21 +435,19 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             borrowAmount: borrowAmount
         });
 
-        uint256 sellAmount = 1000 ether + 2500 ether; // Sell 3500 EUSDS
-        uint256 buyAmount = 0.0325e8; // Expect to receive ~0.0325 EWBTC (8 decimals)
-
         // Create params using helper
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, account);
-        params.swapAmount = sellAmount; // Override swap amount for this test
+        params.fromAmount = 1000 ether + 2500 ether; // Override from amount for this test
+        params.toAmount = 0.0325e8; // Override to amount for this test
 
         // Get settlement data
         SettlementData memory settlement = getCollateralSwapSettlement({
             owner: user,
-            receiver: account,
+            account: account,
             sellVaultToken: EUSDS,
             buyVaultToken: EWBTC,
-            sellAmount: sellAmount,
-            buyAmount: buyAmount
+            sellAmount: params.fromAmount,
+            buyAmount: params.toAmount
         });
 
         // User signs the order on cowswap (already done in setupCowOrder)
@@ -459,7 +470,13 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Expect event emission
         vm.expectEmit();
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
-            params.owner, params.account, params.fromVault, params.toVault, params.swapAmount, params.kind
+            params.owner,
+            params.account,
+            params.fromVault,
+            params.toVault,
+            params.fromAmount,
+            params.fromAmount * settlement.clearingPrices[0] / settlement.clearingPrices[1],
+            params.kind
         );
 
         // Execute wrapped settlement
@@ -468,7 +485,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Verify the collateral was swapped successfully while maintaining debt
         assertEq(
             IERC20(EUSDS).balanceOf(account),
-            susdsBalanceBefore - sellAmount,
+            susdsBalanceBefore - params.fromAmount,
             "Account should have less EUSDS after swap"
         );
         assertGt(IERC20(EWBTC).balanceOf(account), wbtcBalanceBefore, "Account should have more EWBTC after swap");
@@ -558,7 +575,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 deadline: block.timestamp + 1 hours,
                 fromVault: EUSDS,
                 toVault: EWBTC,
-                swapAmount: 500 ether,
+                fromAmount: 500 ether,
+                toAmount: 0.0045e8,
                 kind: GPv2Order.KIND_SELL
             });
 
@@ -569,7 +587,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 deadline: block.timestamp + 1 hours,
                 fromVault: EUSDS,
                 toVault: EWBTC,
-                swapAmount: 0.005e8, // about 500 EUSDS
+                fromAmount: 550 ether,
+                toAmount: 0.005e8, // about 500 EUSDS
                 kind: GPv2Order.KIND_BUY
             });
 
@@ -580,7 +599,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 deadline: block.timestamp + 1 hours,
                 fromVault: EWBTC,
                 toVault: EUSDS,
-                swapAmount: 2000 ether,
+                fromAmount: 0.025e8, // will be calculated from toAmount
+                toAmount: 2000 ether,
                 kind: GPv2Order.KIND_BUY
             });
 
@@ -610,8 +630,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             tokens: tokens,
             sellTokenIndex: 0,
             buyTokenIndex: 1,
-            sellAmount: params1.swapAmount,
-            buyAmount: 0,
+            sellAmount: params1.fromAmount,
+            buyAmount: params1.toAmount,
             validTo: validTo,
             owner: user,
             receiver: account1,
@@ -621,8 +641,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             tokens: tokens,
             sellTokenIndex: 0,
             buyTokenIndex: 1,
-            sellAmount: 1e24,
-            buyAmount: params2.swapAmount,
+            sellAmount: params2.fromAmount,
+            buyAmount: params2.toAmount,
             validTo: validTo,
             owner: user2,
             receiver: account2,
@@ -632,8 +652,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             tokens: tokens,
             sellTokenIndex: 1,
             buyTokenIndex: 0,
-            sellAmount: 1e24,
-            buyAmount: params3.swapAmount,
+            sellAmount: params3.fromAmount,
+            buyAmount: params3.toAmount,
             validTo: validTo,
             owner: user3,
             receiver: account3,

@@ -226,7 +226,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         SettlementData memory settlement = getClosePositionSettlement({
             owner: user,
             account: account,
-            sellVaultToken: ESUSDS,
+            sellVaultToken: EUSDS,
             buyToRepayToken: WETH,
             sellAmount: DEFAULT_SELL_AMOUNT,
             buyAmount: DEFAULT_BUY_AMOUNT
@@ -331,7 +331,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         SettlementData memory settlement = getClosePositionSettlement({
             owner: user,
             account: account,
-            sellVaultToken: ESUSDS,
+            sellVaultToken: EUSDS,
             buyToRepayToken: WETH,
             sellAmount: sellAmount,
             buyAmount: buyAmount
@@ -447,7 +447,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         SettlementData memory settlement = getClosePositionSettlement({
             owner: user,
             account: account,
-            sellVaultToken: ESUSDS,
+            sellVaultToken: EUSDS,
             buyToRepayToken: WETH,
             sellAmount: DEFAULT_SELL_AMOUNT,
             buyAmount: DEFAULT_BUY_AMOUNT
@@ -515,7 +515,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         SettlementData memory settlement = getClosePositionSettlement({
             owner: user,
             account: account,
-            sellVaultToken: ESUSDS,
+            sellVaultToken: EUSDS,
             buyToRepayToken: WETH,
             sellAmount: DEFAULT_SELL_AMOUNT,
             buyAmount: DEFAULT_BUY_AMOUNT
@@ -717,7 +717,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // We pull the money out of the euler vaults
         interactions[1][0] =
-            getWithdrawInteraction(ESUSDS, (1.001 ether + 3.003 ether) * clearingPrices[1] / clearingPrices[0]);
+            getWithdrawInteraction(EUSDS, (1.001 ether + 3.003 ether) * clearingPrices[1] / clearingPrices[0]);
         interactions[1][1] = getWithdrawInteraction(EWETH, 5005 ether * clearingPrices[0] / clearingPrices[1]);
 
         // We swap. We only need to swap the difference of the 3 closes (since coincidence of wants)

@@ -54,7 +54,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
-            swapAmount: DEFAULT_SWAP_AMOUNT,
+            fromAmount: DEFAULT_SWAP_AMOUNT,
+            toAmount: 0,
             kind: KIND_SELL
         });
     }
@@ -179,9 +180,9 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params2 = _getDefaultParams();
         params2.owner = ACCOUNT;
 
-        // Change swapAmount field
+        // Change fromAmount field
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params3 = _getDefaultParams();
-        params3.swapAmount = 2000e18;
+        params3.fromAmount = 2000e18;
 
         bytes32 hash1 = wrapper.getApprovalHash(params1);
         bytes32 hash2 = wrapper.getApprovalHash(params2);
@@ -239,7 +240,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
-            swapAmount: 1000e18,
+            fromAmount: 1000e18,
+            toAmount: 0,
             kind: KIND_SELL
         });
 
@@ -281,7 +283,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
-            swapAmount: 1000e18,
+            fromAmount: 1000e18,
+            toAmount: 0,
             kind: KIND_SELL
         });
 
@@ -319,7 +322,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
-            swapAmount: 1000e18,
+            fromAmount: 1000e18,
+            toAmount: 0,
             kind: KIND_SELL
         });
 
@@ -356,9 +360,9 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
 
-        // Verify transfer occurred from account to owner (exact swapAmount for SELL)
-        assertEq(mockFromVault.balanceOf(ACCOUNT), 1000e18, "Account balance should decrease by swapAmount");
-        assertEq(mockFromVault.balanceOf(OWNER), 1000e18, "Owner should receive swapAmount");
+        // Verify transfer occurred from account to owner (exact fromAmount for SELL)
+        assertEq(mockFromVault.balanceOf(ACCOUNT), 1000e18, "Account balance should decrease by fromAmount");
+        assertEq(mockFromVault.balanceOf(OWNER), 1000e18, "Owner should receive fromAmount");
     }
 
     function test_EvcInternalSettle_WithSubaccount_KindBuy() public {
@@ -369,7 +373,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
-            swapAmount: 1000e18, // This is the buy amount (what we want to receive)
+            fromAmount: 1e24, // Will be calculated from toAmount for KIND_BUY
+            toAmount: 1000e18, // This is the buy amount (what we want to receive)
             kind: KIND_BUY
         });
 
@@ -440,7 +445,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
-            swapAmount: 1000e18,
+            fromAmount: 1000e18,
+            toAmount: 0,
             kind: KIND_SELL
         });
 
@@ -486,7 +492,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
-            swapAmount: 1000e18,
+            fromAmount: 1000e18,
+            toAmount: 0,
             kind: KIND_SELL
         });
 
@@ -685,7 +692,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
-            swapAmount: 0, // Zero swap amount
+            fromAmount: 0, // Zero from amount
+            toAmount: 0,
             kind: KIND_SELL
         });
 
@@ -703,7 +711,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
-            swapAmount: type(uint256).max,
+            fromAmount: type(uint256).max,
+            toAmount: 0,
             kind: KIND_SELL
         });
 
@@ -724,7 +733,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             fromVault: address(anotherFromVault),
             toVault: address(anotherToVault),
-            swapAmount: 1000e18,
+            fromAmount: 1000e18,
+            toAmount: 0,
             kind: KIND_SELL
         });
 
@@ -746,7 +756,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
-            swapAmount: 1000e18,
+            fromAmount: 1000e18,
+            toAmount: 0,
             kind: KIND_SELL
         });
 
@@ -765,7 +776,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
-            swapAmount: 1000e18,
+            fromAmount: 1000e18,
+            toAmount: 0,
             kind: KIND_SELL
         });
 
@@ -805,7 +817,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
-            swapAmount: 1000e18,
+            fromAmount: 1000e18,
+            toAmount: 0,
             kind: KIND_SELL
         });
 
@@ -841,7 +854,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
-            swapAmount: 1000e18,
+            fromAmount: 1000e18,
+            toAmount: 0,
             kind: KIND_SELL
         });
 
