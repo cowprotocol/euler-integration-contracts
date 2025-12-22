@@ -25,6 +25,10 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
     uint256 constant DEFAULT_SELL_AMOUNT = 2510 ether;
     uint256 constant DEFAULT_BUY_AMOUNT = 1.001 ether;
 
+    // when repaying, if no time passes, we should have exactly 0.001 eth left over
+    uint256 constant DEFAULT_BUY_REPAID = 1 ether;
+    uint256 constant DEFAULT_BUY_LEFTOVER = 0.001 ether;
+
     function setUp() public override {
         super.setUp();
 
@@ -71,7 +75,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowVault: EWETH,
             collateralVault: ESUSDS,
             collateralAmount: DEFAULT_SELL_AMOUNT,
-            repayAmount: DEFAULT_BUY_AMOUNT,
+            minRepay: DEFAULT_BUY_AMOUNT,
             kind: GPv2Order.KIND_BUY
         });
     }
@@ -146,6 +150,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 userPrivateKey
     ) internal returns (bytes memory) {
         ecdsa.setPrivateKey(userPrivateKey);
+        // NOTE: this permit signature differs from the other wrappers as we are signing *WITH THE SUBACCOUNT*
         return ecdsa.signPermit(
             params.owner,
             address(closePositionWrapper),
@@ -161,7 +166,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
     /// @dev Sells vault shares to buy repayment token (WETH)
     function getClosePositionSettlement(
         address owner,
-        address receiver,
+        address account,
         address sellVaultToken,
         address buyToRepayToken,
         uint256 sellAmount,
@@ -188,7 +193,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             buyAmount: buyAmount,
             validTo: validTo,
             owner: owner,
-            receiver: receiver,
+            receiver: closePositionWrapper.getInbox(user, account),
             isBuy: true
         });
 
@@ -233,7 +238,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Get settlement data
         SettlementData memory settlement = getClosePositionSettlement({
             owner: user,
-            receiver: user,
+            account: account,
             sellVaultToken: ESUSDS,
             buyToRepayToken: WETH,
             sellAmount: DEFAULT_SELL_AMOUNT,
@@ -267,8 +272,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             params.borrowVault,
             params.collateralVault,
             params.collateralAmount,
-            params.repayAmount,
-            params.kind
+            DEFAULT_BUY_REPAID,
+            DEFAULT_BUY_LEFTOVER
         );
 
         // Execute wrapped settlement
@@ -329,16 +334,16 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowAmount: borrowAmount
         });
 
-        // Create params with custom amounts and KIND_SELL
+        // Create params with custom amounts
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
         params.collateralAmount = sellAmount;
-        params.repayAmount = buyAmount;
+        params.minRepay = 1.5e18; // debt (2e18) - remaining (0.5e18) = 1.5e18 to repay
         params.kind = GPv2Order.KIND_SELL;
 
         // Get settlement data
         SettlementData memory settlement = getClosePositionSettlement({
             owner: user,
-            receiver: user,
+            account: account,
             sellVaultToken: ESUSDS,
             buyToRepayToken: WETH,
             sellAmount: sellAmount,
@@ -368,8 +373,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             params.borrowVault,
             params.collateralVault,
             params.collateralAmount,
-            params.repayAmount,
-            params.kind
+            buyAmount,
+            0
         );
 
         // Execute wrapped settlement
@@ -386,7 +391,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         address account = address(uint160(user) ^ uint8(0x01));
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
         params.collateralAmount = 0;
-        params.repayAmount = type(uint256).max;
 
         bytes memory wrapperData = abi.encode(params, new bytes(65));
 
@@ -401,7 +405,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         address account = address(uint160(user) ^ uint8(0x01));
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
         params.collateralAmount = 0;
-        params.repayAmount = type(uint256).max;
 
         bytes32 hash = closePositionWrapper.getApprovalHash(params);
 
@@ -456,7 +459,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Get settlement data
         SettlementData memory settlement = getClosePositionSettlement({
             owner: user,
-            receiver: user,
+            account: account,
             sellVaultToken: ESUSDS,
             buyToRepayToken: WETH,
             sellAmount: DEFAULT_SELL_AMOUNT,
@@ -487,8 +490,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             params.borrowVault,
             params.collateralVault,
             params.collateralAmount,
-            params.repayAmount,
-            params.kind
+            DEFAULT_BUY_REPAID,
+            DEFAULT_BUY_LEFTOVER
         );
 
         // Execute wrapped settlement
@@ -524,7 +527,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Get settlement data
         SettlementData memory settlement = getClosePositionSettlement({
             owner: user,
-            receiver: user,
+            account: account,
             sellVaultToken: ESUSDS,
             buyToRepayToken: WETH,
             sellAmount: DEFAULT_SELL_AMOUNT,
@@ -621,7 +624,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowVault: EWETH,
             collateralVault: ESUSDS,
             collateralAmount: 2550 ether,
-            repayAmount: 1.001 ether,
+            minRepay: 1.001 ether, // full repay of 1 ether debt
             kind: GPv2Order.KIND_BUY
         });
 
@@ -632,7 +635,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowVault: EWETH,
             collateralVault: ESUSDS,
             collateralAmount: 7600 ether,
-            repayAmount: 3.003 ether,
+            minRepay: 3.003 ether, // full repay of 3 ether debt
             kind: GPv2Order.KIND_BUY
         });
 
@@ -643,7 +646,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowVault: ESUSDS,
             collateralVault: EWETH,
             collateralAmount: 2.1 ether,
-            repayAmount: 5005 ether,
+            minRepay: 5005 ether, // full repay of 5000 ether debt
             kind: GPv2Order.KIND_BUY
         });
 
@@ -673,10 +676,10 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             sellTokenIndex: 2,
             buyTokenIndex: 1,
             sellAmount: params1.collateralAmount,
-            buyAmount: params1.repayAmount,
+            buyAmount: 1.001 ether,
             validTo: validTo,
             owner: user,
-            receiver: user,
+            receiver: closePositionWrapper.getInbox(user, account1),
             isBuy: true
         });
         (trades[1],,) = setupCowOrder({
@@ -684,10 +687,10 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             sellTokenIndex: 2,
             buyTokenIndex: 1,
             sellAmount: params2.collateralAmount,
-            buyAmount: params2.repayAmount,
+            buyAmount: 3.003 ether,
             validTo: validTo,
             owner: user2,
-            receiver: user2,
+            receiver: closePositionWrapper.getInbox(user2, account2),
             isBuy: true
         });
         (trades[2],,) = setupCowOrder({
@@ -695,10 +698,10 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             sellTokenIndex: 3,
             buyTokenIndex: 0,
             sellAmount: params3.collateralAmount,
-            buyAmount: params3.repayAmount,
+            buyAmount: 5005 ether,
             validTo: validTo,
             owner: user3,
-            receiver: user3,
+            receiver: closePositionWrapper.getInbox(user3, account3),
             isBuy: true
         });
 
@@ -709,10 +712,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         interactions[2] = new ICowSettlement.Interaction[](0);
 
         // We pull the money out of the euler vaults
-        interactions[1][0] = getWithdrawInteraction(
-            ESUSDS, (params1.repayAmount + params2.repayAmount) * clearingPrices[1] / clearingPrices[0]
-        );
-        interactions[1][1] = getWithdrawInteraction(EWETH, params3.repayAmount * clearingPrices[0] / clearingPrices[1]);
+        interactions[1][0] =
+            getWithdrawInteraction(ESUSDS, (1.001 ether + 3.003 ether) * clearingPrices[1] / clearingPrices[0]);
+        interactions[1][1] = getWithdrawInteraction(EWETH, 5005 ether * clearingPrices[0] / clearingPrices[1]);
 
         // We swap. We only need to swap the difference of the 3 closes (since coincidence of wants)
         // It comes out to 5000 SUSDS needs to become WETH
@@ -744,161 +746,5 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         assertEq(IEVault(EWETH).debtOf(account1), 0, "User1 should have no WETH debt after closing");
         assertEq(IEVault(EWETH).debtOf(account2), 0, "User2 should have no WETH debt after closing");
         assertEq(IEVault(ESUSDS).debtOf(account3), 0, "User3 should have no SUSDS debt after closing");
-    }
-
-    /// @notice Test that a malicious solver cannot use a postInteraction with EVC.permit to pull funds from an unauthorized user
-    /// @dev Verifies that even with an attacker's permit signature, calling helperRepay with a different owner fails
-    function test_ClosePositionWrapper_PostInteractionWithPermitUnauthorizedOwner() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
-        uint256 borrowAmount = 1e18;
-        uint256 collateralAmount = SUSDS_MARGIN + 2495e18;
-
-        address account = address(uint160(user) ^ uint8(0x01));
-        address attacker = user2;
-        address attackerAccount = address(uint160(attacker) ^ uint8(0x01));
-
-        vm.label(user, "Victim");
-        vm.label(account, "Victim Account");
-        vm.label(attackerAccount, "Attacker Account");
-        vm.label(attacker, "Attacker");
-
-        // Setup a leveraged position for user (legit position)
-        setupLeveragedPositionFor({
-            owner: user,
-            account: account,
-            collateralVault: ESUSDS,
-            borrowVault: EWETH,
-            collateralAmount: collateralAmount,
-            borrowAmount: borrowAmount
-        });
-
-        // Setup a leveraged position for the attacker
-        uint256 attackerBorrowAmount = 1e18;
-        uint256 attackerCollateralAmount = SUSDS_MARGIN + 2495e18;
-        setupLeveragedPositionFor({
-            owner: attacker,
-            account: attackerAccount,
-            collateralVault: ESUSDS,
-            borrowVault: EWETH,
-            collateralAmount: attackerCollateralAmount,
-            borrowAmount: attackerBorrowAmount
-        });
-
-        // Create normal close params for legitimate user
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(attacker, attackerAccount);
-
-        // Get settlement data for the legitimate position close
-        SettlementData memory settlement = getClosePositionSettlement({
-            owner: attacker,
-            receiver: attacker,
-            sellVaultToken: ESUSDS,
-            buyToRepayToken: WETH,
-            sellAmount: attackerCollateralAmount / 2,
-            buyAmount: attackerBorrowAmount / 2
-        });
-
-        // Setup normal approvals for user who is preparing to close their position
-        _setupClosePositionApprovalsFor(user, account, ESUSDS, WETH);
-
-        // Setup approvals for the attacker
-        _setupClosePositionApprovalsFor(attacker, attackerAccount, ESUSDS, WETH);
-
-        // Give the attacker extra WETH
-        deal(WETH, attacker, 10e18);
-        deal(ESUSDS, attacker, 10e18);
-
-        // Create permit signature from user
-        bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
-
-        // The attacker (as a malicious solver) tries to craft a postInteraction
-        // that uses EVC.permit to authorize calling helperRepay with the attacker's account
-        // instead of the legitimate user's account. This would attempt to pull funds from
-        // the attacker's account without proper authorization context.
-
-        // Create the malicious call to helperRepay with attacker's account
-        IEVC.BatchItem[] memory maliciousBatch = new IEVC.BatchItem[](1);
-        maliciousBatch[0] = IEVC.BatchItem({
-            onBehalfOfAccount: attackerAccount,
-            targetContract: address(closePositionWrapper),
-            value: 0,
-            data: abi.encodeCall(closePositionWrapper.helperRepay, (EWETH, user, attackerAccount))
-        });
-
-        vm.expectRevert(
-            abi.encodeWithSelector(CowEvcBaseWrapper.SubaccountMustBeControlledByOwner.selector, attackerAccount, user)
-        );
-        vm.prank(attacker);
-        EVC.batch(maliciousBatch);
-
-        //bytes memory maliciousBatchCall = abi.encodeCall(EVC.batch, (maliciousBatch));
-
-        // Create an EVC.permit call signed by the attacker
-        // This permit would authorize the wrapper to call itself with the attacker's parameters
-        ecdsa.setPrivateKey(privateKey2); // Use attacker's private key
-        /*bytes memory permitSignatureFromAttacker = ecdsa.signPermit(
-            attacker, // signer
-            address(COW_SETTLEMENT), // sender (the attacker is authorizing this)
-            uint256(uint160(address(closePositionWrapper))), // nonceNamespace
-            1, // nonce
-            block.timestamp + 1 hours, // deadline
-            0, // value
-            maliciousBatchCall // data
-        );
-
-        vm.expectRevert();
-        EVC.permit(
-            attacker, // signer
-            address(COW_SETTLEMENT), // sender
-            uint256(uint160(address(closePositionWrapper))), // nonceNamespace
-            1, // nonce (+1 because we already consumed the first nonce)
-            block.timestamp + 1 hours, // deadline
-            0, // value
-            maliciousBatchCall, // data
-            permitSignatureFromAttacker // signature
-        );*/
-
-        // Create the postInteraction that calls EVC.permit
-        /*ICowSettlement.Interaction memory maliciousPostInteraction = ICowSettlement.Interaction({
-            target: address(EVC),
-            value: 0,
-            callData: abi.encodeCall(
-                EVC.permit,
-                (
-                    attacker, // signer
-                    address(COW_SETTLEMENT), // sender
-                    uint256(uint160(address(closePositionWrapper))), // nonceNamespace
-                    1, // nonce (+1 because we already consumed the first nonce)
-                    block.timestamp + 1 hours, // deadline
-                    0, // value
-                    maliciousBatchCall, // data
-                    permitSignatureFromAttacker // signature
-                )
-            )
-        });
-
-        // Create modified interactions with the malicious postInteraction
-        ICowSettlement.Interaction[][3] memory modifiedInteractions;
-        modifiedInteractions[0] = settlement.interactions[0]; // preInteractions (empty)
-        modifiedInteractions[1] = settlement.interactions[1]; // intraInteractions
-        modifiedInteractions[2] = new ICowSettlement.Interaction[](1);
-        modifiedInteractions[2][0] = maliciousPostInteraction;
-
-        // Re-encode settlement data with modified interactions containing the malicious permit
-        bytes memory maliciousSettleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (settlement.tokens, settlement.clearingPrices, settlement.trades, modifiedInteractions)
-        );
-
-        bytes memory wrapperData = encodeWrapperData(abi.encode(params, permitSignature));
-
-        // The transaction should revert because even though the attacker has signed a permit,
-        // the helperRepay function tries to pull funds from the attacker's account.
-        // The function checks that onBehalfOfAccount matches the account parameter,
-        // but since this is being called in a postInteraction context, the EVC batch
-        // is still operating on behalf of the original account, not the attacker.
-        // This causes an authorization mismatch or transfer failure.
-        vm.expectRevert();
-        CowWrapper(address(closePositionWrapper)).wrappedSettle(maliciousSettleData, wrapperData);*/
     }
 }
