@@ -193,7 +193,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             buyAmount: buyAmount,
             validTo: validTo,
             owner: owner,
-            receiver: closePositionWrapper.getInbox(account),
+            receiver: closePositionWrapper.getInbox(user, account),
             isBuy: true
         });
 
@@ -337,7 +337,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Create params with custom amounts
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
         params.collateralAmount = sellAmount;
-        params.minRepay = 1.5e18;  // debt (2e18) - remaining (0.5e18) = 1.5e18 to repay
+        params.minRepay = 1.5e18; // debt (2e18) - remaining (0.5e18) = 1.5e18 to repay
         params.kind = GPv2Order.KIND_SELL;
 
         // Get settlement data
@@ -624,7 +624,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowVault: EWETH,
             collateralVault: ESUSDS,
             collateralAmount: 2550 ether,
-            minRepay: 1.001 ether,  // full repay of 1 ether debt
+            minRepay: 1.001 ether, // full repay of 1 ether debt
             kind: GPv2Order.KIND_BUY
         });
 
@@ -635,7 +635,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowVault: EWETH,
             collateralVault: ESUSDS,
             collateralAmount: 7600 ether,
-            minRepay: 3.003 ether,  // full repay of 3 ether debt
+            minRepay: 3.003 ether, // full repay of 3 ether debt
             kind: GPv2Order.KIND_BUY
         });
 
@@ -646,7 +646,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowVault: ESUSDS,
             collateralVault: EWETH,
             collateralAmount: 2.1 ether,
-            minRepay: 5005 ether,  // full repay of 5000 ether debt
+            minRepay: 5005 ether, // full repay of 5000 ether debt
             kind: GPv2Order.KIND_BUY
         });
 
@@ -679,7 +679,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             buyAmount: 1.001 ether,
             validTo: validTo,
             owner: user,
-            receiver: closePositionWrapper.getInbox(account1),
+            receiver: closePositionWrapper.getInbox(user, account1),
             isBuy: true
         });
         (trades[1],,) = setupCowOrder({
@@ -690,7 +690,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             buyAmount: 3.003 ether,
             validTo: validTo,
             owner: user2,
-            receiver: closePositionWrapper.getInbox(account2),
+            receiver: closePositionWrapper.getInbox(user2, account2),
             isBuy: true
         });
         (trades[2],,) = setupCowOrder({
@@ -701,7 +701,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             buyAmount: 5005 ether,
             validTo: validTo,
             owner: user3,
-            receiver: closePositionWrapper.getInbox(account3),
+            receiver: closePositionWrapper.getInbox(user3, account3),
             isBuy: true
         });
 
@@ -712,9 +712,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         interactions[2] = new ICowSettlement.Interaction[](0);
 
         // We pull the money out of the euler vaults
-        interactions[1][0] = getWithdrawInteraction(
-            ESUSDS, (1.001 ether + 3.003 ether) * clearingPrices[1] / clearingPrices[0]
-        );
+        interactions[1][0] =
+            getWithdrawInteraction(ESUSDS, (1.001 ether + 3.003 ether) * clearingPrices[1] / clearingPrices[0]);
         interactions[1][1] = getWithdrawInteraction(EWETH, 5005 ether * clearingPrices[0] / clearingPrices[1]);
 
         // We swap. We only need to swap the difference of the 3 closes (since coincidence of wants)

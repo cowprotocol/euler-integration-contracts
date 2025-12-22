@@ -229,159 +229,6 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                    HELPER REPAY TESTS
-    //////////////////////////////////////////////////////////////*/
-
-    /*function test_HelperRepay_SuccessfulRepay() public {
-        // Give owner some tokens (not wrapper)
-        mockAsset.mint(OWNER, 1000e18);
-
-        // Owner must approve wrapper to spend their tokens
-        vm.prank(OWNER);
-        mockAsset.approve(address(wrapper), 1000e18);
-
-        // Set up borrow vault with debt
-        mockBorrowVault.setDebt(ACCOUNT, 1000e18);
-        mockBorrowVault.setRepayAmount(1000e18);
-
-        // Set the correct onBehalfOfAccount for authentication check
-        mockEvc.setOnBehalfOf(ACCOUNT);
-
-        // Call through EVC batch
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
-        items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: ACCOUNT,
-            targetContract: address(wrapper),
-            value: 0,
-            data: abi.encodeCall(wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT))
-        });
-
-        vm.prank(address(mockEvc));
-        mockEvc.batch(items);
-
-        // Verify owner's tokens were used for repayment
-        assertEq(mockAsset.balanceOf(OWNER), 0, "Owner should have no tokens left");
-    }
-
-    function test_HelperRepay_WithDust() public {
-        // Give owner more tokens than needed for repay
-        mockAsset.mint(OWNER, 1100e18);
-
-        // Owner must approve wrapper to spend their tokens
-        vm.prank(OWNER);
-        mockAsset.approve(address(wrapper), 1100e18);
-
-        // Set up borrow vault with debt
-        mockBorrowVault.setDebt(ACCOUNT, 1000e18);
-        mockBorrowVault.setRepayAmount(1000e18); // Only 1000 actually needed
-
-        // Set the correct onBehalfOfAccount for authentication check
-        mockEvc.setOnBehalfOf(ACCOUNT);
-
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
-        items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: ACCOUNT,
-            targetContract: address(wrapper),
-            value: 0,
-            data: abi.encodeCall(wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT))
-        });
-
-        vm.prank(address(mockEvc));
-        mockEvc.batch(items);
-
-        // Owner should have 100 tokens left (1100 - 1000 repaid)
-        assertEq(mockAsset.balanceOf(OWNER), 100e18, "Owner should have dust remaining");
-    }
-
-    function test_HelperRepay_PartialRepayWhenInsufficientBalance() public {
-        // Give owner insufficient tokens to fully repay debt
-        mockAsset.mint(OWNER, 500e18);
-
-        // Owner must approve wrapper to spend their tokens
-        vm.prank(OWNER);
-        mockAsset.approve(address(wrapper), 500e18);
-
-        mockBorrowVault.setDebt(ACCOUNT, 1000e18);
-        mockBorrowVault.setRepayAmount(500e18); // Will only repay what's available
-
-        // Set the correct onBehalfOfAccount for authentication check
-        mockEvc.setOnBehalfOf(ACCOUNT);
-
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
-        items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: ACCOUNT,
-            targetContract: address(wrapper),
-            value: 0,
-            data: abi.encodeCall(wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT))
-        });
-
-        vm.prank(address(mockEvc));
-        mockEvc.batch(items);
-
-        // Should repay partial amount (500e18)
-        assertEq(mockAsset.balanceOf(OWNER), 0, "Owner should have no tokens left");
-    }
-
-    function test_HelperRepay_RepayAll() public {
-        mockAsset.mint(OWNER, 1100e18);
-
-        // Owner must approve wrapper to spend their tokens
-        vm.prank(OWNER);
-        mockAsset.approve(address(wrapper), 1100e18);
-
-        mockBorrowVault.setDebt(ACCOUNT, 1000e18);
-        mockBorrowVault.setRepayAmount(1000e18);
-
-        // Set the correct onBehalfOfAccount for authentication check
-        mockEvc.setOnBehalfOf(ACCOUNT);
-
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
-        items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: ACCOUNT,
-            targetContract: address(wrapper),
-            value: 0,
-            data: abi.encodeCall(wrapper.helperRepay, (address(mockBorrowVault), OWNER, ACCOUNT))
-        });
-
-        vm.prank(address(mockEvc));
-        mockEvc.batch(items);
-
-        // Dust should remain with owner (100e18)
-        assertEq(mockAsset.balanceOf(OWNER), 100e18, "Owner should have dust remaining");
-    }
-
-    function test_HelperRepay_OnlyEVC() public {
-        vm.expectRevert(abi.encodeWithSelector(CowEvcBaseWrapper.Unauthorized.selector, address(this)));
-        wrapper.helperRepay(address(mockBorrowVault), OWNER, ACCOUNT);
-    }
-
-    function test_HelperRepay_RequiresCorrectOnBehalfOfAccount() public {
-        mockAsset.mint(OWNER, 1000e18);
-
-        vm.prank(OWNER);
-        mockAsset.approve(address(wrapper), 1000e18);
-
-        mockBorrowVault.setDebt(ACCOUNT, 1000e18);
-
-        // Create a batch item that specifies ACCOUNT but the helperRepay expects a different account
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
-        address wrongAccount = address(0x9999);
-        items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: wrongAccount, // This will be set as getCurrentOnBehalfOfAccount
-            targetContract: address(wrapper),
-            value: 0,
-            data: abi.encodeCall(
-                wrapper.helperRepay,
-                (address(mockBorrowVault), OWNER, ACCOUNT) // But we're trying to repay for ACCOUNT
-            )
-        });
-
-        vm.prank(address(mockEvc));
-        vm.expectRevert(abi.encodeWithSelector(CowEvcBaseWrapper.Unauthorized.selector, wrongAccount));
-        mockEvc.batch(items);
-    }*/
-
-    /*//////////////////////////////////////////////////////////////
                     EVC INTERNAL SETTLE TESTS
     //////////////////////////////////////////////////////////////*/
 
@@ -431,7 +278,11 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
         );
 
-        vm.expectRevert(abi.encodeWithSelector(CowEvcClosePositionWrapper.NoSwapOutput.selector, wrapper.getInbox(params.account)));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CowEvcClosePositionWrapper.NoSwapOutput.selector, wrapper.getInbox(params.owner, params.account)
+            )
+        );
         vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
@@ -465,9 +316,13 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         );
 
         // put funds in the inbox so it doesn't revert
-        deal(address(mockDebtAsset), wrapper.getInbox(params.account), 1);
+        deal(address(mockDebtAsset), wrapper.getInbox(params.owner, params.account), 1);
 
-        vm.expectRevert(abi.encodeWithSelector(CowEvcClosePositionWrapper.InvalidSettlement.selector, mockCollateralVault, mockDebtAsset, 0, 0));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CowEvcClosePositionWrapper.InvalidSettlement.selector, mockCollateralVault, mockDebtAsset, 0, 0
+            )
+        );
         vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
@@ -487,7 +342,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         );
 
         // put funds in the inbox so it doesn't revert
-        deal(address(mockDebtAsset), wrapper.getInbox(params.account), 1);
+        deal(address(mockDebtAsset), wrapper.getInbox(params.owner, params.account), 1);
 
         vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
@@ -541,7 +396,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         );
 
         // put funds in the inbox so it doesn't revert
-        deal(address(mockDebtAsset), wrapper.getInbox(params.account), 1);
+        deal(address(mockDebtAsset), wrapper.getInbox(params.owner, params.account), 1);
 
         vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
@@ -552,11 +407,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             2000e18,
             "Owner should only have the amount required to complete the trade"
         );
-        assertEq(
-            mockCollateralVault.balanceOf(ACCOUNT),
-            3000e18,
-            "Account should have any extra returned to it"
-        );
+        assertEq(mockCollateralVault.balanceOf(ACCOUNT), 3000e18, "Account should have any extra returned to it");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -654,7 +505,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         mockEvc.setSuccessfulBatch(true);
 
         // put funds in the inbox so it doesn't revert
-        deal(address(mockDebtAsset), wrapper.getInbox(params.account), 1);
+        deal(address(mockDebtAsset), wrapper.getInbox(params.owner, params.account), 1);
 
         vm.prank(SOLVER);
         wrapper.wrappedSettle(settleData, wrapperData);
@@ -685,7 +536,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         mockEvc.setSuccessfulBatch(true);
 
         // put funds in the inbox so it doesn't revert
-        deal(address(mockDebtAsset), wrapper.getInbox(params.account), 1);
+        deal(address(mockDebtAsset), wrapper.getInbox(params.owner, params.account), 1);
 
         vm.prank(SOLVER);
         wrapper.wrappedSettle(settleData, wrapperData);

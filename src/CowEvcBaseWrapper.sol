@@ -157,21 +157,32 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         _evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
 
-    function getInbox(address owner) external returns (address) {
-        return _getInbox(owner);
+    /// @notice This function is called by an offchain process as part of constructing the CoW order needed to use this wrapper.
+    /// @dev Read the wrapper documentation to confirm. It may or may not be necessary to set the `recipient` of the CoW order to the address returned
+    /// by this function.
+    function getInbox(address owner, address subaccount) external returns (address) {
+        return _getInbox(owner, subaccount);
     }
 
-    function _getInbox(address owner) internal returns (address) {
-        bytes32 salt = bytes32(uint256(uint160(owner)));
-        address expectedAddress = address(uint160(uint256(keccak256(abi.encodePacked(
-            bytes1(0xff),
-            address(this),
-            salt,
-            keccak256(type(Inbox).creationCode)
-        )))));
+    function _getInbox(address owner, address subaccount) internal returns (address) {
+        bytes32 salt = bytes32(uint256(uint160(subaccount)));
+        address expectedAddress = address(
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(
+                            bytes1(0xff),
+                            address(this),
+                            salt,
+                            keccak256(abi.encodePacked(type(Inbox).creationCode, abi.encode(address(this), owner)))
+                        )
+                    )
+                )
+            )
+        );
 
         if (expectedAddress.code.length == 0) {
-            new Inbox{salt: salt}();
+            new Inbox{salt: salt}(address(this), owner);
         }
 
         return expectedAddress;
