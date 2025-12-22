@@ -159,14 +159,10 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
     /// @notice Create settlement data for closing a leveraged position. It will always sell EUSDS to buy WETH
     /// @dev Sells vault shares to buy repayment token (WETH)
-    function getClosePositionSettlement(
-        address owner,
-        address account,
-        address sellVaultToken,
-        address buyToRepayToken,
-        uint256 sellAmount,
-        uint256 buyAmount
-    ) public returns (SettlementData memory r) {
+    function getClosePositionSettlement(address owner, address account, uint256 sellAmount, uint256 buyAmount)
+        public
+        returns (SettlementData memory r)
+    {
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
         // Get tokens and prices
@@ -224,12 +220,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Get settlement data
         SettlementData memory settlement = getClosePositionSettlement({
-            owner: user,
-            account: account,
-            sellVaultToken: EUSDS,
-            buyToRepayToken: WETH,
-            sellAmount: DEFAULT_SELL_AMOUNT,
-            buyAmount: DEFAULT_BUY_AMOUNT
+            owner: user, account: account, sellAmount: DEFAULT_SELL_AMOUNT, buyAmount: DEFAULT_BUY_AMOUNT
         });
 
         // User signs order (already done in setupCowOrder)
@@ -328,14 +319,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         params.kind = GPv2Order.KIND_SELL;
 
         // Get settlement data
-        SettlementData memory settlement = getClosePositionSettlement({
-            owner: user,
-            account: account,
-            sellVaultToken: EUSDS,
-            buyToRepayToken: WETH,
-            sellAmount: sellAmount,
-            buyAmount: buyAmount
-        });
+        SettlementData memory settlement =
+            getClosePositionSettlement({owner: user, account: account, sellAmount: sellAmount, buyAmount: buyAmount});
 
         // User signs order (already done in setupCowOrder)
 
@@ -445,12 +430,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Get settlement data
         SettlementData memory settlement = getClosePositionSettlement({
-            owner: user,
-            account: account,
-            sellVaultToken: EUSDS,
-            buyToRepayToken: WETH,
-            sellAmount: DEFAULT_SELL_AMOUNT,
-            buyAmount: DEFAULT_BUY_AMOUNT
+            owner: user, account: account, sellAmount: DEFAULT_SELL_AMOUNT, buyAmount: DEFAULT_BUY_AMOUNT
         });
 
         // Setup pre-approved flow
@@ -513,12 +493,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Get settlement data
         SettlementData memory settlement = getClosePositionSettlement({
-            owner: user,
-            account: account,
-            sellVaultToken: EUSDS,
-            buyToRepayToken: WETH,
-            sellAmount: DEFAULT_SELL_AMOUNT,
-            buyAmount: DEFAULT_BUY_AMOUNT
+            owner: user, account: account, sellAmount: DEFAULT_SELL_AMOUNT, buyAmount: DEFAULT_BUY_AMOUNT
         });
 
         // Setup approvals

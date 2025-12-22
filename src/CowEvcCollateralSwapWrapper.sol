@@ -229,7 +229,6 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         _next(settleData, remainingWrapperData);
 
         // Emit event - funds are now in the account from the settlement
-        uint256 receivedAmount = IERC20(params.toVault).balanceOf(params.account);
         emit CowEvcCollateralSwapped(
             params.owner, params.account, params.fromVault, params.toVault, fromAmount, toAmount, params.kind
         );

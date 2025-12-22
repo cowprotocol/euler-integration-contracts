@@ -82,19 +82,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
                 ]
             )
         );
-        return abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                new address[](0),
-                new uint256[](0),
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
     }
 
     /// @notice Encode wrapper data with length prefix
