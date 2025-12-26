@@ -4,11 +4,10 @@ pragma solidity ^0.8;
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 
 import {ICowSettlement, CowWrapper} from "./CowWrapper.sol";
-import {IERC4626, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
-import {SafeERC20Lib} from "euler-vault-kit/src/EVault/shared/lib/SafeERC20Lib.sol";
+import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {SafeERC20, IERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
-
-import {ISignatureTransfer} from "euler-vault-kit/lib/permit2/src/interfaces/ISignatureTransfer.sol";
+import {Inbox} from "./Inbox.sol";
 
 /// @title CowEvcClosePositionWrapper
 /// @notice A specialized wrapper for closing leveraged positions with EVC
@@ -23,6 +22,8 @@ import {ISignatureTransfer} from "euler-vault-kit/lib/permit2/src/interfaces/ISi
 /// If a full close is being performed, leave a small buffer for intrest accumultation, and the dust will
 /// be returned to the owner's wallet.
 contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
+    using SafeERC20 for IERC20;
+
     error NoSwapOutput(address inboxForSwap);
     error InsufficientDebt(uint256 expectedMinDebt, uint256 actualDebt);
     error InvalidSettlement(
@@ -34,9 +35,6 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
 
     /// @dev The EIP-712 domain version used for computing the domain separator.
     bytes32 constant DOMAIN_VERSION = keccak256("1");
-
-    ISignatureTransfer internal constant PERMIT2 =
-        ISignatureTransfer(address(0x000000000022D473030F116dDEE9F6B43aC78BA3));
 
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Close Position";
@@ -217,20 +215,16 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
             );
 
             // send needed collateral for the swap to the user's owner account, and the rest will go back to
-            SafeERC20Lib.safeTransfer(
-                IERC20(params.collateralVault),
-                params.owner,
-                params.minRepay * borrowTokenPrice / collateralVaultTokenPrice
-            );
+            IERC20(params.collateralVault)
+                .safeTransfer(params.owner, params.minRepay * borrowTokenPrice / collateralVaultTokenPrice);
             uint256 remainingBalance = IERC20(params.collateralVault).balanceOf(address(this));
             if (remainingBalance > 0) {
-                SafeERC20Lib.safeTransfer(IERC20(params.collateralVault), params.account, remainingBalance);
+                IERC20(params.collateralVault).safeTransfer(params.account, remainingBalance);
             }
         } else {
             // everything goes to the owners account because it will all be sold
-            SafeERC20Lib.safeTransfer(
-                IERC20(params.collateralVault), params.owner, IERC20(params.collateralVault).balanceOf(address(this))
-            );
+            IERC20(params.collateralVault)
+                .safeTransfer(params.owner, IERC20(params.collateralVault).balanceOf(address(this)));
         }
 
         // Use CowWrapper's _internalSettle to call the settlement contract
@@ -239,11 +233,11 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
 
         // what is the maximum amount of debt that can
         // be repaid from the owner account?
-        address inbox = _getInbox(params.owner, params.account);
-        uint256 swapResultBalance = borrowAsset.balanceOf(inbox);
+        Inbox inbox = _getInbox(params.owner, params.account);
+        uint256 swapResultBalance = borrowAsset.balanceOf(address(inbox));
 
         if (swapResultBalance == 0) {
-            revert NoSwapOutput(inbox);
+            revert NoSwapOutput(address(inbox));
         }
 
         // the amount we will *actually* repay is the same as however much we get from swapping
@@ -252,19 +246,13 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         // we can't repay more than the available debt amount
         if (repayAmount > debtAmount) {
             // There will be leftover funds in the contract after repaying. Lets send that to the owner's account
-            _callInbox(
-                inbox, address(borrowAsset), abi.encodeCall(IERC20.transfer, (params.owner, repayAmount - debtAmount))
-            );
+            inbox.callTransfer(address(borrowAsset), params.owner, repayAmount - debtAmount);
 
             repayAmount = debtAmount;
         }
 
         // repay what was requested on the vault
-        // first we have to allow the vault to spend on behalf of the inbox (if we haven't already)
-        _callInbox(inbox, address(borrowAsset), abi.encodeCall(borrowAsset.approve, (params.borrowVault, repayAmount)));
-
-        // then we actually repay by calling. It will use the funds from the Inbox account
-        _callInbox(inbox, params.borrowVault, abi.encodeCall(IBorrowing.repay, (repayAmount, params.account)));
+        inbox.callVaultRepay(params.borrowVault, address(borrowAsset), repayAmount, params.account);
 
         emit CowEvcPositionClosed(
             params.owner,

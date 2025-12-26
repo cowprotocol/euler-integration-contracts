@@ -2,6 +2,7 @@
 pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
+import {Create2} from "openzeppelin-contracts/contracts/utils/Create2.sol";
 
 import {CowWrapper, ICowSettlement} from "./CowWrapper.sol";
 import {PreApprovedHashes} from "./PreApprovedHashes.sol";
@@ -65,6 +66,9 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
     /// @dev Indicates that the constructed EVC operations are exceeding the maximum length allowed. Generally this is a sanity check
     error ItemsOutOfBounds(uint256 itemIndex, uint256 maxItemIndex);
+
+    /// @dev Emitted when the deployed address of a create2 contract does not match the computed address
+    error Create2AddressMismatch(address expectedAddress);
 
     /// @dev Used to ensure that the EVC is calling back this contract with the correct data
     bytes32 internal transient expectedEvcInternalSettleCallHash;
@@ -161,40 +165,22 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Read the wrapper documentation to confirm. It may or may not be necessary to set the `recipient` of the CoW order to the address returned
     /// by this function.
     function getInbox(address owner, address subaccount) external returns (address) {
-        return _getInbox(owner, subaccount);
+        return address(_getInbox(owner, subaccount));
     }
 
-    function _getInbox(address owner, address subaccount) internal returns (address) {
+    function _getInbox(address owner, address subaccount) internal returns (Inbox) {
         bytes32 salt = bytes32(uint256(uint160(subaccount)));
-        address expectedAddress = address(
-            uint160(
-                uint256(
-                    keccak256(
-                        abi.encodePacked(
-                            bytes1(0xff),
-                            address(this),
-                            salt,
-                            keccak256(abi.encodePacked(type(Inbox).creationCode, abi.encode(address(this), owner)))
-                        )
-                    )
-                )
-            )
-        );
+        bytes memory creationCode = abi.encodePacked(type(Inbox).creationCode, abi.encode(address(this), owner));
+        address expectedAddress = Create2.computeAddress(salt, keccak256(creationCode));
 
         if (expectedAddress.code.length == 0) {
-            new Inbox{salt: salt}(address(this), owner);
+            // `require` here is mostly for sanity
+            // NOTE: its technically possible to deploy create2 directly using new Contract{salt: }(), but openzeppelin usage
+            // is good for consistency
+            require(Create2.deploy(0, salt, creationCode) == expectedAddress, Create2AddressMismatch(expectedAddress));
         }
 
-        return expectedAddress;
-    }
-
-    function _callInbox(address inbox, address target, bytes memory data) internal {
-        (bool success, bytes memory reason) = inbox.call(abi.encodePacked(target, data));
-        if (!success) {
-            assembly ("memory-safe") {
-                revert(add(0x20, reason), mload(reason))
-            }
-        }
+        return Inbox(expectedAddress);
     }
 
     function _invokeEvc(
