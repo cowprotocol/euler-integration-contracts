@@ -85,7 +85,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             collateralVault: ESUSDS,
             collateralAmount: DEFAULT_SELL_AMOUNT,
             minRepay: DEFAULT_BUY_AMOUNT,
-            kind: GPv2Order.KIND_BUY
+            kind: GPv2Order.KIND_BUY,
+            appData: bytes32(0)
         });
     }
 
@@ -229,7 +230,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         address buyToRepayToken,
         uint256 sellAmount,
         uint256 buyAmount,
-        uint256 userPrivateKey
+        uint256 userPrivateKey,
+        bool isBuy
     ) public returns (SettlementData memory r) {
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
@@ -254,7 +256,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             signer: owner,
             account: account,
             receiver: closePositionWrapper.getInbox(owner, account),
-            isBuy: true,
+            isBuy: isBuy,
             signerPrivateKey: userPrivateKey
         });
 
@@ -304,7 +306,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             buyToRepayToken: WETH,
             sellAmount: DEFAULT_SELL_AMOUNT,
             buyAmount: DEFAULT_BUY_AMOUNT,
-            userPrivateKey: privateKey
+            userPrivateKey: privateKey,
+            isBuy: true
         });
 
         // Setup approvals
@@ -407,8 +410,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             sellVaultToken: ESUSDS,
             buyToRepayToken: WETH,
             sellAmount: sellAmount,
-            buyAmount: buyAmount,
-            userPrivateKey: privateKey
+            buyAmount: 1.5e18,
+            userPrivateKey: privateKey,
+            isBuy: false
         });
 
         // Setup approvals
@@ -591,7 +595,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             buyToRepayToken: WETH,
             sellAmount: DEFAULT_SELL_AMOUNT,
             buyAmount: DEFAULT_BUY_AMOUNT,
-            userPrivateKey: privateKey2 // Use wrong private key to create invalid signature
+            userPrivateKey: privateKey2, // Use wrong private key to create invalid signature
+            isBuy: true
         });
 
         // Setup approvals
@@ -685,7 +690,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             collateralVault: ESUSDS,
             collateralAmount: 2550 ether,
             minRepay: 1.001 ether, // full repay of 1 ether debt
-            kind: GPv2Order.KIND_BUY
+            kind: GPv2Order.KIND_BUY,
+            appData: bytes32(0)
         });
 
         CowEvcClosePositionWrapper.ClosePositionParams memory params2 = CowEvcClosePositionWrapper.ClosePositionParams({
@@ -696,7 +702,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             collateralVault: ESUSDS,
             collateralAmount: 7600 ether,
             minRepay: 3.003 ether, // full repay of 3 ether debt
-            kind: GPv2Order.KIND_BUY
+            kind: GPv2Order.KIND_BUY,
+            appData: bytes32(0)
         });
 
         CowEvcClosePositionWrapper.ClosePositionParams memory params3 = CowEvcClosePositionWrapper.ClosePositionParams({
@@ -707,7 +714,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             collateralVault: EWETH,
             collateralAmount: 2.1 ether,
             minRepay: 5005 ether, // full repay of 5000 ether debt
-            kind: GPv2Order.KIND_BUY
+            kind: GPv2Order.KIND_BUY,
+            appData: bytes32(0)
         });
 
         // Create permit signatures for all users

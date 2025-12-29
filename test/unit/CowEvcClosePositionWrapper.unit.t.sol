@@ -52,7 +52,8 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             collateralVault: address(mockCollateralVault),
             collateralAmount: 0,
             minRepay: 0,
-            kind: KIND_BUY
+            kind: KIND_BUY,
+            appData: bytes32(0)
         });
     }
 
@@ -358,7 +359,8 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             collateralVault: address(mockCollateralVault),
             collateralAmount: 1000e18,
             minRepay: 1000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc", // KIND_BUY
+            appData: bytes32(0)
         });
 
         // Give  some collateral vault tokens (what it would received previously from transferring from the user in the EVC.permit)
@@ -432,7 +434,8 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             collateralVault: address(mockCollateralVault),
             collateralAmount: 0,
             minRepay: 0,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc", // KIND_BUY
+            appData: bytes32(0)
         });
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         bytes memory chainedWrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
@@ -475,7 +478,8 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             collateralVault: address(mockCollateralVault),
             collateralAmount: 0,
             minRepay: 0,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
+            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc", // KIND_BUY
+            appData: bytes32(0)
         });
 
         address[] memory tokens = new address[](2);

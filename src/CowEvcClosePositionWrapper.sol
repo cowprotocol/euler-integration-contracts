@@ -3,6 +3,8 @@ pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {Create2} from "openzeppelin-contracts/contracts/utils/Create2.sol";
+import {GPv2Order} from "cow/libraries/GPv2Order.sol";
+import {IERC20 as CowIERC20} from "cow/interfaces/IERC20.sol";
 
 import {ICowSettlement, CowWrapper} from "./CowWrapper.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
@@ -66,7 +68,8 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
                 collateralVault: address(0),
                 collateralAmount: 0,
                 minRepay: 0,
-                kind: bytes32(0)
+                kind: bytes32(0),
+                appData: bytes32(0)
             })
         )
         .length;
@@ -74,7 +77,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         MAX_BATCH_OPERATIONS = 2;
 
         PARAMS_TYPE_HASH = keccak256(
-            "ClosePositionParams(address owner,address account,uint256 deadline,address borrowVault,address collateralVault,uint256 collateralAmount,uint256 minRepay,bytes32 kind)"
+            "ClosePositionParams(address owner,address account,uint256 deadline,address borrowVault,address collateralVault,uint256 collateralAmount,uint256 minRepay,bytes32 kind,bytes32 appData)"
         );
 
         VAULT_RELAYER = SETTLEMENT.vaultRelayer();
@@ -117,6 +120,9 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
 
         /// @dev Hint on whether the CoW order is either keccak256("buy") or keccak256("sell"). In all cases, this should be the same as the `kind` in the CoW order. This will affect how much funds are sent to the owner account
         bytes32 kind;
+
+        /// @dev Application data for the CoW order. In all cases, this should be the same as the `appData` in the CoW order.
+        bytes32 appData;
     }
 
     function _parseClosePositionParams(bytes calldata wrapperData)
@@ -200,6 +206,28 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         );
     }
 
+    function _computeCowOrderDigest(ClosePositionParams memory params) internal view returns (bytes32) {
+        address borrowAsset = IERC4626(params.borrowVault).asset();
+        address inboxAddress = _getInboxAddress(params.owner, params.account);
+
+        GPv2Order.Data memory order = GPv2Order.Data({
+            sellToken: CowIERC20(params.collateralVault),
+            buyToken: CowIERC20(borrowAsset),
+            receiver: inboxAddress,
+            sellAmount: params.collateralAmount,
+            buyAmount: params.minRepay,
+            validTo: uint32(params.deadline),
+            appData: params.appData,
+            feeAmount: 0,
+            kind: params.kind,
+            partiallyFillable: false,
+            sellTokenBalance: GPv2Order.BALANCE_ERC20,
+            buyTokenBalance: GPv2Order.BALANCE_ERC20
+        });
+
+        return GPv2Order.hash(order, SETTLEMENT.domainSeparator());
+    }
+
     function _evcInternalSettle(
         bytes calldata settleData,
         bytes calldata wrapperData,
@@ -214,6 +242,8 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
 
         Inbox inbox = _getInbox(params.owner, params.account);
         inbox.callApprove(params.collateralVault, VAULT_RELAYER, type(uint256).max);
+        // compute the order that should be executed from this order
+        inbox.setApprovedOrderDigest(_computeCowOrderDigest(params));
 
         // Use CowWrapper's _internalSettle to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap

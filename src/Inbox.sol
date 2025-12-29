@@ -16,6 +16,8 @@ contract Inbox is IERC1271 {
     address internal immutable OWNER;
     address internal immutable BENEFICIARY;
 
+    bytes32 internal transient approvedOrderDigest;
+
     error Unauthorized(address);
 
     constructor(address owner, address beneficiary) {
@@ -23,31 +25,24 @@ contract Inbox is IERC1271 {
         BENEFICIARY = beneficiary;
     }
 
+    function setApprovedOrderDigest(bytes32 hash) external {
+        if (approvedOrderDigest != bytes32(0)) {
+            // trying to execute more than one trade at a time, not supported
+            revert("more than one trade");
+        }
+
+        approvedOrderDigest = hash;
+    }
+
     /// @notice Implements EIP1271 `isValidSignature` to effectively allow this contract to operate in the same way as the user's signature
     /// @dev This code was copied from `GPv2Signer`'s' `ecdsaRecover` function. The idea is that the same signature the user would use
     /// for a regular CoW order is also used here.
     function isValidSignature(bytes32 hash, bytes calldata signature) external view returns (bytes4 magicValue) {
-        require(signature.length == 65, "GPv2: malformed ecdsa signature");
-
-        bytes32 r;
-        bytes32 s;
-        uint8 v;
-
-        // NOTE: Use assembly to efficiently decode signature data.
-        // solhint-disable-next-line no-inline-assembly
-        assembly {
-            // r = uint256(signature[0:32])
-            r := calldataload(signature.offset)
-            // s = uint256(signature[32:64])
-            s := calldataload(add(signature.offset, 32))
-            // v = uint8(signature[64])
-            v := shr(248, calldataload(add(signature.offset, 64)))
+        if (hash == approvedOrderDigest) {
+            return bytes4(keccak256("isValidSignature(bytes32,bytes)"));
+        } else {
+            revert("not approved order digest");
         }
-
-        address signer = ecrecover(hash, v, r, s);
-        require(signer == BENEFICIARY, Unauthorized(signer));
-
-        return bytes4(keccak256("isValidSignature(bytes32,bytes)"));
     }
 
     function callApprove(address token, address spender, uint256 amount) external {

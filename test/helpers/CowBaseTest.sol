@@ -309,14 +309,8 @@ contract CowBaseTest is Test {
         view
         returns (bytes memory signature)
     {
-        // Compute the order digest
-        bytes32 orderDigest = GPv2Order.hash(orderData, COW_SETTLEMENT.domainSeparator());
-
-        // Sign the digest with the user's private key
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPrivateKey, orderDigest);
-
-        // Return the signature as packed bytes (inbox || r || s || v) (in CoW, first 20 bytes is the 1271 isValidSignature verifier)
-        return abi.encodePacked(inboxForUser, r, s, v);
+        // In this case, the signature is literally just the address of the inbox
+        return abi.encodePacked(inboxForUser);
     }
 
     function getTokensAndPrices() public pure returns (address[] memory tokens, uint256[] memory clearingPrices) {
