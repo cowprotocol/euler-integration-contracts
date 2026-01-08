@@ -18,10 +18,9 @@ import {Inbox} from "./Inbox.sol";
 ///      3. Repay debt and return remaining assets to the subaccount
 /// @dev The settle call by this order should be performing the necessary swap
 /// from collateralVault -> IERC20(borrowVault.asset()). The recipient of the
-/// swap should be the account returned by `getInbox(address)`, where `address` is the subaccount. Following this, the account will repay the loan by leveraging an approval from the owner account in `helperRepay`.
-/// The order should be of type GPv2Order.KIND_BUY to prevent excess from being sent to the contract.
-/// If a full close is being performed, leave a small buffer for intrest accumultation, and the dust will
-/// be returned to the owner's wallet.
+/// swap should be the account returned by `getInbox(address)`, where `address` is the subaccount. Following this, the account will repay the loan after the settlement returns.
+/// If the position will be fully closed, the CoW order should be of type GPv2Order.KIND_BUY to prevent excess repay asset from being sent to the contract, leaving excess dust in the user.
+/// Leave a small buffer for interest accumulation, and the dust will be returned to the owner's wallet.
 contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
     using SafeERC20 for IERC20;
 
@@ -61,9 +60,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
                 deadline: 0,
                 borrowVault: address(0),
                 collateralVault: address(0),
-                collateralAmount: 0,
-                minRepay: 0,
-                kind: bytes32(0)
+                collateralAmount: 0
             })
         )
         .length;
@@ -71,7 +68,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         MAX_BATCH_OPERATIONS = 2;
 
         PARAMS_TYPE_HASH = keccak256(
-            "ClosePositionParams(address owner,address account,uint256 deadline,address borrowVault,address collateralVault,uint256 collateralAmount,uint256 minRepay,bytes32 kind)"
+            "ClosePositionParams(address owner,address account,uint256 deadline,address borrowVault,address collateralVault,uint256 collateralAmount)"
         );
 
         VAULT_RELAYER = SETTLEMENT.vaultRelayer();
@@ -97,23 +94,18 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         /// @dev The subaccount to close the position on. Learn more about Euler subaccounts https://evc.wtf/docs/concepts/internals/sub-accounts
         address account;
 
-        /// @dev A date by which this operation must be completed
+        /// @dev A date by which this operation must be completed. The CoW order `validTo` should ideally be the same as this value.
         uint256 deadline;
 
-        /// @dev The Euler vault from which debt was borrowed
+        /// @dev The Euler vault from which debt was borrowed. The CoW order should have `buyToken` as `borrowVault.asset()`
         address borrowVault;
 
-        /// @dev The Euler vault used as collateral
+        /// @dev The Euler vault used as collateral. The CoW order should have `sellToken` as this asset.
         address collateralVault;
 
-        /// @dev The amount of collateral to use for the repayment. Any unused amount for the CoW swap will be returned to the account. In all cases, this should be the same as `sellAmount` in the CoW order.
+        /// @dev The amount of collateral to use for the repayment. This effectively detemrines how much collateral will be sent from the account at the beginning of the operation.
+        /// Any unused amount for the CoW swap will be returned to the account. In all cases, this should be the same as `sellAmount` in the CoW order.
         uint256 collateralAmount;
-
-        /// @dev The min amount of debt that should be repaid from the users account after the operation completes. In all cases, this should be the same as `buyAmount` in the CoW order.
-        uint256 minRepay;
-
-        /// @dev Hint on whether the CoW order is either keccak256("buy") or keccak256("sell"). In all cases, this should be the same as the `kind` in the CoW order. This will affect how much funds are sent to the owner account
-        bytes32 kind;
     }
 
     function _parseClosePositionParams(bytes calldata wrapperData)
