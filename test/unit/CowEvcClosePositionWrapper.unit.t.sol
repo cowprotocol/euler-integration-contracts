@@ -287,46 +287,6 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
 
-    function test_EvcInternalSettle_InvalidSettlement() public {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
-        params.account = OWNER; // Same account, no transfer needed
-
-        // make some custom settle data that doesn't have any prices
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                new address[](0),
-                new uint256[](0),
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
-
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-        bytes memory remainingWrapperData = "";
-
-        mockSettlement.setSuccessfulSettle(true);
-
-        wrapper.setExpectedEvcInternalSettleCall(
-            abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
-        );
-
-        // put funds in the inbox so it doesn't revert
-        deal(address(mockDebtAsset), wrapper.getInbox(params.owner, params.account), 1);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                CowEvcClosePositionWrapper.InvalidSettlement.selector, mockCollateralVault, mockDebtAsset, 0, 0
-            )
-        );
-        vm.prank(address(mockEvc));
-        wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
-    }
-
     function test_EvcInternalSettle_CanBeCalledByEVC() public {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
         params.account = OWNER; // Same account, no transfer needed
@@ -361,8 +321,10 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
         });
 
+        address inbox = wrapper.getInbox(params.owner, params.account);
+
         // Give  some collateral vault tokens (what it would received previously from transferring from the user in the EVC.permit)
-        mockCollateralVault.mint(address(wrapper), 5000e18);
+        mockCollateralVault.mint(inbox, 5000e18);
 
         // Create settle data with tokens and prices
         address[] memory tokens = new address[](2);
@@ -396,18 +358,18 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         );
 
         // put funds in the inbox so it doesn't revert
-        deal(address(mockDebtAsset), wrapper.getInbox(params.owner, params.account), 1);
+        deal(address(mockDebtAsset), inbox, 1);
 
         vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
 
-        // Verify owner has same balance before (because the balance is kept the same by the wrapper)
+        // Verify inbox has no funds and subaccount has same balance as before (because any unused funds are returned)
         assertEq(
-            mockCollateralVault.balanceOf(OWNER),
-            2000e18,
-            "Owner should only have the amount required to complete the trade"
+            mockCollateralVault.balanceOf(inbox),
+            0,
+            "Inbox should not have any funds left over because it all gets sent back to the subaccount"
         );
-        assertEq(mockCollateralVault.balanceOf(ACCOUNT), 3000e18, "Account should have any extra returned to it");
+        assertEq(mockCollateralVault.balanceOf(ACCOUNT), 5000e18, "Account should have everything returned to it");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -623,7 +585,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
 
         // Expect revert with ECDSA error when signature is tampered
         vm.prank(SOLVER);
-        vm.expectRevert("ECDSA: invalid signature");
+        vm.expectRevert(abi.encodeWithSelector(MockEVC.InvalidSignature.selector));
         wrapper.wrappedSettle(settleData, wrapperData);
     }
 

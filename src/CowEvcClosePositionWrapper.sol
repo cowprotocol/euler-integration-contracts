@@ -29,9 +29,6 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
 
     error NoSwapOutput(address inboxForSwap);
     error InsufficientDebt(uint256 expectedMinDebt, uint256 actualDebt);
-    error InvalidSettlement(
-        address collateralVault, address borrowAsset, uint256 collateralVaultTokenPrice, uint256 borrowTokenPrice
-    );
 
     /// @dev The EIP-712 domain name used for computing the domain separator.
     bytes32 constant DOMAIN_NAME = keccak256("CowEvcClosePositionWrapper");
