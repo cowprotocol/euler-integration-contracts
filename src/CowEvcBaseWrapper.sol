@@ -2,9 +2,12 @@
 pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
+import {Create2} from "openzeppelin-contracts/contracts/utils/Create2.sol";
 
 import {CowWrapper, ICowSettlement} from "./CowWrapper.sol";
 import {PreApprovedHashes} from "./PreApprovedHashes.sol";
+
+import {Inbox} from "./Inbox.sol";
 
 /// @title CowEvcBaseWrapper
 /// @notice Shared components for implementing Euler wrappers.
@@ -156,6 +159,28 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         expectedEvcInternalSettleCallHash = bytes32(0);
 
         _evcInternalSettle(settleData, wrapperData, remainingWrapperData);
+    }
+
+    /// @notice This function is called by an offchain process as part of constructing the CoW order needed to use this wrapper.
+    /// @dev Read the wrapper documentation to confirm. It may or may not be necessary to set the `recipient` of the CoW order to the address returned
+    /// by this function.
+    function getInbox(address owner, address subaccount) external returns (address) {
+        return address(_getInbox(owner, subaccount));
+    }
+
+    function _getInbox(address owner, address subaccount) internal returns (Inbox) {
+        bytes32 salt = bytes32(uint256(uint160(subaccount)));
+        bytes memory creationCode = abi.encodePacked(type(Inbox).creationCode, abi.encode(address(this), owner));
+        address expectedAddress = Create2.computeAddress(salt, keccak256(creationCode));
+
+        if (expectedAddress.code.length == 0) {
+            // `require` here is mostly for sanity
+            // NOTE: its technically possible to deploy create2 directly using new Contract{salt: }(), but openzeppelin usage
+            // is good for consistency
+            require(Create2.deploy(0, salt, creationCode) == expectedAddress, Create2AddressMismatch(expectedAddress));
+        }
+
+        return Inbox(expectedAddress);
     }
 
     function _makeInternalSettleCallbackData(
