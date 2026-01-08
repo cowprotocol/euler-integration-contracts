@@ -39,18 +39,13 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         ecdsa = new SignerECDSA(EVC);
 
-        // WBTC is not currently a collateral for WETH borrow, fix it
-        vm.startPrank(IEVault(EWETH).governorAdmin());
-        IEVault(EWETH).setLTV(EWBTC, 0.9e4, 0.9e4, 0);
-        vm.stopPrank();
-
         // Setup user with USDS
-        deal(USDS, user, 10000e18);
+        deal(address(USDS), user, 10000e18);
 
         // User has approved WBTC for COW Protocol
         address vaultRelayer = COW_SETTLEMENT.vaultRelayer();
         vm.prank(user);
-        IERC20(WBTC).approve(vaultRelayer, type(uint256).max);
+        WBTC.approve(vaultRelayer, type(uint256).max);
     }
 
     struct SettlementData {
@@ -72,8 +67,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             owner: owner,
             account: account,
             deadline: block.timestamp + 1 hours,
-            fromVault: EUSDS,
-            toVault: EWBTC,
+            fromVault: address(EUSDS),
+            toVault: address(EWBTC),
             fromAmount: DEFAULT_SWAP_AMOUNT,
             toAmount: DEFAULT_BUY_AMOUNT,
             kind: GPv2Order.KIND_SELL
@@ -142,8 +137,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     function getCollateralSwapSettlement(
         address owner,
         address account,
-        address sellVaultToken,
-        address buyVaultToken,
+        IEVault sellVaultToken,
+        IEVault buyVaultToken,
         uint256 sellAmount,
         uint256 buyAmount
     ) public returns (SettlementData memory r) {
@@ -151,8 +146,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // Get tokens and prices
         r.tokens = new address[](2);
-        r.tokens[0] = sellVaultToken;
-        r.tokens[1] = buyVaultToken;
+        r.tokens[0] = address(sellVaultToken);
+        r.tokens[1] = address(buyVaultToken);
 
         r.clearingPrices = new uint256[](2);
         r.clearingPrices[0] = milkSwap.prices(IERC4626(sellVaultToken).asset());
@@ -185,11 +180,10 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Swap underlying assets
         uint256 swapAmount = sellAmount * 0.999 ether / 1 ether;
         r.interactions[1][1] =
-            getSwapInteraction(IERC4626(sellVaultToken).asset(), IERC4626(buyVaultToken).asset(), swapAmount);
+            getSwapInteraction(IERC20(sellVaultToken.asset()), IERC20(buyVaultToken.asset()), swapAmount);
 
         // Deposit to buy vault (transfer underlying to vault)
-        uint256 buyUnderlyingAmount =
-            sellAmount * r.clearingPrices[0] / milkSwap.prices(IERC4626(buyVaultToken).asset());
+        uint256 buyUnderlyingAmount = sellAmount * r.clearingPrices[0] / milkSwap.prices(buyVaultToken.asset());
         r.interactions[1][2] = getDepositInteraction(buyVaultToken, buyUnderlyingAmount);
     }
 
@@ -212,19 +206,19 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // User deposits USDS collateral
         vm.startPrank(user);
-        IERC20(USDS).approve(EUSDS, type(uint256).max);
+        USDS.approve(address(EUSDS), type(uint256).max);
         uint256 depositAmount = 1000e18;
-        IERC4626(EUSDS).deposit(depositAmount, user);
+        EUSDS.deposit(depositAmount, user);
 
         // User signs the order and approves vault shares for settlement (already done in setupCowOrder)
 
         // Approve spending of the EUSDS to repay debt
-        IEVault(EUSDS).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+        EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
         vm.stopPrank();
 
         // Record balances before swap
-        uint256 usdsBalanceBefore = IERC20(EUSDS).balanceOf(user);
-        uint256 wbtcBalanceBefore = IERC20(EWBTC).balanceOf(user);
+        uint256 usdsBalanceBefore = EUSDS.balanceOf(user);
+        uint256 wbtcBalanceBefore = EWBTC.balanceOf(user);
 
         // Create permit signature and encode data
         bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
@@ -251,11 +245,9 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // Verify the collateral was swapped successfully
         assertEq(
-            IERC20(EUSDS).balanceOf(user),
-            usdsBalanceBefore - DEFAULT_SWAP_AMOUNT,
-            "User should have less EUSDS after swap"
+            EUSDS.balanceOf(user), usdsBalanceBefore - DEFAULT_SWAP_AMOUNT, "User should have less EUSDS after swap"
         );
-        assertGt(IERC20(EWBTC).balanceOf(user), wbtcBalanceBefore, "User should have more EWBTC after swap");
+        assertGt(EWBTC.balanceOf(user), wbtcBalanceBefore, "User should have more EWBTC after swap");
     }
 
     /// @notice Test swapping collateral from subaccount
@@ -277,9 +269,9 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // User deposits USDS collateral to subaccount
         vm.startPrank(user);
-        IERC20(USDS).approve(EUSDS, type(uint256).max);
+        USDS.approve(address(EUSDS), type(uint256).max);
         uint256 depositAmount = 1000e18;
-        IERC4626(EUSDS).deposit(depositAmount, account);
+        EUSDS.deposit(depositAmount, account);
 
         // User signs the order on cowswap (already done in setupCowOrder)
 
@@ -289,8 +281,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         _setupSubaccountApprovals(params);
 
         // Record balances before swap
-        uint256 usdsBalanceBefore = IERC20(EUSDS).balanceOf(account);
-        uint256 wbtcBalanceBefore = IERC20(EWBTC).balanceOf(account);
+        uint256 usdsBalanceBefore = EUSDS.balanceOf(account);
+        uint256 wbtcBalanceBefore = EWBTC.balanceOf(account);
 
         // Encode settlement and wrapper data (empty signature for pre-approved hash)
         bytes memory settleData = abi.encodeCall(
@@ -316,14 +308,14 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // Verify the collateral was swapped successfully
         assertEq(
-            IERC20(EUSDS).balanceOf(account),
+            EUSDS.balanceOf(account),
             usdsBalanceBefore - DEFAULT_SWAP_AMOUNT,
             "Subaccount should have less EUSDS after swap"
         );
-        assertGt(IERC20(EWBTC).balanceOf(account), wbtcBalanceBefore, "Subaccount should have more EWBTC after swap");
+        assertGt(EWBTC.balanceOf(account), wbtcBalanceBefore, "Subaccount should have more EWBTC after swap");
 
         // Main account balance should remain unchanged (transfer is atomic through settlement)
-        assertEq(IERC20(EUSDS).balanceOf(user), 0, "Main account EUSDS balance should be 0");
+        assertEq(EUSDS.balanceOf(user), 0, "Main account EUSDS balance should be 0");
     }
 
     /// @notice Test that invalid signature causes the transaction to revert
@@ -345,12 +337,12 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // User deposits USDS collateral
         vm.startPrank(user);
-        IERC20(USDS).approve(EUSDS, type(uint256).max);
+        USDS.approve(address(EUSDS), type(uint256).max);
         uint256 depositAmount = 1000e18;
-        IERC4626(EUSDS).deposit(depositAmount, user);
+        EUSDS.deposit(depositAmount, user);
 
         // User approves vault shares for settlement
-        IEVault(EUSDS).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+        EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
         vm.stopPrank();
 
         // Create INVALID permit signature by signing with wrong private key (user2's key instead of user's)
@@ -451,9 +443,9 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         _setupSubaccountApprovals(params);
 
         // Record balances and debt before swap
-        uint256 susdsBalanceBefore = IERC20(EUSDS).balanceOf(account);
-        uint256 wbtcBalanceBefore = IERC20(EWBTC).balanceOf(account);
-        uint256 debtBefore = IEVault(EWETH).debtOf(account);
+        uint256 susdsBalanceBefore = EUSDS.balanceOf(account);
+        uint256 wbtcBalanceBefore = EWBTC.balanceOf(account);
+        uint256 debtBefore = EWETH.debtOf(account);
 
         // Encode settlement and wrapper data (empty signature for pre-approved hash)
         bytes memory settleData = abi.encodeCall(
@@ -479,24 +471,18 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // Verify the collateral was swapped successfully while maintaining debt
         assertEq(
-            IERC20(EUSDS).balanceOf(account),
+            EUSDS.balanceOf(account),
             susdsBalanceBefore - params.fromAmount,
             "Account should have less EUSDS after swap"
         );
-        assertGt(IERC20(EWBTC).balanceOf(account), wbtcBalanceBefore, "Account should have more EWBTC after swap");
-        assertEq(IEVault(EWETH).debtOf(account), debtBefore, "Debt should remain unchanged after swap");
+        assertGt(EWBTC.balanceOf(account), wbtcBalanceBefore, "Account should have more EWBTC after swap");
+        assertEq(EWETH.debtOf(account), debtBefore, "Debt should remain unchanged after swap");
     }
 
     /// @notice Test that the wrapper can handle being called three times in the same chain
     /// @dev Two users close positions in the same direction (long USDS), one user closes opposite (long WETH)
     function test_CollateralSwapWrapper_ThreeUsers_TwoSameOneOpposite() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
-
-        // Configure vault LTVs for both directions
-        vm.startPrank(IEVault(EWETH).governorAdmin());
-        IEVault(EWETH).setLTV(EUSDS, 0.9e4, 0.9e4, 0);
-        IEVault(EWETH).setLTV(EWBTC, 0.9e4, 0.9e4, 0);
-        vm.stopPrank();
 
         // Setup User1: Long USDS (USDS collateral, WETH debt). 1 ETH debt
         setupLeveragedPositionFor({
@@ -529,25 +515,25 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         });
 
         // Verify positions exist
-        assertEq(IEVault(EWETH).debtOf(account), 1 ether, "Account 1 should have WETH debt");
-        assertEq(IEVault(EWETH).debtOf(account2), 3 ether, "Account 2 should have WETH debt");
-        assertEq(IEVault(EWETH).debtOf(account3), 2 ether, "Account 3 should have WETH debt");
+        assertEq(EWETH.debtOf(account), 1 ether, "Account 1 should have WETH debt");
+        assertEq(EWETH.debtOf(account2), 3 ether, "Account 2 should have WETH debt");
+        assertEq(EWETH.debtOf(account3), 2 ether, "Account 3 should have WETH debt");
 
         // Verify collaterals
         assertApproxEqRel(
-            IERC4626(EUSDS).convertToAssets(IEVault(EUSDS).balanceOf(account)),
+            EUSDS.convertToAssets(EUSDS.balanceOf(account)),
             3750 ether,
             0.01 ether,
             "Account 1 should have USDS collateral"
         );
         assertApproxEqRel(
-            IERC4626(EUSDS).convertToAssets(IEVault(EUSDS).balanceOf(account2)),
+            EUSDS.convertToAssets(EUSDS.balanceOf(account2)),
             12500 ether,
             0.01 ether,
             "Account 2 should have USDS collateral"
         );
         assertApproxEqRel(
-            IERC4626(EWBTC).convertToAssets(IEVault(EWBTC).balanceOf(account3)),
+            EWBTC.convertToAssets(EWBTC.balanceOf(account3)),
             0.075e8,
             0.01 ether,
             "Account 3 should have WBTC collateral"
@@ -559,8 +545,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 owner: user,
                 account: account,
                 deadline: block.timestamp + 1 hours,
-                fromVault: EUSDS,
-                toVault: EWBTC,
+                fromVault: address(EUSDS),
+                toVault: address(EWBTC),
                 fromAmount: 500 ether,
                 toAmount: 0.0045e8,
                 kind: GPv2Order.KIND_SELL
@@ -571,8 +557,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 owner: user2,
                 account: account2,
                 deadline: block.timestamp + 1 hours,
-                fromVault: EUSDS,
-                toVault: EWBTC,
+                fromVault: address(EUSDS),
+                toVault: address(EWBTC),
                 fromAmount: 550 ether,
                 toAmount: 0.005e8, // about 500 EUSDS
                 kind: GPv2Order.KIND_BUY
@@ -583,8 +569,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 owner: user3,
                 account: account3,
                 deadline: block.timestamp + 1 hours,
-                fromVault: EWBTC,
-                toVault: EUSDS,
+                fromVault: address(EWBTC),
+                toVault: address(EUSDS),
                 fromAmount: 0.025e8, // will be calculated from toAmount
                 toAmount: 2000 ether,
                 kind: GPv2Order.KIND_BUY
@@ -604,8 +590,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
         address[] memory tokens = new address[](2);
-        tokens[0] = EUSDS;
-        tokens[1] = EWBTC;
+        tokens[0] = address(EUSDS);
+        tokens[1] = address(EWBTC);
 
         uint256[] memory clearingPrices = new uint256[](2);
         clearingPrices[0] = 1 ether; // eUSDS price
@@ -684,32 +670,28 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         collateralSwapWrapper.wrappedSettle(settleData, wrapperData);
 
         // Verify all positions closed successfully
-        assertEq(IEVault(EWETH).debtOf(account), 1 ether, "User1 should have WETH debt");
-        assertEq(IEVault(EWETH).debtOf(account2), 3 ether, "User2 should have WETH debt");
-        assertEq(IEVault(EWETH).debtOf(account3), 2 ether, "User3 should have WETH debt");
+        assertEq(EWETH.debtOf(account), 1 ether, "User1 should have WETH debt");
+        assertEq(EWETH.debtOf(account2), 3 ether, "User2 should have WETH debt");
+        assertEq(EWETH.debtOf(account3), 2 ether, "User3 should have WETH debt");
 
         // Verify original collaterals
         assertApproxEqRel(
-            IERC4626(EUSDS).convertToAssets(IEVault(EUSDS).balanceOf(account)),
+            IERC4626(EUSDS).convertToAssets(EUSDS.balanceOf(account)),
             3250 ether,
             0.01 ether,
             "Account 1 should have less USDS collateral"
         );
         assertApproxEqRel(
-            IERC4626(EUSDS).convertToAssets(IEVault(EUSDS).balanceOf(account2)),
+            IERC4626(EUSDS).convertToAssets(EUSDS.balanceOf(account2)),
             12000 ether,
             0.01 ether,
             "Account 2 should have less USDS collateral"
         );
-        assertApproxEqRel(
-            IEVault(EWBTC).balanceOf(account3), 0.055e8, 0.01 ether, "Account 3 should have less WBTC collateral"
-        );
+        assertApproxEqRel(EWBTC.balanceOf(account3), 0.055e8, 0.01 ether, "Account 3 should have less WBTC collateral");
 
         // Verify new collaterals
-        assertApproxEqRel(
-            IEVault(EWBTC).balanceOf(account), 0.005e8, 0.01 ether, "Account 1 should have some WBTC collateral"
-        );
-        assertEq(IEVault(EWBTC).balanceOf(account2), 0.005e8, "Account 2 should have some WBTC collateral");
-        assertEq(IEVault(EUSDS).balanceOf(account3), 2000 ether, "Account 3 should have some USDS collateral");
+        assertApproxEqRel(EWBTC.balanceOf(account), 0.005e8, 0.01 ether, "Account 1 should have some WBTC collateral");
+        assertEq(EWBTC.balanceOf(account2), 0.005e8, "Account 2 should have some WBTC collateral");
+        assertEq(EUSDS.balanceOf(account3), 2000 ether, "Account 3 should have some USDS collateral");
     }
 }
