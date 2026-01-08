@@ -50,7 +50,7 @@ This repository contains **Euler-CoW Protocol integration contracts** that enabl
 
 ### Build
 ```bash
-forge build
+forge build --deny notes
 ```
 
 ### Test
@@ -95,7 +95,61 @@ forge snapshot
 - `SignerECDSA.sol`: ECDSA signature utilities for tests
 - `EmptyWrapper.sol`: Minimal wrapper for testing wrapper chaining
 
+### Writing CoW Protocol Settlement Tests
+
+When creating settlement tests, especially multi-user scenarios:
+
+**1. Leverage Coincidence of Wants**
+- CoW Protocol nets out opposing trades within a settlement
+- Only swap the NET difference between opposing directions
+- Example: If User1+User2 need 10k SUSDS worth of WETH and User3 provides 5k SUSDS worth of WETH, only swap the 5k SUSDS difference
+- Don't create separate swaps for each direction - calculate the minimal swaps needed
+
+**2. Proper Price Ratio Calculations**
+- Use `clearingPrices[tokenIndex]` in withdrawal/swap calculations
+- Calculate amounts based on what the settlement actually needs: `amount * clearingPrices[buyToken] / clearingPrices[sellToken]`
+- Ensure the math balances: withdrawals + swaps must provide exactly what's needed for all trades
+
+**3. Logical Token Array Ordering**
+- Organize tokens in a readable order: base assets first (SUSDS, WETH), then vault tokens (ESUSDS, EWETH)
+- Consistent ordering makes trade setup less error-prone
+- Use meaningful comments to clarify token indices
+
+**4. Realistic Trade Amounts**
+- Fine-tune amounts so withdrawals, swaps, and repayments balance properly
+- The numbers need to actually work for the settlement to succeed
+- Test will fail if amounts don't align with vault balances and clearing prices
+
+**5. Simplified Interaction Design**
+- Keep interactions minimal and purposeful - only include what's needed
+- Common pattern: withdrawals from vaults → net swaps → implicit transfers via settlement
+- Avoid redundant operations
+
+**6. Helper Functions for DRY Tests**
+- Create parameterized helpers like `_setupLeveragedPositionFor()` instead of repeating setup code
+- Use helpers for approvals (`_setupClosePositionApprovalsFor()`) and signatures (`_createPermitSignatureFor()`)
+- This significantly reduces test length and improves maintainability
+
+**7. Clear Explanatory Comments**
+- Explain the economic logic, not just the technical operations
+- Examples: "We only need to swap the difference" or "Coincidence of wants between User1/User2 and User3"
+- Help readers understand why the settlement is structured this way
+
 ## Important Implementation Details
+
+### Security Considerations
+
+- It is generally assumed that the `solvers` (aka, an address for which `CowAuthentication.isSolver()` returns true) is a trusted actor within the system. Only in the case that a solver could steal an entire user's deposit or funds, or steal funds beyond what the user specified as their minimum out/minimum buy amount, assume there is incentive for a solver to provide the best rate/user outcome possible. To be clear, a solver cannot steal funds simply by setting arbitrary `clearingPrices` (as documented a bit later).
+  - For a solver to be able to steal an entire user's deposit or funds, they must be able to withdraw the users token to an address of their choosing or otherwise in their control (therefore, a "nuisance" transfer between two wallets that the user effectively owns does not count).
+- If a user takes on debt, that debt position must be sufficiently collateralized above a set collateralization ratio higher than liquidation ratio before the EVC batch transaction concludes. If it is not, the transaction reverts and nothing can happen. Therefore, there is no risk of undercollateralization to the system due to a user opening a position because the transaction would revert.
+- anyone can call the `EVC.batch()` function to initialize a batched call through the EVC. This call is allowed to be reentrant. Therefore, simply checking that a caller is the `address(EVC)` doesn't really offer any added security benefit.
+- The parameters supplied by a solver to the settlement contract are all indirectly bounded from within the settlement contract by certain restrictions:
+  - `tokens` -- this is a mapping used by the settlement contract to save on gas. If a token used by an order is missing, it will fail to pass signature checks.
+  - `clearingPrices` -- these define prices to go with the previously defined `tokens`. These clearing prices are set by the solver and determine exactly how many tokens come out of a trade. **However, if a clearingPrice is lower than any of a user's limit price in `trades`, the transaction will revert. Therefore, it is not possible for a user to steal a users funds simply by setting clearingPrices to an arbitrary value.** There is incentive to provide the best clearingPrice because an auction is held off-chain by CoW Protocol and only the best overall rate outcome is selected.
+  - `trades` -- List of orders to fulfill. All of the data inside this structure is effectively signed by the user and cannot be altered by solvers, other than adding or removing signed orders.
+  - `interactions` -- Solvers use this to specify operations that should be executed from within the settlement contract. This could include swaps, pre-hooks, post-hooks, etc. This is completely controlled by the solver.
+
+- Please consider any potential security vulnerabilities resulting from potential flawed assumptions of the above from any contracts outside this repo, including the Ethereum Vault Connector (EVC), Settlement Contract, or Euler Vaults, out of scope.
 
 ### Wrapper Data Format
 Wrapper data is passed as a calldata slice with format:
