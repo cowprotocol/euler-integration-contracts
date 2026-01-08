@@ -187,9 +187,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         );
 
         _invokeEvc(
-            settleData,
-            wrapperData,
-            remainingWrapperData,
+            _makeInternalSettleCallbackData(settleData, wrapperData, remainingWrapperData),
             memoryLocation(params),
             signature,
             params.owner,
@@ -203,9 +201,6 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         bytes calldata remainingWrapperData
     ) internal override {
         (ClosePositionParams memory params,) = _parseClosePositionParams(wrapperData);
-        (address[] memory tokens, uint256[] memory prices,,) =
-            abi.decode(settleData[4:], (address[], uint256[], ICowSettlement.Trade[], ICowSettlement.Interaction[][3]));
-
         IERC20 borrowAsset = IERC20(IERC4626(params.borrowVault).asset());
         uint256 debtAmount = IBorrowing(params.borrowVault).debtOf(params.account);
 

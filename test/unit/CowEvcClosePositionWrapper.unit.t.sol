@@ -141,8 +141,8 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         mockEvc = new MockEVC();
         mockCollateralAsset = new MockERC20("Mock Asset Collateral", "MOCKCOLL");
         mockDebtAsset = new MockERC20("Mock Asset Debt", "MOCKDEBT");
-        mockCollateralVault = new MockVault(address(mockCollateralAsset), "Mock Collateral", "mCOL");
-        mockBorrowVault = new MockBorrowVault(address(mockDebtAsset), "Mock Borrow", "mBOR");
+        mockCollateralVault = new MockVault(mockEvc, address(mockCollateralAsset), "Mock Collateral", "mCOL");
+        mockBorrowVault = new MockBorrowVault(mockEvc, address(mockDebtAsset), "Mock Borrow", "mBOR");
 
         wrapper = new TestableClosePositionWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)));
 

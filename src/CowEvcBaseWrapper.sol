@@ -183,10 +183,20 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         return Inbox(expectedAddress);
     }
 
-    function _invokeEvc(
+    function _makeInternalSettleCallbackData(
         bytes calldata settleData,
         bytes calldata wrapperData,
-        bytes calldata remainingWrapperData,
+        bytes calldata remainingWrapperData
+    ) internal pure returns (bytes memory) {
+        return
+            abi.encodeCall(
+                CowEvcBaseWrapper.evcInternalSettle,
+                (settleData, wrapperData, remainingWrapperData)
+            );
+    }
+
+    function _invokeEvc(
+        bytes memory evcInternalSettleCallback,
         ParamsLocation param,
         bytes memory signature,
         address owner,
@@ -211,23 +221,15 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         {
             (IEVC.BatchItem[] memory beforeItems, bool needsPermission) = _encodeBatchItemsBefore(param);
             itemIndex = _addEvcBatchItems(
-                items,
-                beforeItems,
-                itemIndex,
-                owner,
-                deadline,
-                signature,
-                needsPermission ? param : ParamsLocation.wrap(bytes32(0))
+                items, beforeItems, itemIndex, owner, deadline, needsPermission ? signature : new bytes(0), param
             );
         }
 
         // add the EVC callback to this (which calls settlement)
         {
-            bytes memory callbackData =
-                abi.encodeCall(CowEvcBaseWrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData));
-            expectedEvcInternalSettleCallHash = keccak256(callbackData);
+            expectedEvcInternalSettleCallHash = keccak256(evcInternalSettleCallback);
             items[itemIndex++] = IEVC.BatchItem({
-                onBehalfOfAccount: address(this), targetContract: address(this), value: 0, data: callbackData
+                onBehalfOfAccount: address(this), targetContract: address(this), value: 0, data: evcInternalSettleCallback
             });
         }
 
@@ -235,13 +237,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         {
             (IEVC.BatchItem[] memory afterItems, bool needsPermission) = _encodeBatchItemsAfter(param);
             itemIndex = _addEvcBatchItems(
-                items,
-                afterItems,
-                itemIndex,
-                owner,
-                deadline,
-                signature,
-                needsPermission ? param : ParamsLocation.wrap(bytes32(0))
+                items, afterItems, itemIndex, owner, deadline, needsPermission ? signature : new bytes(0), param
             );
         }
 
@@ -259,6 +255,17 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         EVC.batch(items);
     }
 
+    /// @dev Helper function to add IEVC.BatchItem to the EVC.batch call with any authorization that may be required.
+    /// Depending on whether a signature is provided, this function will either copy `addItems` into `fullItems` at the given position,
+    /// or `addItems` will be condensed into a single `EVC.permit` call and then added to the batch as a single item.
+    /// @param fullItems The items which will ultimately be executed by EVC.batch
+    /// @param addItems The items which need to be added to fullItems with appropriate authorization wrapping as needed
+    /// @param itemIndex The location in `fullItems` where `addItems` should be written
+    /// @param owner The owner who is granting permission to execute the operations. Needed to construct the `EVC.permit`
+    /// @param deadline The time at which the permit signature would expire. needed to construct the `EVC.permit`
+    /// @param signature The signature used to validate the EVC.permit. If this is set to `new bytes(0)`, no permit will be used, and the items will be copied directly instead.
+    /// @param param The input parameters for this trade. Needed to construct the `EVC.permit`, as the params data hash is appended to the end of the batch to ensure it can't be tampered as an additonial protection.
+    /// @return The updated `itemIndex` after any new items have been written to `fullItems`
     function _addEvcBatchItems(
         IEVC.BatchItem[] memory fullItems,
         IEVC.BatchItem[] memory addItems,
@@ -272,7 +279,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         // an operator and supplies a pre-approved hash for the operation to take, or they submit a permit hash
         // for this specific instance. If its the permit hash route, here we call `permit` instead of `batch` raw so that the EVC can authorize it.
         // If there is an issue with the signature, the EVC will revert the batch call, which will bubble up through this contract to revert the entire wrappedSettle call.
-        if (ParamsLocation.unwrap(param) != bytes32(0) && signature.length > 0) {
+        if (signature.length > 0) {
             fullItems[itemIndex++] = IEVC.BatchItem({
                 onBehalfOfAccount: address(0),
                 targetContract: address(EVC),
