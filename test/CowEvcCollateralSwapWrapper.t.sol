@@ -423,7 +423,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Set up a leveraged position
         setupLeveragedPositionFor({
             owner: user,
-            account: account,
+            ownerAccount: account,
             collateralVault: EUSDS,
             borrowVault: EWETH,
             collateralAmount: collateralAmount + borrowAmount * 2500e18 / 0.99e18,
@@ -501,7 +501,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Setup User1: Long USDS (USDS collateral, WETH debt). 1 ETH debt
         setupLeveragedPositionFor({
             owner: user,
-            account: account,
+            ownerAccount: account,
             collateralVault: EUSDS,
             borrowVault: EWETH,
             collateralAmount: 3750 ether,
@@ -511,7 +511,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Setup User2: Long USDS (USDS collateral, WETH debt). 3 ETH debt
         setupLeveragedPositionFor({
             owner: user2,
-            account: account2,
+            ownerAccount: account2,
             collateralVault: EUSDS,
             borrowVault: EWETH,
             collateralAmount: 12500 ether,
@@ -521,7 +521,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Setup User3: Long WBTC (WETH collateral, WBTC debt). 2 ETH debt
         setupLeveragedPositionFor({
             owner: user3,
-            account: account3,
+            ownerAccount: account3,
             collateralVault: EWBTC,
             borrowVault: EWETH,
             collateralAmount: 0.075e8,

@@ -250,19 +250,17 @@ contract CowBaseTest is Test {
     /// @dev Creates an order where the Inbox contract signs on behalf of the user.
     /// This is used for the CowEvcClosePositionWrapper
     /// Note: to reduce params, inboxForUser is assumed to be same as receiver
-    function setupCowOrderEIP1271(
+    function setupCowOrderEip1271(
         address[] memory tokens,
         uint256 sellTokenIndex,
         uint256 buyTokenIndex,
         uint256 sellAmount,
         uint256 buyAmount,
         uint32 validTo,
-        address signer,
-        address account,
         address receiver,
         bool isBuy,
         uint256 signerPrivateKey
-    ) public returns (ICowSettlement.Trade memory trade, GPv2Order.Data memory order, bytes memory orderId) {
+    ) public view returns (ICowSettlement.Trade memory trade, GPv2Order.Data memory order, bytes memory orderId) {
         // Use EIP-1271 signature type (1 << 6)
         uint256 flags = (1 << 6) | (isBuy ? 1 : 0); // EIP-1271 signature type
 
@@ -283,7 +281,7 @@ contract CowBaseTest is Test {
 
         // Create the EIP-1271 signature
         // the "Inbox" for the user is assumed to be the same as the receiver
-        bytes memory eip1271Signature = _createEIP1271Signature(receiver, order, signerPrivateKey);
+        bytes memory eip1271Signature = _createEip1271Signature(receiver, order, signerPrivateKey);
 
         // Create the trade with EIP-1271 signature
         trade = ICowSettlement.Trade({
@@ -305,7 +303,7 @@ contract CowBaseTest is Test {
 
     /// @notice Create EIP-1271 signature for a CoW order
     /// @dev Signs the order digest with the user's private key and returns the signature
-    function _createEIP1271Signature(address inboxForUser, GPv2Order.Data memory orderData, uint256 userPrivateKey)
+    function _createEip1271Signature(address inboxForUser, GPv2Order.Data memory orderData, uint256 userPrivateKey)
         internal
         view
         returns (bytes memory signature)
@@ -340,7 +338,7 @@ contract CowBaseTest is Test {
     /// So make sure that `collateralAmount` is margin + borrowValue if that is something you care about.
     function setupLeveragedPositionFor(
         address owner,
-        address account,
+        address ownerAccount,
         address collateralVault,
         address borrowVault,
         uint256 collateralAmount,
@@ -352,12 +350,12 @@ contract CowBaseTest is Test {
 
         vm.startPrank(owner);
         IERC20(collateralAsset).approve(collateralVault, type(uint256).max);
-        EVC.enableCollateral(account, collateralVault);
-        EVC.enableController(account, borrowVault);
-        IERC4626(collateralVault).deposit(collateralAmount, account);
+        EVC.enableCollateral(ownerAccount, collateralVault);
+        EVC.enableController(ownerAccount, borrowVault);
+        IERC4626(collateralVault).deposit(collateralAmount, ownerAccount);
         vm.stopPrank();
 
-        vm.prank(account);
+        vm.prank(ownerAccount);
         IBorrowing(borrowVault).borrow(borrowAmount, address(1));
     }
 

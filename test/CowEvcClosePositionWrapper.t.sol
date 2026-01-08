@@ -2,7 +2,6 @@
 pragma solidity ^0.8;
 
 import {GPv2Order} from "cow/libraries/GPv2Order.sol";
-import {IERC20 as CowERC20} from "cow/interfaces/IERC20.sol";
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
@@ -173,7 +172,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
     /// @notice Create settlement data for closing a leveraged position with EIP-1271 signature
     /// @dev Sells vault shares to buy repayment token (WETH), using Inbox EIP-1271 signature
-    function getClosePositionSettlementEIP1271(
+    function getClosePositionSettlementEip1271(
         address owner,
         address account,
         address sellVaultToken,
@@ -195,15 +194,13 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Get trade data using EIP-1271
         r.trades = new ICowSettlement.Trade[](1);
-        (r.trades[0], r.orderData, r.orderUid) = setupCowOrderEIP1271({
+        (r.trades[0], r.orderData, r.orderUid) = setupCowOrderEip1271({
             tokens: r.tokens,
             sellTokenIndex: 0,
             buyTokenIndex: 1,
             sellAmount: sellAmount,
             buyAmount: buyAmount,
             validTo: validTo,
-            signer: owner,
-            account: account,
             receiver: closePositionWrapper.getInbox(owner, account),
             isBuy: true,
             signerPrivateKey: userPrivateKey
@@ -229,7 +226,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // First, set up a leveraged position
         setupLeveragedPositionFor({
             owner: user,
-            account: account,
+            ownerAccount: account,
             collateralVault: EUSDS,
             borrowVault: EWETH,
             collateralAmount: collateralAmount,
@@ -244,7 +241,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data using EIP-1271
-        SettlementData memory settlement = getClosePositionSettlementEIP1271({
+        SettlementData memory settlement = getClosePositionSettlementEip1271({
             owner: user,
             account: account,
             sellVaultToken: EUSDS,
@@ -332,7 +329,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // First, set up a leveraged position
         setupLeveragedPositionFor({
             owner: user,
-            account: account,
+            ownerAccount: account,
             collateralVault: EUSDS,
             borrowVault: EWETH,
             collateralAmount: collateralAmount,
@@ -346,7 +343,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         params.kind = GPv2Order.KIND_SELL;
 
         // Get settlement data using EIP-1271
-        SettlementData memory settlement = getClosePositionSettlementEIP1271({
+        SettlementData memory settlement = getClosePositionSettlementEip1271({
             owner: user,
             account: account,
             sellVaultToken: EUSDS,
@@ -450,7 +447,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // First, set up a leveraged position
         setupLeveragedPositionFor({
             owner: user,
-            account: account,
+            ownerAccount: account,
             collateralVault: EUSDS,
             borrowVault: EWETH,
             collateralAmount: collateralAmount,
@@ -461,7 +458,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement = getClosePositionSettlementEIP1271({
+        SettlementData memory settlement = getClosePositionSettlementEip1271({
             owner: user,
             account: account,
             sellVaultToken: EUSDS,
@@ -519,7 +516,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // First, set up a leveraged position
         setupLeveragedPositionFor({
             owner: user,
-            account: account,
+            ownerAccount: account,
             collateralVault: EUSDS,
             borrowVault: EWETH,
             collateralAmount: collateralAmount,
@@ -530,7 +527,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data using EIP-1271
-        SettlementData memory settlement = getClosePositionSettlementEIP1271({
+        SettlementData memory settlement = getClosePositionSettlementEip1271({
             owner: user,
             account: account,
             sellVaultToken: EUSDS,
@@ -589,7 +586,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Setup User1: Long USDS (USDS collateral, WETH debt). ~1 ETH debt
         setupLeveragedPositionFor({
             owner: user,
-            account: account,
+            ownerAccount: account,
             collateralVault: EUSDS,
             borrowVault: EWETH,
             collateralAmount: 5500 ether,
@@ -599,7 +596,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Setup User2: Long USDS (USDS collateral, WETH debt). ~3 ETH debt
         setupLeveragedPositionFor({
             owner: user2,
-            account: account2,
+            ownerAccount: account2,
             collateralVault: EUSDS,
             borrowVault: EWETH,
             collateralAmount: 12000 ether,
@@ -609,7 +606,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Setup User3: Long WETH (WETH collateral, USDS debt). ~5000 USDS debt
         setupLeveragedPositionFor({
             owner: user3,
-            account: account3,
+            ownerAccount: account3,
             collateralVault: EWETH,
             borrowVault: EUSDS,
             collateralAmount: 3 ether,
@@ -691,41 +688,35 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         (address[] memory tokens, uint256[] memory clearingPrices) = getTokensAndPrices();
 
         ICowSettlement.Trade[] memory trades = new ICowSettlement.Trade[](3);
-        (trades[0],,) = setupCowOrderEIP1271({
+        (trades[0],,) = setupCowOrderEip1271({
             tokens: tokens,
             sellTokenIndex: 2,
             buyTokenIndex: 1,
             sellAmount: params1.collateralAmount,
             buyAmount: 1.001 ether,
             validTo: validTo,
-            signer: user,
-            account: account,
             receiver: closePositionWrapper.getInbox(user, account),
             isBuy: true,
             signerPrivateKey: privateKey
         });
-        (trades[1],,) = setupCowOrderEIP1271({
+        (trades[1],,) = setupCowOrderEip1271({
             tokens: tokens,
             sellTokenIndex: 2,
             buyTokenIndex: 1,
             sellAmount: params2.collateralAmount,
             buyAmount: 3.003 ether,
             validTo: validTo,
-            signer: user2,
-            account: account2,
             receiver: closePositionWrapper.getInbox(user2, account2),
             isBuy: true,
             signerPrivateKey: privateKey2
         });
-        (trades[2],,) = setupCowOrderEIP1271({
+        (trades[2],,) = setupCowOrderEip1271({
             tokens: tokens,
             sellTokenIndex: 3,
             buyTokenIndex: 0,
             sellAmount: params3.collateralAmount,
             buyAmount: 5005 ether,
             validTo: validTo,
-            signer: user3,
-            account: account3,
             receiver: closePositionWrapper.getInbox(user3, account3),
             isBuy: true,
             signerPrivateKey: privateKey3
