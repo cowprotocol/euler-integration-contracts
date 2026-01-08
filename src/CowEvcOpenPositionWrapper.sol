@@ -121,9 +121,7 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
         (OpenPositionParams memory params, bytes memory signature) = _parseOpenPositionParams(wrapperData);
 
         _invokeEvc(
-            settleData,
-            wrapperData,
-            remainingWrapperData,
+            _makeInternalSettleCallbackData(settleData, wrapperData, remainingWrapperData),
             memoryLocation(params),
             signature,
             params.owner,
