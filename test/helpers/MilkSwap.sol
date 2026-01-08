@@ -7,8 +7,8 @@ import {SafeERC20Lib} from "euler-vault-kit/src/EVault/shared/lib/SafeERC20Lib.s
 contract MilkSwap {
     mapping(address => uint256) public prices; // Price expressed in atoms of the quote per unit of the base token
 
-    function setPrice(address token, uint256 price) external {
-        prices[token] = price;
+    function setPrice(IERC20 token, uint256 price) external {
+        prices[address(token)] = price;
     }
 
     function getAmountOut(address tokenIn, address tokenOut, uint256 amountIn)
@@ -24,10 +24,10 @@ contract MilkSwap {
         return (amountIn * priceIn / priceOut);
     }
 
-    function swap(address tokenIn, address tokenOut, uint256 amountIn) external {
-        uint256 amountOut = this.getAmountOut(tokenIn, tokenOut, amountIn);
+    function swap(IERC20 tokenIn, IERC20 tokenOut, uint256 amountIn) external {
+        uint256 amountOut = this.getAmountOut(address(tokenIn), address(tokenOut), amountIn);
 
-        SafeERC20Lib.safeTransferFrom(IERC20(tokenIn), msg.sender, address(this), amountIn, address(0));
-        SafeERC20Lib.safeTransfer(IERC20(tokenOut), msg.sender, amountOut);
+        SafeERC20Lib.safeTransferFrom(tokenIn, msg.sender, address(this), amountIn, address(0));
+        SafeERC20Lib.safeTransfer(tokenOut, msg.sender, amountOut);
     }
 }

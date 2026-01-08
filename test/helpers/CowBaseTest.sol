@@ -21,16 +21,15 @@ contract CowBaseTest is Test {
     //address constant solver = 0x7E2eF26AdccB02e57258784957922AEEFEe807e5; // quasilabs
     address constant ALLOW_LIST_MANAGER = 0xA03be496e67Ec29bC62F01a428683D7F9c204930;
 
-    address constant USDS = 0xdC035D45d973E3EC169d2276DDab16f1e407384F;
-    address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-    address constant WBTC = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
+    // Tokens (Assets for the below vaults)
+    IERC20 constant USDS = IERC20(0xdC035D45d973E3EC169d2276DDab16f1e407384F);
+    IERC20 constant WETH = IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    IERC20 constant WBTC = IERC20(0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599);
 
     // Vaults
-    address internal constant EUSDS = 0x07F9A54Dc5135B9878d6745E267625BF0E206840;
-    address internal constant EWETH = 0xD8b27CF359b7D15710a5BE299AF6e7Bf904984C2;
-    address internal constant EWBTC = 0x998D761eC1BAdaCeb064624cc3A1d37A46C88bA4;
-
-    address internal swapVerifier = 0xae26485ACDDeFd486Fe9ad7C2b34169d360737c7;
+    IEVault internal constant EUSDS = IEVault(0x07F9A54Dc5135B9878d6745E267625BF0E206840);
+    IEVault internal constant EWETH = IEVault(0xD8b27CF359b7D15710a5BE299AF6e7Bf904984C2);
+    IEVault internal constant EWBTC = IEVault(0x998D761eC1BAdaCeb064624cc3A1d37A46C88bA4);
 
     ICowSettlement constant COW_SETTLEMENT = ICowSettlement(payable(0x9008D19f58AAbD9eD0D60971565AA8510560ab41));
 
@@ -75,37 +74,37 @@ contract CowBaseTest is Test {
 
         // Setup some liquidity for MilkSwap
         milkSwap = new MilkSwap();
-        deal(USDS, address(milkSwap), 100000e18); // Add USDS to MilkSwap
-        deal(WETH, address(milkSwap), 100000e18); // Add WETH to MilkSwap
-        deal(WBTC, address(milkSwap), 100000e8); // Add WBTC to MilkSwap (8 decimals)
+        deal(address(USDS), address(milkSwap), 100000e18); // Add USDS to MilkSwap
+        deal(address(WETH), address(milkSwap), 100000e18); // Add WETH to MilkSwap
+        deal(address(WBTC), address(milkSwap), 100000e8); // Add WBTC to MilkSwap (8 decimals)
         milkSwap.setPrice(WETH, 2500e18); // 1 ETH = 2,500 USD
         milkSwap.setPrice(USDS, 1e18); // 1 USDS = 1 USD
         milkSwap.setPrice(WBTC, 100000e18 * 1e10); // 1 BTC = 100,000 USD (8 decimals)
 
         // deal small amount to the settlement contract that serve as buffer (just makes tests easier...)
-        deal(USDS, address(COW_SETTLEMENT), 200e18);
-        deal(WETH, address(COW_SETTLEMENT), 0.1e18);
-        deal(WBTC, address(COW_SETTLEMENT), 0.002e8);
-        deal(EUSDS, address(COW_SETTLEMENT), 200e18);
-        deal(EWETH, address(COW_SETTLEMENT), 0.1e18);
-        deal(EWBTC, address(COW_SETTLEMENT), 0.002e8);
+        deal(address(USDS), address(COW_SETTLEMENT), 200e18);
+        deal(address(WETH), address(COW_SETTLEMENT), 0.1e18);
+        deal(address(WBTC), address(COW_SETTLEMENT), 0.002e8);
+        deal(address(EUSDS), address(COW_SETTLEMENT), 200e18);
+        deal(address(EWETH), address(COW_SETTLEMENT), 0.1e18);
+        deal(address(EWBTC), address(COW_SETTLEMENT), 0.002e8);
 
         // Set the approval for MilkSwap in the settlement as a convenience
         vm.startPrank(address(COW_SETTLEMENT));
-        IERC20(WETH).approve(address(milkSwap), type(uint256).max);
-        IERC20(USDS).approve(address(milkSwap), type(uint256).max);
-        IERC20(WBTC).approve(address(milkSwap), type(uint256).max);
+        WETH.approve(address(milkSwap), type(uint256).max);
+        USDS.approve(address(milkSwap), type(uint256).max);
+        WBTC.approve(address(milkSwap), type(uint256).max);
 
-        IERC20(USDS).approve(address(EUSDS), type(uint256).max);
-        IERC20(WETH).approve(address(EWETH), type(uint256).max);
-        IERC20(WBTC).approve(address(EWBTC), type(uint256).max);
+        USDS.approve(address(EUSDS), type(uint256).max);
+        WETH.approve(address(EWETH), type(uint256).max);
+        WBTC.approve(address(EWBTC), type(uint256).max);
 
         vm.stopPrank();
 
         // User has approved WETH for COW Protocol
         address vaultRelayer = COW_SETTLEMENT.vaultRelayer();
         vm.prank(user);
-        IERC20(WETH).approve(vaultRelayer, type(uint256).max);
+        WETH.approve(vaultRelayer, type(uint256).max);
 
         // Setup labels
         //vm.label(solver, "solver");
@@ -116,12 +115,12 @@ contract CowBaseTest is Test {
         vm.label(account, "account 1");
         vm.label(account2, "account 2");
         vm.label(account3, "account 3");
-        vm.label(USDS, "USDS");
-        vm.label(WETH, "WETH");
-        vm.label(WBTC, "WBTC");
-        vm.label(EUSDS, "eUSDS");
-        vm.label(EWETH, "eWETH");
-        vm.label(EWBTC, "eWBTC");
+        vm.label(address(USDS), "USDS");
+        vm.label(address(WETH), "WETH");
+        vm.label(address(WBTC), "WBTC");
+        vm.label(address(EUSDS), "eUSDS");
+        vm.label(address(EWETH), "eWETH");
+        vm.label(address(EWBTC), "eWBTC");
         vm.label(address(COW_SETTLEMENT), "CoW");
         vm.label(address(COW_SETTLEMENT.authenticator()), "CoW Auth");
         vm.label(address(COW_SETTLEMENT.vaultRelayer()), "CoW Vault Relayer");
@@ -159,7 +158,7 @@ contract CowBaseTest is Test {
         return abi.encodePacked(orderDigest, address(owner), uint32(orderData.validTo));
     }
 
-    function getSwapInteraction(address sellToken, address buyToken, uint256 sellAmount)
+    function getSwapInteraction(IERC20 sellToken, IERC20 buyToken, uint256 sellAmount)
         public
         view
         returns (ICowSettlement.Interaction memory)
@@ -171,23 +170,23 @@ contract CowBaseTest is Test {
         });
     }
 
-    function getDepositInteraction(address vault, uint256 sellAmount)
+    function getDepositInteraction(IEVault vault, uint256 sellAmount)
         public
         pure
         returns (ICowSettlement.Interaction memory)
     {
         return ICowSettlement.Interaction({
-            target: vault, value: 0, callData: abi.encodeCall(IERC4626.deposit, (sellAmount, address(COW_SETTLEMENT)))
+            target: address(vault), value: 0, callData: abi.encodeCall(IERC4626.deposit, (sellAmount, address(COW_SETTLEMENT)))
         });
     }
 
-    function getWithdrawInteraction(address vault, uint256 sellAmount)
+    function getWithdrawInteraction(IEVault vault, uint256 sellAmount)
         public
         pure
         returns (ICowSettlement.Interaction memory)
     {
         return ICowSettlement.Interaction({
-            target: vault,
+            target: address(vault),
             value: 0,
             callData: abi.encodeCall(IERC4626.withdraw, (sellAmount, address(COW_SETTLEMENT), address(COW_SETTLEMENT)))
         });
@@ -320,10 +319,10 @@ contract CowBaseTest is Test {
 
     function getTokensAndPrices() public view returns (address[] memory tokens, uint256[] memory clearingPrices) {
         tokens = new address[](4);
-        tokens[0] = USDS;
-        tokens[1] = WETH;
-        tokens[2] = EUSDS;
-        tokens[3] = EWETH;
+        tokens[0] = address(USDS);
+        tokens[1] = address(WETH);
+        tokens[2] = address(EUSDS);
+        tokens[3] = address(EWETH);
 
         clearingPrices = new uint256[](4);
         clearingPrices[0] = 1 ether; // USDS price
@@ -339,24 +338,24 @@ contract CowBaseTest is Test {
     function setupLeveragedPositionFor(
         address owner,
         address ownerAccount,
-        address collateralVault,
-        address borrowVault,
+        IEVault collateralVault,
+        IEVault borrowVault,
         uint256 collateralAmount,
         uint256 borrowAmount
     ) internal {
-        address collateralAsset = address(IEVault(collateralVault).asset());
+        IERC20 collateralAsset = IERC20(collateralVault.asset());
 
-        deal(collateralAsset, owner, collateralAmount);
+        deal(address(collateralAsset), owner, collateralAmount);
 
         vm.startPrank(owner);
-        IERC20(collateralAsset).approve(collateralVault, type(uint256).max);
-        EVC.enableCollateral(ownerAccount, collateralVault);
-        EVC.enableController(ownerAccount, borrowVault);
-        IERC4626(collateralVault).deposit(collateralAmount, ownerAccount);
+        collateralAsset.approve(address(collateralVault), type(uint256).max);
+        EVC.enableCollateral(ownerAccount, address(collateralVault));
+        EVC.enableController(ownerAccount, address(borrowVault));
+        collateralVault.deposit(collateralAmount, ownerAccount);
         vm.stopPrank();
 
         vm.prank(ownerAccount);
-        IBorrowing(borrowVault).borrow(borrowAmount, address(1));
+        borrowVault.borrow(borrowAmount, address(1));
     }
 
     /// @notice Encode wrapper data with length prefix

@@ -42,7 +42,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         ecdsa = new SignerECDSA(EVC);
 
         // Setup user with USDS
-        deal(USDS, user, 10000e18);
+        deal(address(USDS), user, 10000e18);
     }
 
     struct SettlementData {
@@ -64,8 +64,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             owner: owner,
             account: account,
             deadline: block.timestamp + 1 hours,
-            collateralVault: EUSDS,
-            borrowVault: EWETH,
+            collateralVault: address(EUSDS),
+            borrowVault: address(EWETH),
             collateralAmount: USDS_MARGIN,
             borrowAmount: DEFAULT_BORROW_AMOUNT
         });
@@ -74,7 +74,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     /// @notice Setup user approvals for pre-approved hash flow
     function _setupUserPreApprovedFlow(address account, bytes32 hash) internal {
         vm.startPrank(user);
-        IERC20(USDS).approve(EUSDS, type(uint256).max);
+        USDS.approve(address(EUSDS), type(uint256).max);
         EVC.setAccountOperator(user, address(openPositionWrapper), true);
         EVC.setAccountOperator(account, address(openPositionWrapper), true);
         openPositionWrapper.setPreApprovedHash(hash, true);
@@ -101,8 +101,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     /// @notice Verify position was opened successfully
     function _verifyPositionOpened(
         address account,
-        address collateralVaultToken,
-        address borrowVaultToken,
+        IEVault collateralVaultToken,
+        IEVault borrowVaultToken,
         uint256 expectedCollateral,
         uint256 expectedDebt,
         uint256 allowedDelta
@@ -121,8 +121,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     function getOpenPositionSettlement(
         address owner,
         address receiver,
-        address sellToken,
-        address buyVaultToken,
+        IERC20 sellToken,
+        IEVault buyVaultToken,
         uint256 sellAmount,
         uint256 buyAmount
     ) public returns (SettlementData memory r) {
@@ -154,7 +154,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             new ICowSettlement.Interaction[](0)
         ];
         // First interaction: convert the borrowed tokens on a DEX (Uniswap, for example)
-        r.interactions[1][0] = getSwapInteraction(sellToken, IERC4626(buyVaultToken).asset(), sellAmount);
+        r.interactions[1][0] = getSwapInteraction(sellToken, IERC20(buyVaultToken.asset()), sellAmount);
         // Second interaction: The converted tokens get transferred to the euler vault (a "deposit")
         r.interactions[1][1] = getDepositInteraction(buyVaultToken, buyAmount);
 
@@ -180,7 +180,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Setup user approvals
         vm.prank(user);
-        IERC20(USDS).approve(EUSDS, type(uint256).max);
+        USDS.approve(address(EUSDS), type(uint256).max);
 
         // User signs order
         // Does not need to run here because its done in `setupCowOrder`
@@ -307,7 +307,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Setup user approvals
         vm.prank(user);
-        IERC20(USDS).approve(EUSDS, type(uint256).max);
+        USDS.approve(address(EUSDS), type(uint256).max);
 
         // Create INVALID permit signature by signing with wrong private key (user2's key instead of user's)
         ecdsa.setPrivateKey(privateKey2); // Wrong private key!
@@ -339,40 +339,38 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
         // Setup User1: Has USDS, will borrow WETH and swap WETH→USDS (long USDS). Around 1 ETH
-        deal(USDS, user, 2000 ether);
+        deal(address(USDS), user, 2000 ether);
 
         // Approve USDS spending by eUSDS for user1
         vm.startPrank(user);
-        IERC20(USDS).approve(EUSDS, type(uint256).max);
-
+        USDS.approve(address(EUSDS), type(uint256).max);
         // Approve WETH for COW Protocol for user1
-        IERC20(WETH).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+        WETH.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
 
         vm.stopPrank();
 
         // Setup User2: Has USDS, will borrow WETH and swap WETH→USDS. 3x the size (long USDS, same direction as user1). Around 3 ETH
         address account2 = address(uint160(user2) ^ 1);
-        deal(USDS, user2, 5000 ether);
+        deal(address(USDS), user2, 5000 ether);
 
         // Approve USDS spending by eUSDS for user2
         vm.startPrank(user2);
-        IERC20(USDS).approve(EUSDS, type(uint256).max);
+        USDS.approve(address(EUSDS), type(uint256).max);
 
         // Approve WETH for COW Protocol for user2
-        IERC20(WETH).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+        WETH.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
 
         vm.stopPrank();
 
         // Setup User3: Has WETH, will borrow USDS and swap USDS→WETH (long WETH, opposite direction). Around $5000
         address account3 = address(uint160(user3) ^ 1);
-        deal(WETH, user3, 1 ether);
+        deal(address(WETH), user3, 1 ether);
 
         // Approve WETH spending by eWETH for user2
         vm.startPrank(user3);
-        IERC20(WETH).approve(EWETH, type(uint256).max);
-
+        WETH.approve(address(EWETH), type(uint256).max);
         // Approve USDS for COW Protocol for user3
-        IERC20(USDS).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+        USDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
 
         vm.stopPrank();
 
@@ -381,8 +379,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             owner: user,
             account: account,
             deadline: block.timestamp + 1 hours,
-            collateralVault: EUSDS,
-            borrowVault: EWETH,
+            collateralVault: address(EUSDS),
+            borrowVault: address(EWETH),
             collateralAmount: 2000 ether,
             borrowAmount: 1 ether
         });
@@ -392,8 +390,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             owner: user2,
             account: account2,
             deadline: block.timestamp + 1 hours,
-            collateralVault: EUSDS,
-            borrowVault: EWETH,
+            collateralVault: address(EUSDS),
+            borrowVault: address(EWETH),
             collateralAmount: 5000 ether,
             borrowAmount: 3 ether
         });
@@ -402,8 +400,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             owner: user3,
             account: account3,
             deadline: block.timestamp + 1 hours,
-            collateralVault: EWETH,
-            borrowVault: EUSDS,
+            collateralVault: address(EWETH),
+            borrowVault: address(EUSDS),
             collateralAmount: 1 ether,
             borrowAmount: 5000 ether
         });
