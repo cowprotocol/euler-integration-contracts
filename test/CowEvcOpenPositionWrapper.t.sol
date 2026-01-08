@@ -3,14 +3,11 @@ pragma solidity ^0.8;
 
 import {GPv2Order} from "cow/libraries/GPv2Order.sol";
 
-import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
-
-import {CowEvcBaseWrapper} from "../src/CowEvcOpenPositionWrapper.sol";
+import {IEVault, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcOpenPositionWrapper} from "../src/CowEvcOpenPositionWrapper.sol";
 import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
-import {PreApprovedHashes} from "../src/PreApprovedHashes.sol";
 
 import {CowBaseTest} from "./helpers/CowBaseTest.sol";
 import {SignerECDSA} from "./helpers/SignerECDSA.sol";
@@ -108,12 +105,12 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         uint256 allowedDelta
     ) internal view {
         assertApproxEqAbs(
-            IEVault(collateralVaultToken).convertToAssets(IERC20(collateralVaultToken).balanceOf(account)),
+            collateralVaultToken.convertToAssets(collateralVaultToken.balanceOf(account)),
             expectedCollateral,
             allowedDelta,
             "User should have collateral deposited"
         );
-        assertEq(IEVault(borrowVaultToken).debtOf(account), expectedDebt, "User should have debt");
+        assertEq(borrowVaultToken.debtOf(account), expectedDebt, "User should have debt");
     }
 
     /// @notice Create settlement data for opening a leveraged position
@@ -254,7 +251,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         // User pre-approves the order on CowSwap
         // Does not need to run here because it was signed as part of the settlement creation
 
-        assertEq(IEVault(EWETH).debtOf(account), 0, "User should start with no debt");
+        assertEq(EWETH.debtOf(account), 0, "User should start with no debt");
 
         // Encode settlement and wrapper data (empty signature since pre-approved)
         bytes memory settleData = abi.encodeCall(

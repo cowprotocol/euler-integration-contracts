@@ -4,7 +4,7 @@ pragma solidity ^0.8;
 import {GPv2Order} from "cow/libraries/GPv2Order.sol";
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
-import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {IEVault, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcClosePositionWrapper} from "../src/CowEvcClosePositionWrapper.sol";
 import {CowEvcBaseWrapper} from "../src/CowEvcBaseWrapper.sol";
@@ -45,13 +45,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         ecdsa = new SignerECDSA(EVC);
 
-        // USDS is not currently a collateral for WETH borrow, fix it
-        vm.startPrank(IEVault(EWETH).governorAdmin());
-        IEVault(EWETH).setLTV(EUSDS, 0.9e4, 0.9e4, 0);
-        vm.stopPrank();
-
         // Setup user with USDS
-        deal(USDS, user, 10000e18);
+        deal(address(USDS), user, 10000e18);
     }
 
     /// @notice Helper to create or get Inbox for a user and account
@@ -80,8 +75,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             owner: owner,
             account: account,
             deadline: block.timestamp + 1 hours,
-            borrowVault: EWETH,
-            collateralVault: EUSDS,
+            borrowVault: address(EWETH),
+            collateralVault: address(EUSDS),
             collateralAmount: DEFAULT_SELL_AMOUNT
         });
     }
@@ -101,20 +96,20 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
         items[0] = IEVC.BatchItem({
             onBehalfOfAccount: account,
-            targetContract: EUSDS,
+            targetContract: address(EUSDS),
             value: 0,
             data: abi.encodeCall(IERC20.approve, (address(closePositionWrapper), type(uint256).max))
         });
         EVC.batch(items);
 
         // Approve the wrapper to send excess tokens back to the subaccount they came from
-        IEVault(EUSDS).approve(address(closePositionWrapper), type(uint256).max);
+        EUSDS.approve(address(closePositionWrapper), type(uint256).max);
 
         // Approve vault shares for settlement
-        IEVault(EUSDS).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+        EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
 
         // Approve wrapper to spend WETH for repayment
-        IERC20(WETH).approve(address(closePositionWrapper), type(uint256).max);
+        WETH.approve(address(closePositionWrapper), type(uint256).max);
 
         vm.stopPrank();
     }
@@ -123,8 +118,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
     function _setupClosePositionApprovalsFor(
         address owner,
         address account,
-        address collateralVault,
-        address repaymentAsset
+        IEVault collateralVault,
+        IERC20 repaymentAsset
     ) internal {
         vm.startPrank(owner);
 
@@ -132,20 +127,20 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
         items[0] = IEVC.BatchItem({
             onBehalfOfAccount: account,
-            targetContract: collateralVault,
+            targetContract: address(collateralVault),
             value: 0,
             data: abi.encodeCall(IERC20.approve, (address(closePositionWrapper), type(uint256).max))
         });
         EVC.batch(items);
 
         // Approve transfer of any remaining vault shares from the wrapper back to the subaccount
-        IEVault(collateralVault).approve(address(closePositionWrapper), type(uint256).max);
+        collateralVault.approve(address(closePositionWrapper), type(uint256).max);
 
         // Approve vault shares for settlement
-        IEVault(collateralVault).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+        collateralVault.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
 
         // Approve wrapper to spend repayment asset
-        IERC20(repaymentAsset).approve(address(closePositionWrapper), type(uint256).max);
+        repaymentAsset.approve(address(closePositionWrapper), type(uint256).max);
 
         vm.stopPrank();
     }
@@ -173,8 +168,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
     function getClosePositionSettlementEip1271(
         address owner,
         address account,
-        address sellVaultToken,
-        address buyToRepayToken,
+        IEVault sellVaultToken,
+        IERC20 buyToRepayToken,
         uint256 sellAmount,
         uint256 buyAmount,
         uint256 userPrivateKey
@@ -183,12 +178,12 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Get tokens and prices
         r.tokens = new address[](2);
-        r.tokens[0] = sellVaultToken;
-        r.tokens[1] = buyToRepayToken;
+        r.tokens[0] = address(sellVaultToken);
+        r.tokens[1] = address(buyToRepayToken);
 
         r.clearingPrices = new uint256[](2);
-        r.clearingPrices[0] = milkSwap.prices(IERC4626(sellVaultToken).asset());
-        r.clearingPrices[1] = milkSwap.prices(buyToRepayToken);
+        r.clearingPrices[0] = milkSwap.prices(sellVaultToken.asset());
+        r.clearingPrices[1] = milkSwap.prices(address(buyToRepayToken));
 
         // Get trade data using EIP-1271
         r.trades = new ICowSettlement.Trade[](1);
@@ -211,7 +206,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             new ICowSettlement.Interaction[](0)
         ];
         r.interactions[1][0] = getWithdrawInteraction(EUSDS, buyAmount * r.clearingPrices[1] / 1e18);
-        r.interactions[1][1] = getSwapInteraction(IERC4626(EUSDS).asset(), WETH, buyAmount * r.clearingPrices[1] / 1e18);
+        r.interactions[1][1] = getSwapInteraction(IERC20(EUSDS.asset()), WETH, buyAmount * r.clearingPrices[1] / 1e18);
     }
 
     /// @notice Test closing a leveraged position using the wrapper with EIP-1271 signatures
@@ -256,8 +251,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
 
         // Record balances before closing
-        uint256 collateralBefore = IERC20(EUSDS).balanceOf(user);
-        uint256 collateralBeforeAccount = IERC20(EUSDS).balanceOf(account);
+        uint256 collateralBefore = EUSDS.balanceOf(user);
+        uint256 collateralBeforeAccount = EUSDS.balanceOf(account);
 
         // Encode settlement and wrapper data
         bytes memory settleData = abi.encodeCall(
@@ -283,11 +278,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Verify the position was closed successfully
         assertEq(IEVault(EWETH).debtOf(account), 0, "User should have no debt after closing");
-        assertLt(
-            IERC20(EUSDS).balanceOf(account), collateralBeforeAccount, "User should have less collateral after closing"
-        );
-        assertEq(IERC20(EUSDS).balanceOf(user), collateralBefore, "User main account balance should not have changed");
-        assertGt(IERC20(EUSDS).balanceOf(account), 0, "User should have some collateral remaining");
+        assertLt(EUSDS.balanceOf(account), collateralBeforeAccount, "User should have less collateral after closing");
+        assertEq(EUSDS.balanceOf(user), collateralBefore, "User main account balance should not have changed");
+        assertGt(EUSDS.balanceOf(account), 0, "User should have some collateral remaining");
     }
 
     /// @notice Test that unauthorized users cannot call evcInternalSettle directly
@@ -380,7 +373,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Verify partial repayment
         uint256 debtAfter = IEVault(EWETH).debtOf(account);
         assertApproxEqAbs(debtAfter, borrowAmount - buyAmount, 0.01e18, "Debt should be reduced by repaid amount");
-        assertEq(IERC20(WETH).balanceOf(user), 0, "User should have used any collateral they received to repay");
+        assertEq(WETH.balanceOf(user), 0, "User should have used any collateral they received to repay");
     }
 
     /// @notice Test parseWrapperData function
@@ -471,7 +464,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // User signs order (already done in setupCowOrder)
 
         // Record balances before closing
-        uint256 debtBefore = IEVault(EWETH).debtOf(account);
+        uint256 debtBefore = EWETH.debtOf(account);
 
         // Encode settlement and wrapper data (empty signature since pre-approved)
         bytes memory settleData = abi.encodeCall(
@@ -496,7 +489,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         CowWrapper(address(closePositionWrapper)).wrappedSettle(settleData, wrapperData);
 
         // Verify the position was closed successfully
-        assertEq(IEVault(EWETH).debtOf(account), 0, "User should have no debt after closing");
+        assertEq(EWETH.debtOf(account), 0, "User should have no debt after closing");
         assertEq(debtBefore, borrowAmount, "User should have started with debt");
     }
 
@@ -565,20 +558,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
     function test_ClosePositionWrapper_ThreeUsers_TwoSameOneOpposite() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
-        // Configure vault LTVs for both directions
-        vm.startPrank(IEVault(EUSDS).governorAdmin());
-        IEVault(EUSDS).setLTV(EWETH, 0.9e4, 0.9e4, 0);
-        vm.stopPrank();
-
-        // Setup accounts
-
-        vm.label(user, "user");
-        vm.label(user2, "user2");
-        vm.label(user3, "user3");
-        vm.label(account, "account");
-        vm.label(account2, "account2");
-        vm.label(account3, "account3");
-
         // Setup User1: Long USDS (USDS collateral, WETH debt). ~1 ETH debt
         setupLeveragedPositionFor({
             owner: user,
@@ -610,25 +589,25 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         });
 
         // Verify positions exist
-        assertEq(IEVault(EWETH).debtOf(account), 1 ether, "User1 should have WETH debt");
-        assertEq(IEVault(EWETH).debtOf(account2), 3 ether, "User2 should have WETH debt");
-        assertEq(IEVault(EUSDS).debtOf(account3), 5000 ether, "User3 should have USDS debt");
+        assertEq(EWETH.debtOf(account), 1 ether, "User1 should have WETH debt");
+        assertEq(EWETH.debtOf(account2), 3 ether, "User2 should have WETH debt");
+        assertEq(EUSDS.debtOf(account3), 5000 ether, "User3 should have USDS debt");
 
         // confirm the amounts before repayment
         assertApproxEqAbs(
-            IERC4626(EUSDS).convertToAssets(IEVault(EUSDS).balanceOf(account)),
+            EUSDS.convertToAssets(EUSDS.balanceOf(account)),
             5500 ether,
             1 ether,
             "User1 should have some EUSDS collateral before closing"
         );
         assertApproxEqAbs(
-            IERC4626(EUSDS).convertToAssets(IEVault(EUSDS).balanceOf(account2)),
+            EUSDS.convertToAssets(EUSDS.balanceOf(account2)),
             12000 ether,
             1 ether,
             "User2 should have some EUSDS collateral before closing"
         );
         assertApproxEqAbs(
-            IERC4626(EWETH).convertToAssets(IEVault(EWETH).balanceOf(account3)),
+            EWETH.convertToAssets(EWETH.balanceOf(account3)),
             3 ether,
             0.01 ether,
             "User3 should have some EWETH collateral before closing"
@@ -644,8 +623,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             owner: user,
             account: account,
             deadline: block.timestamp + 1 hours,
-            borrowVault: EWETH,
-            collateralVault: EUSDS,
+            borrowVault: address(EWETH),
+            collateralVault: address(EUSDS),
             collateralAmount: 2550 ether
         });
 
@@ -653,8 +632,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             owner: user2,
             account: account2,
             deadline: block.timestamp + 1 hours,
-            borrowVault: EWETH,
-            collateralVault: EUSDS,
+            borrowVault: address(EWETH),
+            collateralVault: address(EUSDS),
             collateralAmount: 7600 ether
         });
 
@@ -662,8 +641,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             owner: user3,
             account: account3,
             deadline: block.timestamp + 1 hours,
-            borrowVault: EUSDS,
-            collateralVault: EWETH,
+            borrowVault: address(EUSDS),
+            collateralVault: address(EWETH),
             collateralAmount: 2.1 ether
         });
 
@@ -750,25 +729,25 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         closePositionWrapper.wrappedSettle(settleData, wrapperData);
 
         // Verify all positions closed successfully
-        assertEq(IEVault(EWETH).debtOf(account), 0, "User1 should have no WETH debt after closing");
-        assertEq(IEVault(EWETH).debtOf(account2), 0, "User2 should have no WETH debt after closing");
-        assertEq(IEVault(EUSDS).debtOf(account3), 0, "User3 should have no USDS debt after closing");
+        assertEq(EWETH.debtOf(account), 0, "User1 should have no WETH debt after closing");
+        assertEq(EWETH.debtOf(account2), 0, "User2 should have no WETH debt after closing");
+        assertEq(EUSDS.debtOf(account3), 0, "User3 should have no USDS debt after closing");
 
         // confirm the amounts after repayment
         assertApproxEqAbs(
-            IERC4626(EUSDS).convertToAssets(IEVault(EUSDS).balanceOf(account)),
+            EUSDS.convertToAssets(EUSDS.balanceOf(account)),
             5500 ether - 2502.5 ether,
             1 ether,
             "User1 should have some EUSDS collateral after closing"
         );
         assertApproxEqAbs(
-            IERC4626(EUSDS).convertToAssets(IEVault(EUSDS).balanceOf(account2)),
+            EUSDS.convertToAssets(EUSDS.balanceOf(account2)),
             12000 ether - 7507.5 ether,
             1 ether,
             "User2 should have some EUSDS collateral after closing"
         );
         assertApproxEqAbs(
-            IERC4626(EWETH).convertToAssets(IEVault(EWETH).balanceOf(account3)),
+            EWETH.convertToAssets(EWETH.balanceOf(account3)),
             3 ether - 2 ether,
             0.01 ether,
             "User3 should have some EWETH collateral after closing"
