@@ -82,9 +82,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             deadline: block.timestamp + 1 hours,
             borrowVault: EWETH,
             collateralVault: EUSDS,
-            collateralAmount: DEFAULT_SELL_AMOUNT,
-            minRepay: DEFAULT_BUY_AMOUNT,
-            kind: GPv2Order.KIND_BUY
+            collateralAmount: DEFAULT_SELL_AMOUNT
         });
     }
 
@@ -339,8 +337,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Create params with custom amounts
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
         params.collateralAmount = sellAmount;
-        params.minRepay = 1.5e18; // debt (2e18) - remaining (0.5e18) = 1.5e18 to repay
-        params.kind = GPv2Order.KIND_SELL;
 
         // Get settlement data using EIP-1271
         SettlementData memory settlement = getClosePositionSettlementEip1271({
@@ -650,9 +646,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             deadline: block.timestamp + 1 hours,
             borrowVault: EWETH,
             collateralVault: EUSDS,
-            collateralAmount: 2550 ether,
-            minRepay: 1.001 ether, // full repay of 1 ether debt
-            kind: GPv2Order.KIND_BUY
+            collateralAmount: 2550 ether
         });
 
         CowEvcClosePositionWrapper.ClosePositionParams memory params2 = CowEvcClosePositionWrapper.ClosePositionParams({
@@ -661,9 +655,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             deadline: block.timestamp + 1 hours,
             borrowVault: EWETH,
             collateralVault: EUSDS,
-            collateralAmount: 7600 ether,
-            minRepay: 3.003 ether, // full repay of 3 ether debt
-            kind: GPv2Order.KIND_BUY
+            collateralAmount: 7600 ether
         });
 
         CowEvcClosePositionWrapper.ClosePositionParams memory params3 = CowEvcClosePositionWrapper.ClosePositionParams({
@@ -672,9 +664,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             deadline: block.timestamp + 1 hours,
             borrowVault: EUSDS,
             collateralVault: EWETH,
-            collateralAmount: 2.1 ether,
-            minRepay: 5005 ether, // full repay of 5000 ether debt
-            kind: GPv2Order.KIND_BUY
+            collateralAmount: 2.1 ether
         });
 
         // Create permit signatures for all users

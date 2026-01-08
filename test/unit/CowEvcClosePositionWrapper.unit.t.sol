@@ -50,9 +50,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            minRepay: 0,
-            kind: KIND_BUY
+            collateralAmount: 0
         });
     }
 
@@ -201,9 +199,9 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         CowEvcClosePositionWrapper.ClosePositionParams memory params2 = _getDefaultParams();
         params2.owner = ACCOUNT;
 
-        // Change minRepay field
+        // Change collateralAmount field
         CowEvcClosePositionWrapper.ClosePositionParams memory params3 = _getDefaultParams();
-        params3.minRepay = 1e18;
+        params3.collateralAmount = 1e18;
 
         bytes32 hash1 = wrapper.getApprovalHash(params1);
         bytes32 hash2 = wrapper.getApprovalHash(params2);
@@ -316,9 +314,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            collateralAmount: 1000e18,
-            minRepay: 1000e18,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
+            collateralAmount: 1000e18
         });
 
         address inbox = wrapper.getInbox(params.owner, params.account);
@@ -392,9 +388,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            minRepay: 0,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
+            collateralAmount: 0
         });
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         bytes memory chainedWrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
@@ -435,9 +429,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             deadline: block.timestamp + 1 hours,
             borrowVault: address(mockBorrowVault),
             collateralVault: address(mockCollateralVault),
-            collateralAmount: 0,
-            minRepay: 0,
-            kind: hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc" // KIND_BUY
+            collateralAmount: 0
         });
 
         address[] memory tokens = new address[](2);
@@ -585,7 +577,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
 
         // Expect revert with ECDSA error when signature is tampered
         vm.prank(SOLVER);
-        vm.expectRevert(abi.encodeWithSelector(MockEVC.InvalidSignature.selector));
+        vm.expectRevert("ECDSA: invalid signature");
         wrapper.wrappedSettle(settleData, wrapperData);
     }
 
