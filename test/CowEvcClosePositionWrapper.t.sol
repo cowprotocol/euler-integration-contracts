@@ -2,6 +2,7 @@
 pragma solidity ^0.8;
 
 import {GPv2Order} from "cow/libraries/GPv2Order.sol";
+import {IERC20 as CowERC20} from "cow/interfaces/IERC20.sol";
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
@@ -11,6 +12,7 @@ import {CowEvcBaseWrapper} from "../src/CowEvcBaseWrapper.sol";
 import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 import {PreApprovedHashes} from "../src/PreApprovedHashes.sol";
+import {Inbox} from "../src/Inbox.sol";
 
 import {CowBaseTest} from "./helpers/CowBaseTest.sol";
 import {SignerECDSA} from "./helpers/SignerECDSA.sol";
@@ -44,8 +46,20 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         ecdsa = new SignerECDSA(EVC);
 
+        // USDS is not currently a collateral for WETH borrow, fix it
+        vm.startPrank(IEVault(EWETH).governorAdmin());
+        IEVault(EWETH).setLTV(EUSDS, 0.9e4, 0.9e4, 0);
+        vm.stopPrank();
+
         // Setup user with USDS
         deal(USDS, user, 10000e18);
+    }
+
+    /// @notice Helper to create or get Inbox for a user and account
+    function _getOrCreateInbox(address owner) internal returns (Inbox) {
+        return closePositionWrapper.getInbox(owner, owner) != address(0)
+            ? Inbox(closePositionWrapper.getInbox(owner, owner))
+            : Inbox(closePositionWrapper.getInbox(owner, owner));
     }
 
     struct SettlementData {
@@ -157,29 +171,42 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         );
     }
 
-    /// @notice Create settlement data for closing a leveraged position. It will always sell EUSDS to buy WETH
-    /// @dev Sells vault shares to buy repayment token (WETH)
-    function getClosePositionSettlement(address owner, address account, uint256 sellAmount, uint256 buyAmount)
-        public
-        returns (SettlementData memory r)
-    {
+    /// @notice Create settlement data for closing a leveraged position with EIP-1271 signature
+    /// @dev Sells vault shares to buy repayment token (WETH), using Inbox EIP-1271 signature
+    function getClosePositionSettlementEIP1271(
+        address owner,
+        address account,
+        address sellVaultToken,
+        address buyToRepayToken,
+        uint256 sellAmount,
+        uint256 buyAmount,
+        uint256 userPrivateKey
+    ) public returns (SettlementData memory r) {
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
         // Get tokens and prices
-        (r.tokens, r.clearingPrices) = getTokensAndPrices();
+        r.tokens = new address[](2);
+        r.tokens[0] = sellVaultToken;
+        r.tokens[1] = buyToRepayToken;
 
-        // Get trade data
+        r.clearingPrices = new uint256[](2);
+        r.clearingPrices[0] = milkSwap.prices(IERC4626(sellVaultToken).asset());
+        r.clearingPrices[1] = milkSwap.prices(buyToRepayToken);
+
+        // Get trade data using EIP-1271
         r.trades = new ICowSettlement.Trade[](1);
-        (r.trades[0], r.orderData, r.orderUid) = setupCowOrder({
+        (r.trades[0], r.orderData, r.orderUid) = setupCowOrderEIP1271({
             tokens: r.tokens,
-            sellTokenIndex: 2,
+            sellTokenIndex: 0,
             buyTokenIndex: 1,
             sellAmount: sellAmount,
             buyAmount: buyAmount,
             validTo: validTo,
-            owner: owner,
-            receiver: closePositionWrapper.getInbox(user, account),
-            isBuy: true
+            signer: owner,
+            account: account,
+            receiver: closePositionWrapper.getInbox(owner, account),
+            isBuy: true,
+            signerPrivateKey: userPrivateKey
         });
 
         // Setup interactions - withdraw from vault, swap to repayment token
@@ -192,7 +219,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         r.interactions[1][1] = getSwapInteraction(IERC4626(EUSDS).asset(), WETH, buyAmount * r.clearingPrices[1] / 1e18);
     }
 
-    /// @notice Test closing a leveraged position using the wrapper
+    /// @notice Test closing a leveraged position using the wrapper with EIP-1271 signatures
     function test_ClosePositionWrapper_SuccessFullRepay() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
@@ -218,12 +245,16 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Create params using helper
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
-        // Get settlement data
-        SettlementData memory settlement = getClosePositionSettlement({
-            owner: user, account: account, sellAmount: DEFAULT_SELL_AMOUNT, buyAmount: DEFAULT_BUY_AMOUNT
+        // Get settlement data using EIP-1271
+        SettlementData memory settlement = getClosePositionSettlementEIP1271({
+            owner: user,
+            account: account,
+            sellVaultToken: EUSDS,
+            buyToRepayToken: WETH,
+            sellAmount: DEFAULT_SELL_AMOUNT,
+            buyAmount: DEFAULT_BUY_AMOUNT,
+            userPrivateKey: privateKey
         });
-
-        // User signs order (already done in setupCowOrder)
 
         // Setup approvals
         _setupClosePositionApprovalsFor(user, account, EUSDS, WETH);
@@ -291,7 +322,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         closePositionWrapper.wrappedSettle(settleData, wrapperData);
     }
 
-    /// @notice Test shrinking the position with partial repayment
+    /// @notice Test shrinking the position with partial repayment using EIP-1271
     function test_ClosePositionWrapper_PartialRepay() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
@@ -318,11 +349,16 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         params.minRepay = 1.5e18; // debt (2e18) - remaining (0.5e18) = 1.5e18 to repay
         params.kind = GPv2Order.KIND_SELL;
 
-        // Get settlement data
-        SettlementData memory settlement =
-            getClosePositionSettlement({owner: user, account: account, sellAmount: sellAmount, buyAmount: buyAmount});
-
-        // User signs order (already done in setupCowOrder)
+        // Get settlement data using EIP-1271
+        SettlementData memory settlement = getClosePositionSettlementEIP1271({
+            owner: user,
+            account: account,
+            sellVaultToken: EUSDS,
+            buyToRepayToken: WETH,
+            sellAmount: sellAmount,
+            buyAmount: buyAmount,
+            userPrivateKey: privateKey
+        });
 
         // Setup approvals
         _setupClosePositionApprovalsFor(user, account, EUSDS, WETH);
@@ -429,8 +465,14 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement = getClosePositionSettlement({
-            owner: user, account: account, sellAmount: DEFAULT_SELL_AMOUNT, buyAmount: DEFAULT_BUY_AMOUNT
+        SettlementData memory settlement = getClosePositionSettlementEIP1271({
+            owner: user,
+            account: account,
+            sellVaultToken: EUSDS,
+            buyToRepayToken: WETH,
+            sellAmount: DEFAULT_SELL_AMOUNT,
+            buyAmount: DEFAULT_BUY_AMOUNT,
+            userPrivateKey: privateKey
         });
 
         // Setup pre-approved flow
@@ -469,7 +511,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         assertEq(debtBefore, borrowAmount, "User should have started with debt");
     }
 
-    /// @notice Test that invalid signature causes the transaction to revert
+    /// @notice Test that invalid signature causes the transaction to revert with EIP-1271
     function test_ClosePositionWrapper_InvalidSignatureReverts() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
@@ -491,9 +533,15 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Create params using helper
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
-        // Get settlement data
-        SettlementData memory settlement = getClosePositionSettlement({
-            owner: user, account: account, sellAmount: DEFAULT_SELL_AMOUNT, buyAmount: DEFAULT_BUY_AMOUNT
+        // Get settlement data using EIP-1271
+        SettlementData memory settlement = getClosePositionSettlementEIP1271({
+            owner: user,
+            account: account,
+            sellVaultToken: EUSDS,
+            buyToRepayToken: WETH,
+            sellAmount: DEFAULT_SELL_AMOUNT,
+            buyAmount: DEFAULT_BUY_AMOUNT,
+            userPrivateKey: privateKey2 // Use wrong private key to create invalid signature
         });
 
         // Setup approvals
@@ -644,44 +692,50 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         bytes memory permitSignature2 = _createPermitSignatureFor(params2, privateKey2);
         bytes memory permitSignature3 = _createPermitSignatureFor(params3, privateKey3);
 
-        // Create settlement with all three trades
+        // Create settlement with all three trades using EIP-1271
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
         (address[] memory tokens, uint256[] memory clearingPrices) = getTokensAndPrices();
 
         ICowSettlement.Trade[] memory trades = new ICowSettlement.Trade[](3);
-        (trades[0],,) = setupCowOrder({
+        (trades[0],,) = setupCowOrderEIP1271({
             tokens: tokens,
             sellTokenIndex: 2,
             buyTokenIndex: 1,
             sellAmount: params1.collateralAmount,
             buyAmount: 1.001 ether,
             validTo: validTo,
-            owner: user,
+            signer: user,
+            account: account1,
             receiver: closePositionWrapper.getInbox(user, account1),
-            isBuy: true
+            isBuy: true,
+            signerPrivateKey: privateKey
         });
-        (trades[1],,) = setupCowOrder({
+        (trades[1],,) = setupCowOrderEIP1271({
             tokens: tokens,
             sellTokenIndex: 2,
             buyTokenIndex: 1,
             sellAmount: params2.collateralAmount,
             buyAmount: 3.003 ether,
             validTo: validTo,
-            owner: user2,
+            signer: user2,
+            account: account2,
             receiver: closePositionWrapper.getInbox(user2, account2),
-            isBuy: true
+            isBuy: true,
+            signerPrivateKey: privateKey2
         });
-        (trades[2],,) = setupCowOrder({
+        (trades[2],,) = setupCowOrderEIP1271({
             tokens: tokens,
             sellTokenIndex: 3,
             buyTokenIndex: 0,
             sellAmount: params3.collateralAmount,
             buyAmount: 5005 ether,
             validTo: validTo,
-            owner: user3,
+            signer: user3,
+            account: account3,
             receiver: closePositionWrapper.getInbox(user3, account3),
-            isBuy: true
+            isBuy: true,
+            signerPrivateKey: privateKey3
         });
 
         // Setup interactions

@@ -234,6 +234,80 @@ contract CowBaseTest is Test {
         COW_SETTLEMENT.setPreSignature(orderId, true);
     }
 
+    /// @notice Setup CoW order with EIP-1271 signature using Inbox as the order owner
+    /// @dev Creates an order where the Inbox contract signs on behalf of the user.
+    /// This is used for the CowEvcClosePositionWrapper
+    /// Note: to reduce params, inboxForUser is assumed to be same as receiver
+    function setupCowOrderEIP1271(
+        address[] memory tokens,
+        uint256 sellTokenIndex,
+        uint256 buyTokenIndex,
+        uint256 sellAmount,
+        uint256 buyAmount,
+        uint32 validTo,
+        address signer,
+        address account,
+        address receiver,
+        bool isBuy,
+        uint256 signerPrivateKey
+    ) public returns (ICowSettlement.Trade memory trade, GPv2Order.Data memory order, bytes memory orderId) {
+        // Use EIP-1271 signature type (1 << 6)
+        uint256 flags = (1 << 6) | (isBuy ? 1 : 0); // EIP-1271 signature type
+
+        order = GPv2Order.Data({
+            sellToken: CowERC20(tokens[sellTokenIndex]),
+            buyToken: CowERC20(tokens[buyTokenIndex]),
+            receiver: receiver,
+            sellAmount: sellAmount,
+            buyAmount: buyAmount,
+            validTo: validTo,
+            appData: bytes32(0),
+            feeAmount: 0,
+            kind: isBuy ? GPv2Order.KIND_BUY : GPv2Order.KIND_SELL,
+            partiallyFillable: false,
+            sellTokenBalance: GPv2Order.BALANCE_ERC20,
+            buyTokenBalance: GPv2Order.BALANCE_ERC20
+        });
+
+        // Create the EIP-1271 signature
+        // the "Inbox" for the user is assumed to be the same as the receiver
+        bytes memory eip1271Signature = _createEIP1271Signature(receiver, order, signerPrivateKey);
+
+        // Create the trade with EIP-1271 signature
+        trade = ICowSettlement.Trade({
+            sellTokenIndex: sellTokenIndex,
+            buyTokenIndex: buyTokenIndex,
+            receiver: receiver,
+            sellAmount: sellAmount,
+            buyAmount: buyAmount,
+            validTo: validTo,
+            appData: bytes32(0),
+            feeAmount: 0,
+            flags: flags,
+            executedAmount: 0,
+            signature: eip1271Signature
+        });
+
+        orderId = getOrderUid(receiver, order);
+    }
+
+    /// @notice Create EIP-1271 signature for a CoW order
+    /// @dev Signs the order digest with the user's private key and returns the signature
+    function _createEIP1271Signature(address inboxForUser, GPv2Order.Data memory orderData, uint256 userPrivateKey)
+        internal
+        view
+        returns (bytes memory signature)
+    {
+        // Compute the order digest
+        bytes32 orderDigest = GPv2Order.hash(orderData, COW_SETTLEMENT.domainSeparator());
+
+        // Sign the digest with the user's private key
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPrivateKey, orderDigest);
+
+        // Return the signature as packed bytes (inbox || r || s || v) (in CoW, first 20 bytes is the 1271 isValidSignature verifier)
+        return abi.encodePacked(inboxForUser, r, s, v);
+    }
+
     function getTokensAndPrices() public view returns (address[] memory tokens, uint256[] memory clearingPrices) {
         tokens = new address[](4);
         tokens[0] = USDS;
