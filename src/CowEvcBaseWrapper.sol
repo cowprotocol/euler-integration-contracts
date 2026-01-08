@@ -85,24 +85,24 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev By default we return the default value (empty array, false)
     /// @param location The memory storage position where the parameters needed to encode the batch items have been saved
     /// @return items Array of batch items to execute
-    /// @return needsPermit Whether these items require user signature or prior authorization as an operator
+    /// @return needsPermission Whether these items require user signature or prior authorization as an operator
     function _encodeBatchItemsBefore(ParamsLocation location)
         internal
         view
         virtual
-        returns (IEVC.BatchItem[] memory items, bool needsPermit)
+        returns (IEVC.BatchItem[] memory items, bool needsPermission)
     {}
 
     /// @notice Encode batch items to execute after the settlement
     /// @dev By default we return the default value (empty array, false)
     /// @param location The memory storage position where the parameters needed to encode the batch items have been saved
     /// @return items Array of batch items to execute
-    /// @return needsPermit Whether these items require user signature or prior authorization as an operator
+    /// @return needsPermission Whether these items require user signature or prior authorization as an operator
     function _encodeBatchItemsAfter(ParamsLocation location)
         internal
         view
         virtual
-        returns (IEVC.BatchItem[] memory items, bool needsPermit)
+        returns (IEVC.BatchItem[] memory items, bool needsPermission)
     {}
 
     /// @dev This function makes strong assumptions on the memory layout of the struct in memory.
@@ -164,11 +164,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         bytes calldata wrapperData,
         bytes calldata remainingWrapperData
     ) internal pure returns (bytes memory) {
-        return
-            abi.encodeCall(
-                CowEvcBaseWrapper.evcInternalSettle,
-                (settleData, wrapperData, remainingWrapperData)
-            );
+        return abi.encodeCall(CowEvcBaseWrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData));
     }
 
     function _invokeEvc(
@@ -205,7 +201,10 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         {
             expectedEvcInternalSettleCallHash = keccak256(evcInternalSettleCallback);
             items[itemIndex++] = IEVC.BatchItem({
-                onBehalfOfAccount: address(this), targetContract: address(this), value: 0, data: evcInternalSettleCallback
+                onBehalfOfAccount: address(this),
+                targetContract: address(this),
+                value: 0,
+                data: evcInternalSettleCallback
             });
         }
 
