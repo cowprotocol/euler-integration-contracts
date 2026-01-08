@@ -188,11 +188,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         bytes calldata wrapperData,
         bytes calldata remainingWrapperData
     ) internal pure returns (bytes memory) {
-        return
-            abi.encodeCall(
-                CowEvcBaseWrapper.evcInternalSettle,
-                (settleData, wrapperData, remainingWrapperData)
-            );
+        return abi.encodeCall(CowEvcBaseWrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData));
     }
 
     function _invokeEvc(
@@ -229,7 +225,10 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         {
             expectedEvcInternalSettleCallHash = keccak256(evcInternalSettleCallback);
             items[itemIndex++] = IEVC.BatchItem({
-                onBehalfOfAccount: address(this), targetContract: address(this), value: 0, data: evcInternalSettleCallback
+                onBehalfOfAccount: address(this),
+                targetContract: address(this),
+                value: 0,
+                data: evcInternalSettleCallback
             });
         }
 
