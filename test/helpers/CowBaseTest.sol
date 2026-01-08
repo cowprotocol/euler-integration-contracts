@@ -176,7 +176,9 @@ contract CowBaseTest is Test {
         returns (ICowSettlement.Interaction memory)
     {
         return ICowSettlement.Interaction({
-            target: address(vault), value: 0, callData: abi.encodeCall(IERC4626.deposit, (sellAmount, address(COW_SETTLEMENT)))
+            target: address(vault),
+            value: 0,
+            callData: abi.encodeCall(IERC4626.deposit, (sellAmount, address(COW_SETTLEMENT)))
         });
     }
 
