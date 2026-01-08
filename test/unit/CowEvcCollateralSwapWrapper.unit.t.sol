@@ -3,62 +3,69 @@ pragma solidity ^0.8;
 
 import {Test} from "forge-std/Test.sol";
 import {IEVC} from "evc/EthereumVaultConnector.sol";
-import {CowEvcClosePositionWrapper} from "../../src/CowEvcClosePositionWrapper.sol";
 import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
+import {CowEvcCollateralSwapWrapper} from "../../src/CowEvcCollateralSwapWrapper.sol";
 import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
+import {EmptyWrapper} from "../EmptyWrapper.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
-import {MockERC20, MockVault, MockBorrowVault} from "./mocks/MockERC20AndVaults.sol";
+import {MockERC20, MockVault} from "./mocks/MockERC20AndVaults.sol";
 
 // this is required because foundry doesn't have a cheatcode for override any transient storage.
-contract TestableClosePositionWrapper is CowEvcClosePositionWrapper {
-    constructor(address _evc, ICowSettlement _settlement) CowEvcClosePositionWrapper(_evc, _settlement) {}
+contract TestableCollateralSwapWrapper is CowEvcCollateralSwapWrapper {
+    constructor(address _evc, ICowSettlement _settlement) CowEvcCollateralSwapWrapper(_evc, _settlement) {}
 
     function setExpectedEvcInternalSettleCall(bytes memory call) external {
         expectedEvcInternalSettleCallHash = keccak256(call);
     }
 }
 
-/// @title Unit tests for CowEvcClosePositionWrapper
+/// @title Unit tests for CowEvcCollateralSwapWrapper
 /// @notice Comprehensive unit tests focusing on isolated functionality testing with mocks
-contract CowEvcClosePositionWrapperUnitTest is Test {
-    TestableClosePositionWrapper public wrapper;
+contract CowEvcCollateralSwapWrapperUnitTest is Test {
+    TestableCollateralSwapWrapper public wrapper;
+    EmptyWrapper public emptyWrapper;
     MockEVC public mockEvc;
     MockCowSettlement public mockSettlement;
     MockCowAuthentication public mockAuth;
-    MockERC20 public mockCollateralAsset;
-    MockVault public mockCollateralVault;
-    MockERC20 public mockDebtAsset;
-    MockBorrowVault public mockBorrowVault;
+    MockERC20 public mockFromAsset;
+    MockERC20 public mockToAsset;
+    MockVault public mockFromVault;
+    MockVault public mockToVault;
 
     address constant OWNER = address(0x1111);
     address constant ACCOUNT = address(0x1112);
     address constant SOLVER = address(0x3333);
 
-    uint256 constant DEFAULT_REPAY_AMOUNT = 1000e18;
-    bytes32 constant KIND_BUY = hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc";
+    uint256 constant DEFAULT_SWAP_AMOUNT = 1000e18;
+
+    // Constants from the contract
+    bytes32 private constant KIND_SELL = hex"f3b277728b3fee749481eb3e0b3b48980dbbab78658fc419025cb16eee346775";
+    bytes32 private constant KIND_BUY = hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc";
 
     event PreApprovedHash(address indexed owner, bytes32 indexed hash, bool approved);
     event PreApprovedHashConsumed(address indexed owner, bytes32 indexed hash);
 
-    /// @notice Get default ClosePositionParams for testing
-    function _getDefaultParams() internal view returns (CowEvcClosePositionWrapper.ClosePositionParams memory) {
-        return CowEvcClosePositionWrapper.ClosePositionParams({
+    /// @notice Get default CollateralSwapParams for testing
+    function _getDefaultParams() internal view returns (CowEvcCollateralSwapWrapper.CollateralSwapParams memory) {
+        return CowEvcCollateralSwapWrapper.CollateralSwapParams({
             owner: OWNER,
             account: ACCOUNT,
             deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0
+            fromVault: address(mockFromVault),
+            toVault: address(mockToVault),
+            fromAmount: DEFAULT_SWAP_AMOUNT,
+            toAmount: 0,
+            kind: KIND_SELL
         });
     }
 
     /// @notice Create empty settle data
     function _getEmptySettleData() internal view returns (bytes memory) {
         address[] memory tokens = new address[](2);
-        tokens[0] = address(mockCollateralVault);
-        tokens[1] = address(mockDebtAsset);
+        tokens[0] = address(mockFromVault);
+        tokens[1] = address(mockToVault);
         uint256[] memory prices = new uint256[](2);
         prices[0] = 1 ether;
         prices[1] = 2 ether;
@@ -77,32 +84,8 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         );
     }
 
-    /// @notice Create settle data with tokens and prices
-    function _getSettleDataWithTokens() internal view returns (bytes memory) {
-        address[] memory tokens = new address[](2);
-        tokens[0] = mockBorrowVault.asset();
-        tokens[1] = address(mockCollateralVault);
-        uint256[] memory prices = new uint256[](2);
-        prices[0] = 1e18;
-        prices[1] = 1e18;
-
-        return abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                tokens,
-                prices,
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
-    }
-
     /// @notice Encode wrapper data with length prefix
-    function _encodeWrapperData(CowEvcClosePositionWrapper.ClosePositionParams memory params, bytes memory signature)
+    function _encodeWrapperData(CowEvcCollateralSwapWrapper.CollateralSwapParams memory params, bytes memory signature)
         internal
         pure
         returns (bytes memory)
@@ -112,7 +95,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     }
 
     /// @notice Setup pre-approved hash flow
-    function _setupPreApprovedHash(CowEvcClosePositionWrapper.ClosePositionParams memory params)
+    function _setupPreApprovedHash(CowEvcCollateralSwapWrapper.CollateralSwapParams memory params)
         internal
         returns (bytes32)
     {
@@ -120,7 +103,6 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         vm.prank(OWNER);
         wrapper.setPreApprovedHash(hash, true);
         mockEvc.setOperator(OWNER, address(wrapper), true);
-        mockEvc.setOperator(ACCOUNT, address(wrapper), true);
         return hash;
     }
 
@@ -137,18 +119,25 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         mockAuth = new MockCowAuthentication();
         mockSettlement = new MockCowSettlement(address(mockAuth));
         mockEvc = new MockEVC();
-        mockCollateralAsset = new MockERC20("Mock Asset Collateral", "MOCKCOLL");
-        mockDebtAsset = new MockERC20("Mock Asset Debt", "MOCKDEBT");
-        mockCollateralVault = new MockVault(mockEvc, address(mockCollateralAsset), "Mock Collateral", "mCOL");
-        mockBorrowVault = new MockBorrowVault(mockEvc, address(mockDebtAsset), "Mock Borrow", "mBOR");
+        mockFromAsset = new MockERC20("Mock Asset From", "MOCKFROM");
+        mockToAsset = new MockERC20("Mock Asset To", "MOCKTO");
+        mockFromVault = new MockVault(mockEvc, address(mockFromAsset), "Mock From Vault", "mFROM");
+        mockToVault = new MockVault(mockEvc, address(mockToAsset), "Mock To Vault", "mTO");
 
-        wrapper = new TestableClosePositionWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)));
+        wrapper = new TestableCollateralSwapWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)));
+        emptyWrapper = new EmptyWrapper(ICowSettlement(address(mockSettlement)));
 
         // Set solver as authenticated
         mockAuth.setSolver(SOLVER, true);
+        mockAuth.setSolver(address(wrapper), true);
+        mockAuth.setSolver(address(emptyWrapper), true);
 
         // Set the correct onBehalfOfAccount for evcInternalSettle calls
-        mockEvc.setOnBehalfOf(address(wrapper));
+        mockEvc.setOnBehalfOf(ACCOUNT);
+
+        vm.label(OWNER, "OWNER");
+        vm.label(ACCOUNT, "ACCOUNT");
+        vm.label(SOLVER, "SOLVER");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -166,7 +155,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         bytes32 expectedDomainSeparator = keccak256(
             abi.encode(
                 keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                keccak256("CowEvcClosePositionWrapper"),
+                keccak256("CowEvcCollateralSwapWrapper"),
                 keccak256("1"),
                 block.chainid,
                 address(wrapper)
@@ -180,7 +169,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function test_ValidateWrapperData_EmptySignature() public view {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
 
         bytes memory wrapperData = abi.encode(params, new bytes(0));
 
@@ -193,15 +182,15 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function test_GetApprovalHash_DifferentForDifferentParams() public view {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params1 = _getDefaultParams();
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params1 = _getDefaultParams();
 
         // Change owner field
-        CowEvcClosePositionWrapper.ClosePositionParams memory params2 = _getDefaultParams();
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params2 = _getDefaultParams();
         params2.owner = ACCOUNT;
 
-        // Change collateralAmount field
-        CowEvcClosePositionWrapper.ClosePositionParams memory params3 = _getDefaultParams();
-        params3.collateralAmount = 1e18;
+        // Change fromAmount field
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params3 = _getDefaultParams();
+        params3.fromAmount = 2000e18;
 
         bytes32 hash1 = wrapper.getApprovalHash(params1);
         bytes32 hash2 = wrapper.getApprovalHash(params2);
@@ -215,19 +204,31 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
                     GET SIGNED CALLDATA TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_GetSignedCalldata_PartialRepay() public {
-        mockBorrowVault.setDebt(ACCOUNT, DEFAULT_REPAY_AMOUNT);
-
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+    function test_GetSignedCalldata_IsCorrect() public view {
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
 
         bytes memory signedCalldata = wrapper.encodePermitData(params);
         IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
-        assertEq(items.length, 1, "Should have 1 batch item for partial repay");
+        assertEq(items.length, 2, "Should have correct batch item count");
+        assertEq(items[0].targetContract, params.fromVault, "Should target fromVault");
+        assertEq(
+            items[0].data,
+            abi.encodeCall(MockERC20.transfer, (address(wrapper), params.fromAmount)),
+            "Should call transfer"
+        );
+        assertEq(items[0].onBehalfOfAccount, ACCOUNT, "Should have zero onBehalfOfAccount");
+        assertEq(items[1].targetContract, address(mockEvc), "Should target EVC");
+        assertEq(
+            items[1].data,
+            abi.encodeCall(IEVC.enableCollateral, (params.account, params.toVault)),
+            "Should call enableCollateral"
+        );
+        assertEq(items[1].onBehalfOfAccount, address(0), "Should have zero onBehalfOfAccount");
     }
 
     /*//////////////////////////////////////////////////////////////
-                    EVC INTERNAL SETTLE TESTS
+                    EVC INTERNAL SWAP TESTS
     //////////////////////////////////////////////////////////////*/
 
     function test_EvcInternalSettle_OnlyEVC() public {
@@ -240,8 +241,16 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     }
 
     function test_EvcInternalSettle_RequiresCorrectCalldata() public {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
-        params.account = OWNER;
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
+            owner: OWNER,
+            account: OWNER,
+            deadline: block.timestamp + 1 hours,
+            fromVault: address(mockFromVault),
+            toVault: address(mockToVault),
+            fromAmount: 1000e18,
+            toAmount: 0,
+            kind: KIND_SELL
+        });
 
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = abi.encode(params, new bytes(0));
@@ -262,32 +271,17 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
 
-    function test_EvcInternalSettle_RequiresFundsInInbox() public {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
-        params.account = OWNER; // Same account, no transfer needed
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-        bytes memory remainingWrapperData = "";
-
-        mockSettlement.setSuccessfulSettle(true);
-
-        wrapper.setExpectedEvcInternalSettleCall(
-            abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
-        );
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                CowEvcClosePositionWrapper.NoSwapOutput.selector, wrapper.getInbox(params.owner, params.account)
-            )
-        );
-        vm.prank(address(mockEvc));
-        wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
-    }
-
     function test_EvcInternalSettle_CanBeCalledByEVC() public {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
-        params.account = OWNER; // Same account, no transfer needed
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
+            owner: OWNER,
+            account: OWNER, // Same account, no transfer needed
+            deadline: block.timestamp + 1 hours,
+            fromVault: address(mockFromVault),
+            toVault: address(mockToVault),
+            fromAmount: 1000e18,
+            toAmount: 0,
+            kind: KIND_SELL
+        });
 
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = abi.encode(params, new bytes(0));
@@ -299,51 +293,25 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
         );
 
-        // put funds in the inbox so it doesn't revert
-        deal(address(mockDebtAsset), wrapper.getInbox(params.owner, params.account), 1);
-
         vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
 
-    function test_EvcInternalSettle_WithSubaccountTransfer() public {
+    function test_EvcInternalSettle_WithSubaccount_KindSell() public {
         // Set up scenario where owner != account
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
             owner: OWNER,
             account: ACCOUNT, // Different from owner
             deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 1000e18
+            fromVault: address(mockFromVault),
+            toVault: address(mockToVault),
+            fromAmount: 250e18,
+            toAmount: 0,
+            kind: KIND_SELL
         });
 
-        address inbox = wrapper.getInbox(params.owner, params.account);
-
-        // Give  some collateral vault tokens (what it would received previously from transferring from the user in the EVC.permit)
-        mockCollateralVault.mint(inbox, 5000e18);
-
-        // Create settle data with tokens and prices
-        address[] memory tokens = new address[](2);
-        tokens[0] = address(mockCollateralVault);
-        tokens[1] = address(mockDebtAsset);
-
-        uint256[] memory prices = new uint256[](2);
-        prices[0] = 1e18; // 1:2 price for simplicity
-        prices[1] = 2e18;
-
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                tokens,
-                prices,
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
+        // Create settle data without prices (not needed for KIND_SELL)
+        bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         bytes memory remainingWrapperData = "";
 
@@ -353,19 +321,90 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
             abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
         );
 
-        // put funds in the inbox so it doesn't revert
-        deal(address(mockDebtAsset), inbox, 1);
+        mockFromVault.mint(1000 ether, address(wrapper));
 
         vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
 
-        // Verify inbox has no funds and subaccount has same balance as before (because any unused funds are returned)
-        assertEq(
-            mockCollateralVault.balanceOf(inbox),
-            0,
-            "Inbox should not have any funds left over because it all gets sent back to the subaccount"
+        // Verify transfer occurred from account to owner (exact fromAmount for SELL)
+        assertEq(mockFromVault.balanceOf(ACCOUNT), 0e18, "Account balance should not have changed");
+        assertEq(mockFromVault.balanceOf(OWNER), 1000e18, "Owner receives all the tokens ready to swap");
+    }
+
+    function test_EvcInternalSettle_WithSubaccount_KindBuy() public {
+        // Set up scenario where owner != account with KIND_BUY
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
+            owner: OWNER,
+            account: ACCOUNT, // Different from owner
+            deadline: block.timestamp + 1 hours,
+            fromVault: address(mockFromVault),
+            toVault: address(mockToVault),
+            fromAmount: 250e18, // Will be calculated from toAmount for KIND_BUY
+            toAmount: 125e18, // This is the buy amount (what we want to receive)
+            kind: KIND_BUY
+        });
+
+        // Create settle data with prices for KIND_BUY calculation
+        address[] memory tokens = new address[](2);
+        tokens[0] = address(mockFromVault);
+        tokens[1] = address(mockToVault);
+
+        uint256[] memory prices = new uint256[](2);
+        prices[0] = 1e18; // fromVault price
+        prices[1] = 2e18; // toVault price (2x more expensive)
+
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = abi.encode(params, new bytes(0));
+        bytes memory remainingWrapperData = "";
+
+        mockSettlement.setSuccessfulSettle(true);
+
+        wrapper.setExpectedEvcInternalSettleCall(
+            abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
         );
-        assertEq(mockCollateralVault.balanceOf(ACCOUNT), 5000e18, "Account should have everything returned to it");
+
+        mockFromVault.mint(address(wrapper), 1000 ether);
+
+        vm.prank(address(mockEvc));
+        wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
+
+        // For KIND_BUY: we transfer everything, and then transfer any unspent funds back
+        // this means that the balance of the main account should not change
+        assertEq(mockFromVault.balanceOf(ACCOUNT), 750e18, "Account balance should have received the remainder");
+        assertEq(mockFromVault.balanceOf(OWNER), 250e18, "Owner should receive calculated amount");
+
+        // try this call again, but this time spend some of the tokens
+    }
+
+    function test_EvcInternalSettle_SameOwnerAndAccount() public {
+        // When owner == account, no effective transfer should occur
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
+            owner: OWNER,
+            account: OWNER, // Same as owner
+            deadline: block.timestamp + 1 hours,
+            fromVault: address(mockFromVault),
+            toVault: address(mockToVault),
+            fromAmount: 1000e18,
+            toAmount: 0,
+            kind: KIND_SELL
+        });
+
+        mockFromVault.mint(OWNER, 2000e18);
+
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = abi.encode(params, new bytes(0));
+
+        mockSettlement.setSuccessfulSettle(true);
+
+        wrapper.setExpectedEvcInternalSettleCall(
+            abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, ""))
+        );
+
+        vm.prank(address(mockEvc));
+        wrapper.evcInternalSettle(settleData, wrapperData, "");
+
+        // No transfer should occur, so balance should remain unchanged
+        assertEq(mockFromVault.balanceOf(OWNER), 2000e18, "Owner balance should remain unchanged");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -382,13 +421,15 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
 
     function test_WrappedSettle_SubaccountMustBeControlledByOwner() public {
         address invalidSubaccount = 0x9999999999999999999999999999999999999999; // subaccount is not controlled by owner
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
             owner: OWNER,
             account: invalidSubaccount,
             deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0
+            fromVault: address(mockFromVault),
+            toVault: address(mockToVault),
+            fromAmount: 1000e18,
+            toAmount: 0,
+            kind: KIND_SELL
         });
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         bytes memory chainedWrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
@@ -405,92 +446,39 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     }
 
     function test_WrappedSettle_WithPermitSignature() public {
-        mockBorrowVault.setDebt(ACCOUNT, 1000e18);
-
-        mockCollateralVault.mint(ACCOUNT, 2000e18);
-
-        // Mint repayment assets to OWNER (not wrapper) since helperRepay pulls from owner
-        MockERC20(mockBorrowVault.asset()).mint(OWNER, 1000e18);
-
-        // Owner must approve wrapper to spend repayment assets
-        vm.prank(OWNER);
-        MockERC20(mockBorrowVault.asset()).approve(address(wrapper), 1000e18);
-
-        // These tokens need to be spendable by the wrapper
-        vm.prank(ACCOUNT);
-        mockCollateralVault.approve(address(wrapper), 2000e18);
+        mockFromVault.mint(OWNER, 2000e18);
 
         vm.prank(OWNER);
-        mockCollateralVault.approve(address(wrapper), 2000e18);
+        mockFromVault.approve(address(wrapper), 2000e18);
 
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0
-        });
-
-        address[] memory tokens = new address[](2);
-        tokens[0] = mockBorrowVault.asset();
-        tokens[1] = address(mockCollateralVault);
-        uint256[] memory prices = new uint256[](2);
-        prices[0] = 1e18;
-        prices[1] = 1e18;
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
+        params.account = OWNER; // Same account
 
         bytes memory signature = new bytes(65);
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                tokens,
-                prices,
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
-        bytes memory wrapperData = abi.encode(params, signature);
-        wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeWrapperData(params, signature);
 
         mockEvc.setSuccessfulBatch(true);
-
-        // put funds in the inbox so it doesn't revert
-        deal(address(mockDebtAsset), wrapper.getInbox(params.owner, params.account), 1);
 
         vm.prank(SOLVER);
         wrapper.wrappedSettle(settleData, wrapperData);
     }
 
     function test_WrappedSettle_WithPreApprovedHash() public {
-        mockBorrowVault.setDebt(ACCOUNT, DEFAULT_REPAY_AMOUNT);
-        mockCollateralVault.mint(ACCOUNT, 2000e18);
-        MockERC20(mockBorrowVault.asset()).mint(OWNER, DEFAULT_REPAY_AMOUNT);
-
-        vm.startPrank(OWNER);
-        MockERC20(mockBorrowVault.asset()).approve(address(wrapper), DEFAULT_REPAY_AMOUNT);
-        vm.stopPrank();
-
-        vm.prank(ACCOUNT);
-        mockCollateralVault.approve(address(wrapper), 2000e18);
+        mockFromVault.mint(OWNER, 2000e18);
 
         vm.prank(OWNER);
-        mockCollateralVault.approve(address(wrapper), 2000e18);
+        mockFromVault.approve(address(wrapper), 2000e18);
 
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
+        params.account = OWNER; // Same account
 
         bytes32 hash = _setupPreApprovedHash(params);
 
-        bytes memory settleData = _getSettleDataWithTokens();
+        bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
 
         mockEvc.setSuccessfulBatch(true);
-
-        // put funds in the inbox so it doesn't revert
-        deal(address(mockDebtAsset), wrapper.getInbox(params.owner, params.account), 1);
 
         vm.prank(SOLVER);
         wrapper.wrappedSettle(settleData, wrapperData);
@@ -499,14 +487,13 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     }
 
     function test_WrappedSettle_RevertsIfHashNotPreApproved() public {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
 
         // Calculate hash but DO NOT pre-approve it
         bytes32 hash = wrapper.getApprovalHash(params);
 
         // Set operator permissions (required for EVC batch operations)
         mockEvc.setOperator(OWNER, address(wrapper), true);
-        mockEvc.setOperator(ACCOUNT, address(wrapper), true);
 
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0)); // Empty signature triggers pre-approved hash flow
@@ -518,7 +505,7 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
     }
 
     function test_WrappedSettle_RevertsOnTamperedSignature() public {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
         // Use same account for owner and account to avoid subaccount validation
         params.account = OWNER;
 
@@ -577,14 +564,13 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
 
         // Expect revert with ECDSA error when signature is tampered
         vm.prank(SOLVER);
-        vm.expectRevert("ECDSA: invalid signature");
+        vm.expectRevert(MockEVC.InvalidSignature.selector);
         wrapper.wrappedSettle(settleData, wrapperData);
     }
 
     function test_WrappedSettle_PreApprovedHashRevertsIfDeadlineExceeded() public {
-        mockBorrowVault.setDebt(ACCOUNT, DEFAULT_REPAY_AMOUNT);
-
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
+        params.account = OWNER; // Same account
         params.deadline = block.timestamp - 1; // Past deadline
 
         _setupPreApprovedHash(params);
@@ -605,37 +591,109 @@ contract CowEvcClosePositionWrapperUnitTest is Test {
                     EDGE CASE TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_MaxRepayAmount() public {
-        mockBorrowVault.setDebt(ACCOUNT, DEFAULT_REPAY_AMOUNT);
+    function test_ValidateWrapperData_LongSignature() public view {
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
+            owner: OWNER,
+            account: ACCOUNT,
+            deadline: block.timestamp + 1 hours,
+            fromVault: address(mockFromVault),
+            toVault: address(mockToVault),
+            fromAmount: 1000e18,
+            toAmount: 0,
+            kind: KIND_SELL
+        });
 
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+        // Create a signature longer than 65 bytes
+        bytes memory signature = new bytes(128);
+        bytes memory wrapperData = abi.encode(params, signature);
 
-        bytes memory signedCalldata = wrapper.encodePermitData(params);
-        IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
-
-        // Should create repay item
-        assertEq(items.length, 1, "Should have 1 item for repay with max amount");
+        // Should not revert for valid wrapper data with long signature
+        wrapper.validateWrapperData(wrapperData);
     }
 
-    function test_SameOwnerAndAccount() public {
-        mockBorrowVault.setDebt(OWNER, DEFAULT_REPAY_AMOUNT);
+    function test_EvcInternalSettle_WithRemainingWrapperData() public {
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
+            owner: OWNER,
+            account: OWNER,
+            deadline: block.timestamp + 1 hours,
+            fromVault: address(mockFromVault),
+            toVault: address(mockToVault),
+            fromAmount: 1000e18,
+            toAmount: 0,
+            kind: KIND_SELL
+        });
 
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
-        params.account = OWNER; // Same as owner
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = abi.encode(params, new bytes(0));
+        bytes memory remainingWrapperData = abi.encodePacked(emptyWrapper, hex"0004deadbeef");
 
-        bytes memory signedCalldata = wrapper.encodePermitData(params);
-        IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
+        mockSettlement.setSuccessfulSettle(true);
 
-        assertEq(items[0].onBehalfOfAccount, OWNER, "Should operate on behalf of same account");
+        wrapper.setExpectedEvcInternalSettleCall(
+            abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
+        );
+
+        vm.prank(address(mockEvc));
+
+        wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
+
+        // Should handle remaining wrapper data gracefully
     }
 
-    function test_ZeroDebt() public {
-        mockBorrowVault.setDebt(ACCOUNT, 0);
+    function test_WrappedSettle_BuildsCorrectBatchWithPermit() public {
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
+            owner: OWNER,
+            account: OWNER,
+            deadline: block.timestamp + 1 hours,
+            fromVault: address(mockFromVault),
+            toVault: address(mockToVault),
+            fromAmount: 1000e18,
+            toAmount: 0,
+            kind: KIND_SELL
+        });
 
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+        bytes memory signature = new bytes(65);
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = abi.encode(params, signature);
+        wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
-        bytes memory signedCalldata = wrapper.encodePermitData(params);
-        IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
-        assertEq(items.length, 1, "Should have 1 item");
+        mockEvc.setSuccessfulBatch(true);
+
+        mockFromVault.mint(1000 ether, OWNER);
+
+        vm.prank(SOLVER);
+        wrapper.wrappedSettle(settleData, wrapperData);
+
+        // Should build a batch with permit + evcInternalSettle (2 items)
+    }
+
+    function test_WrappedSettle_BuildsCorrectBatchWithPreApproved() public {
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
+            owner: OWNER,
+            account: OWNER,
+            deadline: block.timestamp + 1 hours,
+            fromVault: address(mockFromVault),
+            toVault: address(mockToVault),
+            fromAmount: 1000e18,
+            toAmount: 0,
+            kind: KIND_SELL
+        });
+
+        bytes32 hash = wrapper.getApprovalHash(params);
+
+        vm.prank(OWNER);
+        wrapper.setPreApprovedHash(hash, true);
+
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = abi.encode(params, new bytes(0));
+        wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
+
+        mockEvc.setSuccessfulBatch(true);
+        mockFromVault.mint(1000 ether, OWNER);
+
+        vm.prank(SOLVER);
+        wrapper.wrappedSettle(settleData, wrapperData);
+
+        // Should build a batch with enableCollateral + evcInternalSettle (2 items)
     }
 }
