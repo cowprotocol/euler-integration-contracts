@@ -157,7 +157,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
 
         // For the permissioned operation, transfer collateral directly to the Inbox for this user
         items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: address(params.account),
+            onBehalfOfAccount: params.account,
             targetContract: params.collateralVault,
             value: 0,
             data: abi.encodeCall(
