@@ -226,8 +226,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 borrowAmount = 1e18;
         uint256 collateralAmount = USDS_MARGIN + 2495e18;
 
-        address account = address(uint160(user) ^ uint8(0x01));
-
         // First, set up a leveraged position
         setupLeveragedPositionFor({
             owner: user,
@@ -330,8 +328,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 collateralAmount = USDS_MARGIN + 4990e18;
         uint256 sellAmount = 2500e18;
         uint256 buyAmount = 0.98e18;
-
-        address account = address(uint160(user) ^ uint8(0x01));
 
         // First, set up a leveraged position
         setupLeveragedPositionFor({
@@ -582,21 +578,18 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         vm.stopPrank();
 
         // Setup accounts
-        address account1 = address(uint160(user) ^ 1);
-        address account2 = address(uint160(user2) ^ 1);
-        address account3 = address(uint160(user3) ^ 1);
 
         vm.label(user, "user");
         vm.label(user2, "user2");
         vm.label(user3, "user3");
-        vm.label(account1, "account1");
+        vm.label(account, "account");
         vm.label(account2, "account2");
         vm.label(account3, "account3");
 
         // Setup User1: Long USDS (USDS collateral, WETH debt). ~1 ETH debt
         setupLeveragedPositionFor({
             owner: user,
-            account: account1,
+            account: account,
             collateralVault: EUSDS,
             borrowVault: EWETH,
             collateralAmount: 5500 ether,
@@ -624,13 +617,13 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         });
 
         // Verify positions exist
-        assertEq(IEVault(EWETH).debtOf(account1), 1 ether, "User1 should have WETH debt");
+        assertEq(IEVault(EWETH).debtOf(account), 1 ether, "User1 should have WETH debt");
         assertEq(IEVault(EWETH).debtOf(account2), 3 ether, "User2 should have WETH debt");
         assertEq(IEVault(EUSDS).debtOf(account3), 5000 ether, "User3 should have USDS debt");
 
         // confirm the amounts before repayment
         assertApproxEqAbs(
-            IERC4626(EUSDS).convertToAssets(IEVault(EUSDS).balanceOf(account1)),
+            IERC4626(EUSDS).convertToAssets(IEVault(EUSDS).balanceOf(account)),
             5500 ether,
             1 ether,
             "User1 should have some EUSDS collateral before closing"
@@ -649,14 +642,14 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         );
 
         // Setup approvals for all users
-        _setupClosePositionApprovalsFor(user, account1, EUSDS, WETH);
+        _setupClosePositionApprovalsFor(user, account, EUSDS, WETH);
         _setupClosePositionApprovalsFor(user2, account2, EUSDS, WETH);
         _setupClosePositionApprovalsFor(user3, account3, EWETH, USDS);
 
         // Create params for all users
         CowEvcClosePositionWrapper.ClosePositionParams memory params1 = CowEvcClosePositionWrapper.ClosePositionParams({
             owner: user,
-            account: account1,
+            account: account,
             deadline: block.timestamp + 1 hours,
             borrowVault: EWETH,
             collateralVault: EUSDS,
@@ -706,8 +699,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             buyAmount: 1.001 ether,
             validTo: validTo,
             signer: user,
-            account: account1,
-            receiver: closePositionWrapper.getInbox(user, account1),
+            account: account,
+            receiver: closePositionWrapper.getInbox(user, account),
             isBuy: true,
             signerPrivateKey: privateKey
         });
@@ -776,13 +769,13 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         closePositionWrapper.wrappedSettle(settleData, wrapperData);
 
         // Verify all positions closed successfully
-        assertEq(IEVault(EWETH).debtOf(account1), 0, "User1 should have no WETH debt after closing");
+        assertEq(IEVault(EWETH).debtOf(account), 0, "User1 should have no WETH debt after closing");
         assertEq(IEVault(EWETH).debtOf(account2), 0, "User2 should have no WETH debt after closing");
         assertEq(IEVault(EUSDS).debtOf(account3), 0, "User3 should have no USDS debt after closing");
 
         // confirm the amounts after repayment
         assertApproxEqAbs(
-            IERC4626(EUSDS).convertToAssets(IEVault(EUSDS).balanceOf(account1)),
+            IERC4626(EUSDS).convertToAssets(IEVault(EUSDS).balanceOf(account)),
             5500 ether - 2502.5 ether,
             1 ether,
             "User1 should have some EUSDS collateral after closing"

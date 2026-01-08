@@ -40,6 +40,9 @@ contract CowBaseTest is Test {
     address user;
     address user2;
     address user3;
+    address account;
+    address account2 = address(uint160(user2) ^ 1);
+    address account3 = address(uint160(user3) ^ 1);
     uint256 privateKey;
     uint256 privateKey2;
     uint256 privateKey3;
@@ -57,6 +60,10 @@ contract CowBaseTest is Test {
         // Certain specialized tests could use these additional users
         (user2, privateKey2) = makeAddrAndKey("user 2");
         (user3, privateKey3) = makeAddrAndKey("user 3");
+
+        account = address(uint160(user) ^ 1);
+        account2 = address(uint160(user2) ^ 1);
+        account3 = address(uint160(user3) ^ 1);
 
         // Add test contract as solver so we can call wrappedSettle directly
         GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
@@ -104,6 +111,11 @@ contract CowBaseTest is Test {
         //vm.label(solver, "solver");
         vm.label(ALLOW_LIST_MANAGER, "allow list manager");
         vm.label(user, "user");
+        vm.label(user2, "user 2");
+        vm.label(user3, "user 3");
+        vm.label(account, "account 1");
+        vm.label(account2, "account 2");
+        vm.label(account3, "account 3");
         vm.label(USDS, "USDS");
         vm.label(WETH, "WETH");
         vm.label(WBTC, "WBTC");

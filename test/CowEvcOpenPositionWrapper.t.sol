@@ -165,8 +165,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     function test_OpenPositionWrapper_Success() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
-        address account = address(uint160(user) ^ 1);
-
         // Create params using helper
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
@@ -259,7 +257,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
     /// @notice Test validateWrapperData function
     function test_OpenPositionWrapper_ValidateWrapperData() external view {
-        address account = address(uint160(user) ^ 1);
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
         bytes memory wrapperData = abi.encode(params, new bytes(0));
@@ -272,7 +269,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     function test_OpenPositionWrapper_SetPreApprovedHash() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
-        address account = address(uint160(user) ^ 1);
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
         bytes32 hash = openPositionWrapper.getApprovalHash(params);
 
@@ -305,8 +301,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     /// @notice Test opening a position with pre-approved hash (no signature needed)
     function test_OpenPositionWrapper_WithPreApprovedHash() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
-
-        address account = address(uint160(user) ^ 1);
 
         // Create params using helper
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
@@ -366,8 +360,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     function test_OpenPositionWrapper_InvalidSignatureReverts() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
-        address account = address(uint160(user) ^ 1);
-
         // Create params using helper
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
@@ -415,7 +407,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
         // Setup User1: Has USDS, will borrow WETH and swap WETH→USDS (long USDS). Around 1 ETH
-        address account1 = address(uint160(user) ^ 1);
         deal(USDS, user, 2000 ether);
 
         // Approve USDS spending by eUSDS for user1
@@ -456,7 +447,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         // Create params for User1: Deposit USDS, borrow WETH
         CowEvcOpenPositionWrapper.OpenPositionParams memory params1 = CowEvcOpenPositionWrapper.OpenPositionParams({
             owner: user,
-            account: account1,
+            account: account,
             deadline: block.timestamp + 1 hours,
             collateralVault: EUSDS,
             borrowVault: EWETH,
@@ -537,7 +528,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             buyAmount: 0,
             validTo: validTo,
             owner: user,
-            receiver: account1,
+            receiver: account,
             isBuy: false
         });
 
@@ -608,7 +599,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         // Verify all three positions were opened successfully
         // User1: Should have USDS collateral and WETH debt
         _verifyPositionOpened({
-            account: account1,
+            account: account,
             collateralVaultToken: EUSDS,
             borrowVaultToken: EWETH,
             expectedCollateral: 2000 ether + 2500 ether,

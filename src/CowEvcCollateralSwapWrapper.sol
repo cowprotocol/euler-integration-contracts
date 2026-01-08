@@ -168,9 +168,7 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         );
 
         _invokeEvc(
-            settleData,
-            wrapperData,
-            remainingWrapperData,
+            _makeInternalSettleCallbackData(settleData, wrapperData, remainingWrapperData),
             memoryLocation(params),
             signature,
             params.owner,
