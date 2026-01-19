@@ -368,8 +368,9 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         uint256 ownerPrivateKey = 0x1234567890123456789012345678901234567890123456789012345678901234;
         address validOwner = vm.addr(ownerPrivateKey);
 
-        // Update params to use the valid owner
+        // Update params to use the valid owner. Account needs to be updated as well to avoid subaccount error.
         params.owner = validOwner;
+        params.account = validOwner;
 
         // Build the signed calldata that will be included in the permit
         bytes memory signedCalldata = wrapper.encodePermitData(params);

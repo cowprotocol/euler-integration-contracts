@@ -125,6 +125,7 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
             memoryLocation(params),
             signature,
             params.owner,
+            params.account,
             params.deadline
         );
 

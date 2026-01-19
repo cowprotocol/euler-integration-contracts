@@ -2,6 +2,7 @@
 pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
+import {Create2} from "openzeppelin-contracts/contracts/utils/Create2.sol";
 
 import {CowWrapper, ICowSettlement} from "./CowWrapper.sol";
 import {PreApprovedHashes} from "./PreApprovedHashes.sol";
@@ -171,8 +172,14 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         ParamsLocation param,
         bytes memory signature,
         address owner,
+        address account,
         uint256 deadline
     ) internal {
+        // Subaccounts in the EVC can be any account that shares the highest 19 bits as the owner.
+        // Here we verify that the subaccount address has been specified is, in fact, a subaccount of the owner.
+        // Otherwise its concievably possible that a transfer could happen between an owner with an unauthorized subaccount.
+        require(bytes19(bytes20(owner)) == bytes19(bytes20(account)), SubaccountMustBeControlledByOwner(account, owner));
+
         // There are 2 ways that this contract can validate user operations: 1) the user pre-approves a hash with an on-chain call and grants this contract ability to operate on the user's behalf, or 2) they issue a signature which can be used to call EVC.permit()
         // In case the user is using a hash (1), then there would be no signature supplied to this call and we have to resolve the hash instead
         // If its flow (2), it happens through the call to EVC.permit() elsewhere: if the parameters don't match with the user intent, that call is assumed to revert.
