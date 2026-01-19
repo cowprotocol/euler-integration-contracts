@@ -13,6 +13,8 @@ import {ICowSettlement} from "../../src/CowWrapper.sol";
 
 import {MilkSwap} from "./MilkSwap.sol";
 
+import {Inbox} from "../../src/Inbox.sol";
+
 contract CowBaseTest is Test {
     uint256 mainnetFork;
     uint256 constant BLOCK_NUMBER = 22546006;
@@ -309,14 +311,15 @@ contract CowBaseTest is Test {
         view
         returns (bytes memory signature)
     {
-        // Compute the order digest
-        bytes32 orderDigest = GPv2Order.hash(orderData, COW_SETTLEMENT.domainSeparator());
+        bytes memory rawOrderData = abi.encode(orderData);
+        // Compute the order hash (raw)
+        bytes32 wrappedOrderHash = keccak256(abi.encodePacked("\x19\x01", Inbox(inboxForUser).DOMAIN_SEPARATOR(), keccak256(abi.encodePacked(GPv2Order.TYPE_HASH, rawOrderData))));
 
         // Sign the digest with the user's private key
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPrivateKey, orderDigest);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPrivateKey, wrappedOrderHash);
 
-        // Return the signature as packed bytes (inbox || r || s || v) (in CoW, first 20 bytes is the 1271 isValidSignature verifier)
-        return abi.encodePacked(inboxForUser, r, s, v);
+        // Return the signature as packed bytes (inbox || r || s || v || orderData) (in CoW, first 20 bytes is the 1271 isValidSignature verifier)
+        return abi.encodePacked(inboxForUser, r, s, v, rawOrderData);
     }
 
     function getTokensAndPrices() public view returns (address[] memory tokens, uint256[] memory clearingPrices) {

@@ -80,7 +80,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
     /// @return The computed Inbox address
     function _getInboxAddress(address owner, address subaccount) internal view returns (address) {
         bytes32 salt = bytes32(uint256(uint160(subaccount)));
-        bytes memory creationCode = abi.encodePacked(type(Inbox).creationCode, abi.encode(address(this), owner));
+        bytes memory creationCode = abi.encodePacked(type(Inbox).creationCode, abi.encode(address(this), owner, SETTLEMENT.domainSeparator()));
         return Create2.computeAddress(salt, keccak256(creationCode));
     }
 
