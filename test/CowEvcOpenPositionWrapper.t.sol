@@ -248,6 +248,12 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         bytes32 hash = openPositionWrapper.getApprovalHash(params);
         _setupUserPreApprovedFlow(account, hash);
 
+        // Verify that the operator is authorized before executing
+        assertTrue(
+            EVC.isAccountOperatorAuthorized(user, address(openPositionWrapper)),
+            "Wrapper should be an authorized operator for the account before settle"
+        );
+
         // User pre-approves the order on CowSwap
         // Does not need to run here because it was signed as part of the settlement creation
 
@@ -283,6 +289,12 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             expectedDebt: DEFAULT_BORROW_AMOUNT,
             allowedDelta: 1 ether
         });
+
+        // Verify that the operator has been revoked for the account after the operation
+        assertFalse(
+            EVC.isAccountOperatorAuthorized(account, address(openPositionWrapper)),
+            "Wrapper should no longer be an operator for the account"
+        );
     }
 
     /// @notice Test that invalid signature causes the transaction to revert
