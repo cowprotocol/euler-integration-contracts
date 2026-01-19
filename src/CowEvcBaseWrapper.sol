@@ -258,6 +258,21 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
         // Execute all items in a single batch
         EVC.batch(items);
+
+        // If we used the pre-approved hash flow, we can now relinquish operator control of the account
+        if (signature.length == 0) {
+            uint256 mask = EVC.getOperator(bytes19(bytes20(owner)), address(this));
+
+            // check subaccount control
+            if (mask & (1 << (uint160(owner) ^ uint160(account))) > 0) {
+                EVC.setAccountOperator(account, address(this), false);
+            }
+
+            // check owner account control
+            if (mask & 1 > 0) {
+                EVC.setAccountOperator(owner, address(this), false);
+            }
+        }
     }
 
     /// @dev Helper function to add IEVC.BatchItem to the EVC.batch call with any authorization that may be required.

@@ -49,13 +49,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         deal(address(USDS), user, 10000e18);
     }
 
-    /// @notice Helper to create or get Inbox for a user and account
-    function _getOrCreateInbox(address owner) internal returns (Inbox) {
-        return closePositionWrapper.getInbox(owner, owner) != address(0)
-            ? Inbox(closePositionWrapper.getInbox(owner, owner))
-            : Inbox(closePositionWrapper.getInbox(owner, owner));
-    }
-
     struct SettlementData {
         bytes orderUid;
         GPv2Order.Data orderData;
@@ -186,6 +179,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         r.clearingPrices[1] = milkSwap.prices(address(buyToRepayToken));
 
         // Get trade data using EIP-1271
+        // Use snapshot becuase `getInbox` deploys the Inbox contract with Create2, and we want
+        // to test like a user would use (without prior deployment)
+        uint256 snapshotId = vm.snapshotState();
         r.trades = new ICowSettlement.Trade[](1);
         (r.trades[0], r.orderData, r.orderUid) = setupCowOrderEip1271({
             tokens: r.tokens,
@@ -198,6 +194,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             isBuy: true,
             signerPrivateKey: userPrivateKey
         });
+        vm.revertToState(snapshotId);
 
         // Setup interactions - withdraw from vault, swap to repayment token
         r.interactions = [
@@ -461,6 +458,12 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         bytes32 hash = closePositionWrapper.getApprovalHash(params);
         _setupPreApprovedFlow(account, hash);
 
+        // Verify that the operator is authorized before executing
+        assertTrue(
+            EVC.isAccountOperatorAuthorized(user, address(closePositionWrapper)),
+            "Wrapper should be an authorized operator for the account before settle"
+        );
+
         // User signs order (already done in setupCowOrder)
 
         // Record balances before closing
@@ -491,6 +494,12 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Verify the position was closed successfully
         assertEq(EWETH.debtOf(account), 0, "User should have no debt after closing");
         assertEq(debtBefore, borrowAmount, "User should have started with debt");
+
+        // Verify that the operator has been revoked for the account after the operation
+        assertFalse(
+            EVC.isAccountOperatorAuthorized(account, address(closePositionWrapper)),
+            "Wrapper should no longer be an operator for the account"
+        );
     }
 
     /// @notice Test that invalid signature causes the transaction to revert with EIP-1271
