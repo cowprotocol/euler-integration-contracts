@@ -170,19 +170,12 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         // Decode wrapper data into ClosePositionParams
         (ClosePositionParams memory params, bytes memory signature) = _parseClosePositionParams(wrapperData);
 
-        // Subaccounts in the EVC can be any account that shares the highest 19 bits as the owner.
-        // Here we verify that the subaccount address has been specified is, in fact, a subaccount of the owner.
-        // Otherwise its concievably possible that a transfer could happen between an owner with an unauthorized subaccount.
-        require(
-            bytes19(bytes20(params.owner)) == bytes19(bytes20(params.account)),
-            SubaccountMustBeControlledByOwner(params.account, params.owner)
-        );
-
         _invokeEvc(
             _makeInternalSettleCallbackData(settleData, wrapperData, remainingWrapperData),
             memoryLocation(params),
             signature,
             params.owner,
+            params.account,
             params.deadline
         );
     }
