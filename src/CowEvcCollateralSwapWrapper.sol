@@ -34,8 +34,7 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         address indexed fromVault,
         address indexed toVault,
         uint256 fromAmount,
-        uint256 toAmount,
-        bytes32 kind
+        uint256 toAmount
     );
 
     constructor(address _evc, ICowSettlement _settlement)
@@ -50,8 +49,7 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
                 fromVault: address(0),
                 toVault: address(0),
                 fromAmount: 0,
-                toAmount: 0,
-                kind: bytes32(0)
+                toAmount: 0
             })
         )
         .length;
@@ -59,7 +57,7 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         MAX_BATCH_OPERATIONS = 3;
 
         PARAMS_TYPE_HASH = keccak256(
-            "CollateralSwapParams(address owner,address account,uint256 deadline,address fromVault,address toVault,uint256 swapAmount,bytes32 kind)"
+            "CollateralSwapParams(address owner,address account,uint256 deadline,address fromVault,address toVault,uint256 swapAmount)"
         );
     }
 
@@ -87,9 +85,6 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
 
         /// @dev The amount of toVault traded out. Same as `buyAmount` in the CoW order
         uint256 toAmount;
-
-        /// @dev Effectively determines whether this is an exactIn or exactOut order. Must be either KIND_BUY or KIND_SELL as defined in GPv2Order. Should be the same as whats in the actual order.
-        bytes32 kind;
     }
 
     function _parseCollateralSwapParams(bytes calldata wrapperData)
@@ -129,17 +124,21 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         returns (IEVC.BatchItem[] memory items, bool needsPermission)
     {
         CollateralSwapParams memory params = paramsFromMemory(paramsLocation);
-        items = new IEVC.BatchItem[](MAX_BATCH_OPERATIONS - 1);
 
-        // For the permissioned operation, transfer collateral from subaccount to owner
-        items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: address(params.account),
-            targetContract: params.fromVault,
-            value: 0,
-            data: abi.encodeCall(IERC20.transfer, (address(this), params.fromAmount))
-        });
-        // also, enable the new account for collateral
-        items[1] = IEVC.BatchItem({
+        items = new IEVC.BatchItem[](params.owner == params.account ? 1 : 2);
+        if (params.owner != params.account) {
+            // For the permissioned operation, transfer collateral from subaccount to owner
+            // (this transfer should be safe for general use because its operating against Euler vault contracts)
+            items[0] = IEVC.BatchItem({
+                onBehalfOfAccount: address(params.account),
+                targetContract: params.fromVault,
+                value: 0,
+                data: abi.encodeCall(IERC20.transfer, (params.owner, params.fromAmount))
+            });
+        }
+
+        // enable the new collateral for account
+        items[items.length - 1] = IEVC.BatchItem({
             onBehalfOfAccount: address(0),
             targetContract: address(EVC),
             value: 0,
@@ -181,54 +180,14 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         bytes calldata wrapperData,
         bytes calldata remainingWrapperData
     ) internal override {
-        (CollateralSwapParams memory params,) = _parseCollateralSwapParams(wrapperData);
-        (address[] memory tokens, uint256[] memory prices,,) =
-            abi.decode(settleData[4:], (address[], uint256[], ICowSettlement.Trade[], ICowSettlement.Interaction[][3]));
-
-        uint256 fromVaultTokenPrice;
-        uint256 toVaultTokenPrice;
-        for (uint256 i = 0; i < tokens.length; i++) {
-            if (tokens[i] == address(params.fromVault)) {
-                fromVaultTokenPrice = prices[i];
-            } else if (tokens[i] == address(params.toVault)) {
-                toVaultTokenPrice = prices[i];
-            }
-        }
-
-        require(
-            fromVaultTokenPrice > 0 && toVaultTokenPrice > 0,
-            InvalidSettlement(params.fromVault, params.toVault, fromVaultTokenPrice, toVaultTokenPrice)
-        );
-
-        // For KIND_BUY orders, we need to calculate how much collateral is actually needed and send back the remainder
-        uint256 fromAmount;
-        uint256 toAmount;
-        if (params.kind == KIND_BUY) {
-            // Calculate and send only what's needed for the swap, send remainder back to account
-            fromAmount = params.toAmount * toVaultTokenPrice / fromVaultTokenPrice;
-            toAmount = params.toAmount;
-            SafeERC20Lib.safeTransfer(IERC20(params.fromVault), params.owner, fromAmount);
-
-            uint256 remainingBalance = IERC20(params.fromVault).balanceOf(address(this));
-            if (remainingBalance > 0) {
-                SafeERC20Lib.safeTransfer(IERC20(params.fromVault), params.account, remainingBalance);
-            }
-        } else {
-            fromAmount = params.fromAmount;
-            toAmount = params.fromAmount * fromVaultTokenPrice / toVaultTokenPrice;
-            // For KIND_SELL: send all collateral to owner and let settlement send remainder back
-            SafeERC20Lib.safeTransfer(
-                IERC20(params.fromVault), params.owner, IERC20(params.fromVault).balanceOf(address(this))
-            );
-        }
-
         // Use CowWrapper's _next to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
         _next(settleData, remainingWrapperData);
 
+        (CollateralSwapParams memory params,) = _parseCollateralSwapParams(wrapperData);
         // Emit event - funds are now in the account from the settlement
         emit CowEvcCollateralSwapped(
-            params.owner, params.account, params.fromVault, params.toVault, fromAmount, toAmount, params.kind
+            params.owner, params.account, params.fromVault, params.toVault, params.fromAmount, params.toAmount
         );
     }
 

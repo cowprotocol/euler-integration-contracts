@@ -56,8 +56,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
             fromAmount: DEFAULT_SWAP_AMOUNT,
-            toAmount: 0,
-            kind: KIND_SELL
+            toAmount: 0
         });
     }
 
@@ -214,7 +213,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         assertEq(items[0].targetContract, params.fromVault, "Should target fromVault");
         assertEq(
             items[0].data,
-            abi.encodeCall(MockERC20.transfer, (address(wrapper), params.fromAmount)),
+            abi.encodeCall(MockERC20.transfer, (address(OWNER), params.fromAmount)),
             "Should call transfer"
         );
         assertEq(items[0].onBehalfOfAccount, ACCOUNT, "Should have zero onBehalfOfAccount");
@@ -248,8 +247,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
             fromAmount: 1000e18,
-            toAmount: 0,
-            kind: KIND_SELL
+            toAmount: 0
         });
 
         bytes memory settleData = _getEmptySettleData();
@@ -279,8 +277,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
             fromAmount: 1000e18,
-            toAmount: 0,
-            kind: KIND_SELL
+            toAmount: 0
         });
 
         bytes memory settleData = _getEmptySettleData();
@@ -295,116 +292,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
 
         vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
-    }
-
-    function test_EvcInternalSettle_WithSubaccount_KindSell() public {
-        // Set up scenario where owner != account
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: ACCOUNT, // Different from owner
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            fromAmount: 250e18,
-            toAmount: 0,
-            kind: KIND_SELL
-        });
-
-        // Create settle data without prices (not needed for KIND_SELL)
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-        bytes memory remainingWrapperData = "";
-
-        mockSettlement.setSuccessfulSettle(true);
-
-        wrapper.setExpectedEvcInternalSettleCall(
-            abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
-        );
-
-        mockFromVault.mint(1000 ether, address(wrapper));
-
-        vm.prank(address(mockEvc));
-        wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
-
-        // Verify transfer occurred from account to owner (exact fromAmount for SELL)
-        assertEq(mockFromVault.balanceOf(ACCOUNT), 0e18, "Account balance should not have changed");
-        assertEq(mockFromVault.balanceOf(OWNER), 1000e18, "Owner receives all the tokens ready to swap");
-    }
-
-    function test_EvcInternalSettle_WithSubaccount_KindBuy() public {
-        // Set up scenario where owner != account with KIND_BUY
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: ACCOUNT, // Different from owner
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            fromAmount: 250e18, // Will be calculated from toAmount for KIND_BUY
-            toAmount: 125e18, // This is the buy amount (what we want to receive)
-            kind: KIND_BUY
-        });
-
-        // Create settle data with prices for KIND_BUY calculation
-        address[] memory tokens = new address[](2);
-        tokens[0] = address(mockFromVault);
-        tokens[1] = address(mockToVault);
-
-        uint256[] memory prices = new uint256[](2);
-        prices[0] = 1e18; // fromVault price
-        prices[1] = 2e18; // toVault price (2x more expensive)
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-        bytes memory remainingWrapperData = "";
-
-        mockSettlement.setSuccessfulSettle(true);
-
-        wrapper.setExpectedEvcInternalSettleCall(
-            abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
-        );
-
-        mockFromVault.mint(address(wrapper), 1000 ether);
-
-        vm.prank(address(mockEvc));
-        wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
-
-        // For KIND_BUY: we transfer everything, and then transfer any unspent funds back
-        // this means that the balance of the main account should not change
-        assertEq(mockFromVault.balanceOf(ACCOUNT), 750e18, "Account balance should have received the remainder");
-        assertEq(mockFromVault.balanceOf(OWNER), 250e18, "Owner should receive calculated amount");
-
-        // try this call again, but this time spend some of the tokens
-    }
-
-    function test_EvcInternalSettle_SameOwnerAndAccount() public {
-        // When owner == account, no effective transfer should occur
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: OWNER, // Same as owner
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            fromAmount: 1000e18,
-            toAmount: 0,
-            kind: KIND_SELL
-        });
-
-        mockFromVault.mint(OWNER, 2000e18);
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-
-        mockSettlement.setSuccessfulSettle(true);
-
-        wrapper.setExpectedEvcInternalSettleCall(
-            abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, ""))
-        );
-
-        vm.prank(address(mockEvc));
-        wrapper.evcInternalSettle(settleData, wrapperData, "");
-
-        // No transfer should occur, so balance should remain unchanged
-        assertEq(mockFromVault.balanceOf(OWNER), 2000e18, "Owner balance should remain unchanged");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -428,8 +315,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
             fromAmount: 1000e18,
-            toAmount: 0,
-            kind: KIND_SELL
+            toAmount: 0
         });
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         bytes memory chainedWrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
@@ -564,7 +450,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
 
         // Expect revert with ECDSA error when signature is tampered
         vm.prank(SOLVER);
-        vm.expectRevert(MockEVC.InvalidSignature.selector);
+        vm.expectRevert("ECDSA: invalid signature");
         wrapper.wrappedSettle(settleData, wrapperData);
     }
 
@@ -599,8 +485,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
             fromAmount: 1000e18,
-            toAmount: 0,
-            kind: KIND_SELL
+            toAmount: 0
         });
 
         // Create a signature longer than 65 bytes
@@ -619,8 +504,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
             fromAmount: 1000e18,
-            toAmount: 0,
-            kind: KIND_SELL
+            toAmount: 0
         });
 
         bytes memory settleData = _getEmptySettleData();
@@ -648,8 +532,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
             fromAmount: 1000e18,
-            toAmount: 0,
-            kind: KIND_SELL
+            toAmount: 0
         });
 
         bytes memory signature = new bytes(65);
@@ -675,8 +558,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
             fromAmount: 1000e18,
-            toAmount: 0,
-            kind: KIND_SELL
+            toAmount: 0
         });
 
         bytes32 hash = wrapper.getApprovalHash(params);

@@ -70,8 +70,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             fromVault: address(EUSDS),
             toVault: address(EWBTC),
             fromAmount: DEFAULT_SWAP_AMOUNT,
-            toAmount: DEFAULT_BUY_AMOUNT,
-            kind: GPv2Order.KIND_SELL
+            toAmount: DEFAULT_BUY_AMOUNT
         });
     }
 
@@ -108,19 +107,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // Approve vault shares from main account for settlement
         IEVault(params.fromVault).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
-
-        // Approve transfer of vault shares from the subaccount to wrapper
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
-        items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: params.account,
-            targetContract: params.fromVault,
-            value: 0,
-            data: abi.encodeCall(IERC20.approve, (address(collateralSwapWrapper), type(uint256).max))
-        });
-        EVC.batch(items);
-
-        // Approve transfer of any remaining vault shares from the wrapper back to the subaccount
-        IEVault(params.fromVault).approve(address(collateralSwapWrapper), type(uint256).max);
 
         // Set wrapper as operator for the subaccount
         EVC.setAccountOperator(params.account, address(collateralSwapWrapper), true);
@@ -231,13 +217,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Expect event emission
         vm.expectEmit(true, true, true, false);
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
-            params.owner,
-            params.account,
-            params.fromVault,
-            params.toVault,
-            params.fromAmount,
-            params.toAmount,
-            params.kind
+            params.owner, params.account, params.fromVault, params.toVault, params.fromAmount, params.toAmount
         );
 
         // Execute wrapped settlement
@@ -294,13 +274,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Expect event emission
         vm.expectEmit(true, true, true, false);
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
-            params.owner,
-            params.account,
-            params.fromVault,
-            params.toVault,
-            params.fromAmount,
-            params.toAmount,
-            params.kind
+            params.owner, params.account, params.fromVault, params.toVault, params.fromAmount, params.toAmount
         );
 
         // Execute wrapped settlement
@@ -457,13 +431,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Expect event emission
         vm.expectEmit();
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
-            params.owner,
-            params.account,
-            params.fromVault,
-            params.toVault,
-            params.fromAmount,
-            params.fromAmount * settlement.clearingPrices[0] / settlement.clearingPrices[1],
-            params.kind
+            params.owner, params.account, params.fromVault, params.toVault, params.fromAmount, params.toAmount
         );
 
         // Execute wrapped settlement
@@ -548,8 +516,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 fromVault: address(EUSDS),
                 toVault: address(EWBTC),
                 fromAmount: 500 ether,
-                toAmount: 0.0045e8,
-                kind: GPv2Order.KIND_SELL
+                toAmount: 0.0045e8
             });
 
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params2 =
@@ -560,8 +527,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 fromVault: address(EUSDS),
                 toVault: address(EWBTC),
                 fromAmount: 550 ether,
-                toAmount: 0.005e8, // about 500 EUSDS
-                kind: GPv2Order.KIND_BUY
+                toAmount: 0.005e8 // about 500 EUSDS
             });
 
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params3 =
@@ -572,8 +538,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 fromVault: address(EWBTC),
                 toVault: address(EUSDS),
                 fromAmount: 0.025e8, // will be calculated from toAmount
-                toAmount: 2000 ether,
-                kind: GPv2Order.KIND_BUY
+                toAmount: 2000 ether
             });
 
         // Create permit signatures for all users
@@ -687,7 +652,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             0.01 ether,
             "Account 2 should have less USDS collateral"
         );
-        assertApproxEqRel(EWBTC.balanceOf(account3), 0.055e8, 0.01 ether, "Account 3 should have less WBTC collateral");
+        assertApproxEqRel(EWBTC.balanceOf(account3), 0.05e8, 0.01 ether, "Account 3 should have less WBTC collateral");
 
         // Verify new collaterals
         assertApproxEqRel(EWBTC.balanceOf(account), 0.005e8, 0.01 ether, "Account 1 should have some WBTC collateral");
