@@ -46,6 +46,14 @@ contract MockEVC {
         operators[account][operator] = authorized;
     }
 
+    function getOperator(bytes19, address) external pure returns (uint256) {
+        return 0;
+    }
+
+    function isAccountOperatorAuthorized(address account, address operator) external view returns (bool) {
+        return operators[account][operator];
+    }
+
     function getNonce(bytes19, uint256) external pure returns (uint256) {
         return 0;
     }
