@@ -170,7 +170,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
     function _getInbox(address owner, address subaccount) internal returns (Inbox) {
         bytes32 salt = bytes32(uint256(uint160(subaccount)));
-        bytes memory creationCode = abi.encodePacked(type(Inbox).creationCode, abi.encode(address(this), owner));
+        bytes memory creationCode = abi.encodePacked(type(Inbox).creationCode, abi.encode(address(this), owner, SETTLEMENT.domainSeparator()));
         address expectedAddress = Create2.computeAddress(salt, keccak256(creationCode));
 
         if (expectedAddress.code.length == 0) {

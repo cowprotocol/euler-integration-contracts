@@ -13,21 +13,71 @@ import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/Safe
 contract Inbox is IERC1271 {
     using SafeERC20 for IERC20;
 
+    bytes32 public immutable DOMAIN_SEPARATOR;
+    bytes32 internal immutable SETTLEMENT_DOMAIN_SEPARATOR;    
+    bytes32 internal constant ORDER_TYPE_HASH = hex"d5a25ba2e97094ad7d83dc28a6572da797d6b3e7fc6663bd93efb789fc17e489";
+
+
     address internal immutable OWNER;
     address internal immutable BENEFICIARY;
-
     error Unauthorized(address);
 
-    constructor(address owner, address beneficiary) {
+    constructor(address owner, address beneficiary, bytes32 settlementDomainSeparator) {
         OWNER = owner;
         BENEFICIARY = beneficiary;
+        SETTLEMENT_DOMAIN_SEPARATOR = settlementDomainSeparator;
+
+        DOMAIN_SEPARATOR = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256(bytes("Inbox")),
+                keccak256(bytes("1")),
+                block.chainid,
+                address(this)
+            )
+        );
     }
 
     /// @notice Implements EIP1271 `isValidSignature` to effectively allow this contract to operate in the same way as the user's signature
     /// @dev This code was copied from `GPv2Signer`'s' `ecdsaRecover` function. The idea is that the same signature the user would use
     /// for a regular CoW order is also used here.
-    function isValidSignature(bytes32 hash, bytes calldata signature) external view returns (bytes4 magicValue) {
-        require(signature.length == 65, "GPv2: malformed ecdsa signature");
+    function isValidSignature(bytes32 orderDigest, bytes calldata signatureData) external view returns (bytes4 magicValue) {
+        bytes32 amendedOrderDigest;
+        {
+            bytes memory orderData = signatureData[65:];
+            bytes32 typeHash = ORDER_TYPE_HASH;
+            bytes32 structHash;
+
+            // NOTE: Compute the EIP-712 order struct hash in place. As suggested
+            // in the EIP proposal, noting that the order struct has 12 fields, and
+            // prefixing the type hash `(1 + 12) * 32 = 416` bytes to hash.
+            // <https://github.com/ethereum/EIPs/blob/master/EIPS/eip-712.md#rationale-for-encodedata>
+            // solhint-disable-next-line no-inline-assembly
+            assembly {
+                mstore(orderData, typeHash)
+                structHash := keccak256(orderData, 416)
+            }
+
+            bytes32 settlementDomainSeparator = SETTLEMENT_DOMAIN_SEPARATOR;
+            bytes32 domainSeparator = DOMAIN_SEPARATOR;
+            bytes32 checkOrderDigest;
+
+            assembly {
+                let freeMemoryPointer := mload(0x40)
+                mstore(freeMemoryPointer, "\x19\x01")
+                mstore(add(freeMemoryPointer, 34), structHash)
+                mstore(add(freeMemoryPointer, 2), domainSeparator)
+                amendedOrderDigest := keccak256(freeMemoryPointer, 66)
+                mstore(add(freeMemoryPointer, 2), settlementDomainSeparator)
+                checkOrderDigest := keccak256(freeMemoryPointer, 66)
+            }
+
+            if (checkOrderDigest != orderDigest) {
+                revert Unauthorized(address(0));
+            }
+        }
+
+        bytes calldata signature = signatureData[:65];
 
         bytes32 r;
         bytes32 s;
@@ -44,7 +94,7 @@ contract Inbox is IERC1271 {
             v := shr(248, calldataload(add(signature.offset, 64)))
         }
 
-        address signer = ecrecover(hash, v, r, s);
+        address signer = ecrecover(amendedOrderDigest, v, r, s);
         require(signer == BENEFICIARY, Unauthorized(signer));
 
         return bytes4(keccak256("isValidSignature(bytes32,bytes)"));
