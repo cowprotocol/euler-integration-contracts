@@ -306,31 +306,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is Test {
         wrapper.wrappedSettle(settleData, wrapperData);
     }
 
-    function test_WrappedSettle_SubaccountMustBeControlledByOwner() public {
-        address invalidSubaccount = 0x9999999999999999999999999999999999999999; // subaccount is not controlled by owner
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: invalidSubaccount,
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            fromAmount: 1000e18,
-            toAmount: 0
-        });
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-        bytes memory chainedWrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
-
-        bytes memory settleData = "";
-
-        vm.prank(SOLVER);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                CowEvcBaseWrapper.SubaccountMustBeControlledByOwner.selector, invalidSubaccount, OWNER
-            )
-        );
-        wrapper.wrappedSettle(settleData, chainedWrapperData);
-    }
-
     function test_WrappedSettle_WithPermitSignature() public {
         mockFromVault.mint(OWNER, 2000e18);
 

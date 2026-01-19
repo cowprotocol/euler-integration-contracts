@@ -12,6 +12,7 @@ import {CowEvcBaseWrapper, ICowSettlement, CowWrapper, IEVC} from "../../src/Cow
 contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
     struct TestParams {
         address owner;
+        address account;
         uint256 number;
     }
 
@@ -19,9 +20,9 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
         CowEvcBaseWrapper(evc, ICowSettlement(cow), keccak256("CowEvcBaseWrapperTest"), keccak256("1"))
         EIP712("CowEvcBaseWrapperTest", "1")
     {
-        PARAMS_SIZE = abi.encode(TestParams({owner: address(0), number: 0})).length;
+        PARAMS_SIZE = abi.encode(TestParams({owner: address(0), account: address(0), number: 0})).length;
         MAX_BATCH_OPERATIONS = 1;
-        PARAMS_TYPE_HASH = keccak256("TestParams(address owner,uint256 number)");
+        PARAMS_TYPE_HASH = keccak256("TestParams(address owner,address account,uint256 number)");
     }
 
     function _evcInternalSettle(
@@ -46,8 +47,25 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
     }
 
     function getExpectedEip712Hash(TestParams memory params) external view returns (bytes32) {
-        bytes32 structHash = keccak256(abi.encode(PARAMS_TYPE_HASH, params.owner, params.number));
+        bytes32 structHash = keccak256(abi.encode(PARAMS_TYPE_HASH, params.owner, params.account, params.number));
         return _hashTypedDataV4(structHash);
+    }
+
+    function invokeEvc(
+        bytes calldata settleData,
+        bytes calldata wrapperData,
+        bytes calldata remainingWrapperData,
+        TestParams memory params,
+        bytes memory signature
+    ) public {
+        _invokeEvc(
+            _makeInternalSettleCallbackData(settleData, wrapperData, remainingWrapperData),
+            memoryLocation(params),
+            signature,
+            params.owner,
+            params.account,
+            params.number // using number as deadline for testing
+        );
     }
 
     function memoryLocation(TestParams memory params) public pure returns (ParamsLocation location) {
@@ -62,6 +80,9 @@ contract CowEvcBaseWrapperTest is Test {
     MockCowSettlement public mockSettlement;
     MockCowAuthentication public mockAuth;
 
+    address constant OWNER = address(0x1111);
+    address constant ACCOUNT = address(0x1112);
+
     MockEvcBaseWrapper wrapper;
 
     function setUp() external {
@@ -74,7 +95,7 @@ contract CowEvcBaseWrapperTest is Test {
 
     function test_EIP712Compliance() public view {
         MockEvcBaseWrapper.TestParams memory params =
-            MockEvcBaseWrapper.TestParams({owner: address(0x123), number: 0x456});
+            MockEvcBaseWrapper.TestParams({owner: address(0x123), account: address(0x123), number: 0x456});
 
         // Compute using OpenZeppelin's EIP712
         bytes32 expectedDigest = wrapper.getExpectedEip712Hash(params);
@@ -98,5 +119,22 @@ contract CowEvcBaseWrapperTest is Test {
             CowWrapper.wrappedSettle.selector != IEVC.call.selector,
             "EVC.call and ICowWrapper.wrappedSettle match selectors"
         );
+    }
+
+    function test_WrappedSettle_SubaccountMustBeControlledByOwner() public {
+        address invalidSubaccount = 0x9999999999999999999999999999999999999999; // subaccount is not controlled by owner
+        MockEvcBaseWrapper.TestParams memory params =
+            MockEvcBaseWrapper.TestParams({owner: OWNER, account: invalidSubaccount, number: 0});
+        bytes memory wrapperData = abi.encode(params, new bytes(0));
+        bytes memory chainedWrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
+
+        bytes memory settleData = "";
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CowEvcBaseWrapper.SubaccountMustBeControlledByOwner.selector, invalidSubaccount, OWNER
+            )
+        );
+        wrapper.invokeEvc(settleData, wrapperData, new bytes(0), params, new bytes(0));
     }
 }
