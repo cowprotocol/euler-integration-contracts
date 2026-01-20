@@ -168,10 +168,20 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         return address(_getInbox(owner, subaccount));
     }
 
+    /// @notice Compute the Inbox address for a given owner and subaccount (view-only, does not deploy)
+    /// @param owner The owner address
+    /// @param subaccount The subaccount address
+    /// @return The computed Inbox address
+    function _getInboxAddress(address owner, address subaccount) internal view returns (address, bytes memory) {
+        bytes32 salt = bytes32(uint256(uint160(subaccount)));
+        bytes memory creationCode =
+            abi.encodePacked(type(Inbox).creationCode, abi.encode(address(this), owner, SETTLEMENT));
+        return (Create2.computeAddress(salt, keccak256(creationCode)), creationCode);
+    }
+
     function _getInbox(address owner, address subaccount) internal returns (Inbox) {
         bytes32 salt = bytes32(uint256(uint160(subaccount)));
-        bytes memory creationCode = abi.encodePacked(type(Inbox).creationCode, abi.encode(address(this), owner, SETTLEMENT.domainSeparator()));
-        address expectedAddress = Create2.computeAddress(salt, keccak256(creationCode));
+        (address expectedAddress, bytes memory creationCode) = _getInboxAddress(owner, subaccount);
 
         if (expectedAddress.code.length == 0) {
             // `require` here is mostly for sanity

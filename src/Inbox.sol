@@ -5,6 +5,7 @@ import {IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/interfaces/IERC20.sol";
 import {IERC1271} from "openzeppelin-contracts/contracts/interfaces/IERC1271.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ICowSettlement} from "./CowWrapper.sol";
 
 /// @notice A contract for receiving funds from the CoW Settlement contract which can then be operated upon by a different contract in post (i.e. a wrapper)
 /// @dev The contract has two associated accounts-- the OWNER, and the BENEFICIARY. Both associated accounts have the ability to execute token operations against this contract.
@@ -13,27 +14,35 @@ import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/Safe
 contract Inbox is IERC1271 {
     using SafeERC20 for IERC20;
 
-    bytes32 public immutable DOMAIN_SEPARATOR;
-    bytes32 internal immutable SETTLEMENT_DOMAIN_SEPARATOR;    
-    bytes32 internal constant ORDER_TYPE_HASH = hex"d5a25ba2e97094ad7d83dc28a6572da797d6b3e7fc6663bd93efb789fc17e489";
-
-
-    address internal immutable OWNER;
-    address internal immutable BENEFICIARY;
     error Unauthorized(address);
+    error OrderHashMismatch(bytes32 computed, bytes32 provided);
 
-    constructor(address owner, address beneficiary, bytes32 settlementDomainSeparator) {
+    bytes32 public immutable INBOX_DOMAIN_SEPARATOR;
+    bytes32 public immutable SETTLEMENT_DOMAIN_SEPARATOR;
+
+    /// @dev EIP-712 type hashes. These hashes match those used by the CoW settlement contract.
+    bytes32 internal constant DOMAIN_TYPE_HASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 internal constant ORDER_TYPE_HASH = keccak256(
+        "Order(address sellToken,address buyToken,address receiver,uint256 sellAmount,uint256 buyAmount,uint32 validTo,bytes32 appData,uint256 feeAmount,string kind,bool partiallyFillable,string sellTokenBalance,string buyTokenBalance)"
+    );
+
+    address public immutable OWNER;
+    address public immutable BENEFICIARY;
+    address public immutable SETTLEMENT;
+
+    constructor(address owner, address beneficiary, address settlement) {
         OWNER = owner;
         BENEFICIARY = beneficiary;
-        SETTLEMENT_DOMAIN_SEPARATOR = settlementDomainSeparator;
+        SETTLEMENT = settlement;
 
-        DOMAIN_SEPARATOR = keccak256(
+        INBOX_DOMAIN_SEPARATOR = keccak256(
+            abi.encode(DOMAIN_TYPE_HASH, keccak256(bytes("Inbox")), keccak256(bytes("1")), block.chainid, address(this))
+        );
+
+        SETTLEMENT_DOMAIN_SEPARATOR = keccak256(
             abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                keccak256(bytes("Inbox")),
-                keccak256(bytes("1")),
-                block.chainid,
-                address(this)
+                DOMAIN_TYPE_HASH, keccak256(bytes("Gnosis Protocol")), keccak256(bytes("v2")), block.chainid, settlement
             )
         );
     }
@@ -41,7 +50,11 @@ contract Inbox is IERC1271 {
     /// @notice Implements EIP1271 `isValidSignature` to effectively allow this contract to operate in the same way as the user's signature
     /// @dev This code was copied from `GPv2Signer`'s' `ecdsaRecover` function. The idea is that the same signature the user would use
     /// for a regular CoW order is also used here.
-    function isValidSignature(bytes32 orderDigest, bytes calldata signatureData) external view returns (bytes4 magicValue) {
+    function isValidSignature(bytes32 orderDigest, bytes calldata signatureData)
+        external
+        view
+        returns (bytes4 magicValue)
+    {
         bytes32 amendedOrderDigest;
         {
             bytes memory orderData = signatureData[65:];
@@ -59,21 +72,21 @@ contract Inbox is IERC1271 {
             }
 
             bytes32 settlementDomainSeparator = SETTLEMENT_DOMAIN_SEPARATOR;
-            bytes32 domainSeparator = DOMAIN_SEPARATOR;
+            bytes32 inboxDomainSeparator = INBOX_DOMAIN_SEPARATOR;
             bytes32 checkOrderDigest;
 
             assembly {
                 let freeMemoryPointer := mload(0x40)
                 mstore(freeMemoryPointer, "\x19\x01")
                 mstore(add(freeMemoryPointer, 34), structHash)
-                mstore(add(freeMemoryPointer, 2), domainSeparator)
+                mstore(add(freeMemoryPointer, 2), inboxDomainSeparator)
                 amendedOrderDigest := keccak256(freeMemoryPointer, 66)
                 mstore(add(freeMemoryPointer, 2), settlementDomainSeparator)
                 checkOrderDigest := keccak256(freeMemoryPointer, 66)
             }
 
             if (checkOrderDigest != orderDigest) {
-                revert Unauthorized(address(0));
+                revert OrderHashMismatch(checkOrderDigest, orderDigest);
             }
         }
 
@@ -98,6 +111,15 @@ contract Inbox is IERC1271 {
         require(signer == BENEFICIARY, Unauthorized(signer));
 
         return bytes4(keccak256("isValidSignature(bytes32,bytes)"));
+    }
+
+    /// @notice Calls the settlement contract function with the same signature to set a pre signature on behalf of the Inbox
+    /// @param orderUid The order uid to pre-approve
+    /// @param approved Whether to approve or revoke approval
+    function setPreSignature(bytes calldata orderUid, bool approved) external {
+        require(msg.sender == BENEFICIARY, Unauthorized(msg.sender));
+
+        ICowSettlement(SETTLEMENT).setPreSignature(orderUid, approved);
     }
 
     function callApprove(address token, address spender, uint256 amount) external {

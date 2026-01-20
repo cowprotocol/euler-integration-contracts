@@ -266,6 +266,10 @@ contract CowBaseTest is Test {
     ) public view returns (ICowSettlement.Trade memory trade, GPv2Order.Data memory order, bytes memory orderId) {
         // Use EIP-1271 signature type (1 << 6)
         uint256 flags = (1 << 6) | (isBuy ? 1 : 0); // EIP-1271 signature type
+        if (signerPrivateKey == 0) {
+            // pre-signature type (3 << 5) (overlaps EIP-1271)
+            flags = flags | (3 << 5); // pre-sign
+        }
 
         order = GPv2Order.Data({
             sellToken: CowERC20(tokens[sellTokenIndex]),
@@ -284,7 +288,10 @@ contract CowBaseTest is Test {
 
         // Create the EIP-1271 signature
         // the "Inbox" for the user is assumed to be the same as the receiver
-        bytes memory eip1271Signature = _createEip1271Signature(receiver, order, signerPrivateKey);
+        // If we don't have a private key, create a pre-signed order (which gives the address of the presign as the signature)
+        bytes memory computedSignature = signerPrivateKey != 0
+            ? _createEip1271Signature(receiver, order, signerPrivateKey)
+            : abi.encodePacked(receiver);
 
         // Create the trade with EIP-1271 signature
         trade = ICowSettlement.Trade({
@@ -298,7 +305,7 @@ contract CowBaseTest is Test {
             feeAmount: 0,
             flags: flags,
             executedAmount: 0,
-            signature: eip1271Signature
+            signature: computedSignature
         });
 
         orderId = getOrderUid(receiver, order);
@@ -313,7 +320,13 @@ contract CowBaseTest is Test {
     {
         bytes memory rawOrderData = abi.encode(orderData);
         // Compute the order hash (raw)
-        bytes32 wrappedOrderHash = keccak256(abi.encodePacked("\x19\x01", Inbox(inboxForUser).DOMAIN_SEPARATOR(), keccak256(abi.encodePacked(GPv2Order.TYPE_HASH, rawOrderData))));
+        bytes32 wrappedOrderHash = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                Inbox(inboxForUser).INBOX_DOMAIN_SEPARATOR(),
+                keccak256(abi.encodePacked(GPv2Order.TYPE_HASH, rawOrderData))
+            )
+        );
 
         // Sign the digest with the user's private key
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPrivateKey, wrappedOrderHash);

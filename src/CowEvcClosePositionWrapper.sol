@@ -74,16 +74,6 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         VAULT_RELAYER = SETTLEMENT.vaultRelayer();
     }
 
-    /// @notice Compute the Inbox address for a given owner and subaccount (view-only, does not deploy)
-    /// @param owner The owner address
-    /// @param subaccount The subaccount address
-    /// @return The computed Inbox address
-    function _getInboxAddress(address owner, address subaccount) internal view returns (address) {
-        bytes32 salt = bytes32(uint256(uint160(subaccount)));
-        bytes memory creationCode = abi.encodePacked(type(Inbox).creationCode, abi.encode(address(this), owner, SETTLEMENT.domainSeparator()));
-        return Create2.computeAddress(salt, keccak256(creationCode));
-    }
-
     /// @notice The information necessary to close a debt position against an euler vault by repaying debt and returning collateral
     /// @dev This structure is used, combined with domain separator, to indicate a pre-approved hash.
     /// the `deadline` is used for deduplication checking, so be careful to ensure this value is unique.
@@ -147,14 +137,14 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         ClosePositionParams memory params = paramsFromMemory(paramsLocation);
         items = new IEVC.BatchItem[](MAX_BATCH_OPERATIONS - 1);
 
+        (address inboxAddress,) = _getInboxAddress(params.owner, params.account);
+
         // For the permissioned operation, transfer collateral directly to the Inbox for this user
         items[0] = IEVC.BatchItem({
             onBehalfOfAccount: params.account,
             targetContract: params.collateralVault,
             value: 0,
-            data: abi.encodeCall(
-                IERC20.transfer, (_getInboxAddress(params.owner, params.account), params.collateralAmount)
-            )
+            data: abi.encodeCall(IERC20.transfer, (inboxAddress, params.collateralAmount))
         });
 
         needsPermission = true;
