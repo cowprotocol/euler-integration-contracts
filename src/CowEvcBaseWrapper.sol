@@ -2,7 +2,6 @@
 pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
-import {Create2} from "openzeppelin-contracts/contracts/utils/Create2.sol";
 
 import {CowWrapper, ICowSettlement} from "./CowWrapper.sol";
 import {PreApprovedHashes} from "./PreApprovedHashes.sol";
@@ -278,6 +277,8 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
             uint256 mask = EVC.getOperator(bytes19(bytes20(owner)), address(this));
 
             // check subaccount control
+            // shift is correct is this is how they reccomend checking subaccount bits in the EVC documentation
+            /// forge-lint: disable-next-line(incorrect-shift)
             if (mask & (1 << (uint160(owner) ^ uint160(account))) > 0) {
                 EVC.setAccountOperator(account, address(this), false);
             }
