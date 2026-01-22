@@ -253,7 +253,8 @@ contract CowBaseTest is Test {
     /// @dev Creates an order where the Inbox contract signs on behalf of the user.
     /// This is used for the CowEvcClosePositionWrapper
     /// Note: to reduce params, inboxForUser is assumed to be same as receiver
-    function setupCowOrderEip1271(
+    /// @param signerPrivateKey The private key that should be used to create the signature for the order. If `0` is given (i.e. no private key), it will be assumed that this order is to be pre signed, the cow order flags will be set appropriately, and the order signature will be set to the address of the recipient
+    function setupCowOrderWithInbox(
         address[] memory tokens,
         uint256 sellTokenIndex,
         uint256 buyTokenIndex,
