@@ -37,12 +37,12 @@ contract Inbox is IERC1271 {
         SETTLEMENT = settlement;
 
         INBOX_DOMAIN_SEPARATOR = keccak256(
-            abi.encode(DOMAIN_TYPE_HASH, keccak256(bytes("Inbox")), keccak256(bytes("1")), block.chainid, address(this))
+            abi.encode(DOMAIN_TYPE_HASH, keccak256("Inbox"), keccak256("1"), block.chainid, address(this))
         );
 
         SETTLEMENT_DOMAIN_SEPARATOR = keccak256(
             abi.encode(
-                DOMAIN_TYPE_HASH, keccak256(bytes("Gnosis Protocol")), keccak256(bytes("v2")), block.chainid, settlement
+                DOMAIN_TYPE_HASH, keccak256("Gnosis Protocol"), keccak256("v2"), block.chainid, settlement
             )
         );
     }
