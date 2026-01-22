@@ -126,7 +126,6 @@ contract CowEvcBaseWrapperTest is Test {
         MockEvcBaseWrapper.TestParams memory params =
             MockEvcBaseWrapper.TestParams({owner: OWNER, account: invalidSubaccount, number: 0});
         bytes memory wrapperData = abi.encode(params, new bytes(0));
-        bytes memory chainedWrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
         bytes memory settleData = "";
 
