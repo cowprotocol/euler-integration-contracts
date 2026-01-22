@@ -137,7 +137,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         ClosePositionParams memory params = paramsFromMemory(paramsLocation);
         items = new IEVC.BatchItem[](MAX_BATCH_OPERATIONS - 1);
 
-        (address inboxAddress,) = _getInboxAddress(params.owner, params.account);
+        (address inboxAddress,,) = _getInboxAddress(params.owner, params.account);
 
         // For the permissioned operation, transfer collateral directly to the Inbox for this user
         items[0] = IEVC.BatchItem({
