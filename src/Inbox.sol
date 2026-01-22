@@ -36,26 +36,25 @@ contract Inbox is IERC1271 {
         BENEFICIARY = beneficiary;
         SETTLEMENT = settlement;
 
-        INBOX_DOMAIN_SEPARATOR = keccak256(
-            abi.encode(DOMAIN_TYPE_HASH, keccak256("Inbox"), keccak256("1"), block.chainid, address(this))
-        );
+        INBOX_DOMAIN_SEPARATOR =
+            keccak256(abi.encode(DOMAIN_TYPE_HASH, keccak256("Inbox"), keccak256("1"), block.chainid, address(this)));
 
         SETTLEMENT_DOMAIN_SEPARATOR = keccak256(
-            abi.encode(
-                DOMAIN_TYPE_HASH, keccak256("Gnosis Protocol"), keccak256("v2"), block.chainid, settlement
-            )
+            abi.encode(DOMAIN_TYPE_HASH, keccak256("Gnosis Protocol"), keccak256("v2"), block.chainid, settlement)
         );
     }
 
-    /// @notice Implements EIP1271 `isValidSignature` to effectively allow this contract to operate in the same way as the user's signature
-    /// @dev This code was copied from `GPv2Signer`'s' `ecdsaRecover` function. The idea is that the same signature the user would use
+    /// @notice Implements EIP1271 `isValidSignature`. This function expects a 65 byte RSV signature, followed by the 416 byte CoW order data.
+    /// The signature should be the same as the EIP-712 hash normally given to the settlement contract, except the domain separator should be `INBOX_DOMAIN_SEPARATOR()` from this contract.
+    /// The provided order data needs to match up with the currently processed order, as its orderDigest will be checked to match against the `orderDigest` provided by the settlement contract.
+    /// @dev A large portion of this code was copied from `GPv2Signer`'s' `ecdsaRecover` function. The idea is that the same signature the user would use. However, the order could be replayed between the inbox/user account's orders if we use the orderDigest as is, so we recompute the order digest using a new domain separator for the Inbox
     /// for a regular CoW order is also used here.
     function isValidSignature(bytes32 orderDigest, bytes calldata signatureData)
         external
         view
         returns (bytes4 magicValue)
     {
-        bytes32 amendedOrderDigest;
+        bytes32 inboxOrderDigest;
         {
             bytes memory orderData = signatureData[65:];
             bytes32 typeHash = ORDER_TYPE_HASH;
@@ -71,22 +70,24 @@ contract Inbox is IERC1271 {
                 structHash := keccak256(orderData, 416)
             }
 
+            // The difference between the inbox and settlement order digests is only the domainSeparator word.
+            // So we can get both hashes pretty efficiently through assembly by replacing it
             bytes32 settlementDomainSeparator = SETTLEMENT_DOMAIN_SEPARATOR;
             bytes32 inboxDomainSeparator = INBOX_DOMAIN_SEPARATOR;
-            bytes32 checkOrderDigest;
+            bytes32 settlementOrderDigest;
 
             assembly {
                 let freeMemoryPointer := mload(0x40)
                 mstore(freeMemoryPointer, "\x19\x01")
                 mstore(add(freeMemoryPointer, 34), structHash)
                 mstore(add(freeMemoryPointer, 2), inboxDomainSeparator)
-                amendedOrderDigest := keccak256(freeMemoryPointer, 66)
+                inboxOrderDigest := keccak256(freeMemoryPointer, 66)
                 mstore(add(freeMemoryPointer, 2), settlementDomainSeparator)
-                checkOrderDigest := keccak256(freeMemoryPointer, 66)
+                settlementOrderDigest := keccak256(freeMemoryPointer, 66)
             }
 
-            if (checkOrderDigest != orderDigest) {
-                revert OrderHashMismatch(checkOrderDigest, orderDigest);
+            if (settlementOrderDigest != orderDigest) {
+                revert OrderHashMismatch(settlementOrderDigest, orderDigest);
             }
         }
 
@@ -107,7 +108,7 @@ contract Inbox is IERC1271 {
             v := shr(248, calldataload(add(signature.offset, 64)))
         }
 
-        address signer = ecrecover(amendedOrderDigest, v, r, s);
+        address signer = ecrecover(inboxOrderDigest, v, r, s);
         require(signer == BENEFICIARY, Unauthorized(signer));
 
         return bytes4(keccak256("isValidSignature(bytes32,bytes)"));
