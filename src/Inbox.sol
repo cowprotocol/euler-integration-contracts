@@ -70,20 +70,20 @@ contract Inbox is IERC1271 {
                 structHash := keccak256(orderData, 416)
             }
 
-            // The difference between the inbox and settlement order digests is only the domainSeparator word.
-            // So we can get both hashes pretty efficiently through assembly by replacing it
             bytes32 settlementDomainSeparator = SETTLEMENT_DOMAIN_SEPARATOR;
             bytes32 inboxDomainSeparator = INBOX_DOMAIN_SEPARATOR;
             bytes32 settlementOrderDigest;
 
+            bytes memory message = abi.encodePacked("\x19\x01", inboxDomainSeparator, structHash);
+
+            // We use assembly for the keccak256 hashing due to inefficient impl warning by foundry https://getfoundry.sh/forge/linting/#asm-keccak256
             assembly {
-                let freeMemoryPointer := mload(0x40)
-                mstore(freeMemoryPointer, "\x19\x01")
-                mstore(add(freeMemoryPointer, 34), structHash)
-                mstore(add(freeMemoryPointer, 2), inboxDomainSeparator)
-                inboxOrderDigest := keccak256(freeMemoryPointer, 66)
-                mstore(add(freeMemoryPointer, 2), settlementDomainSeparator)
-                settlementOrderDigest := keccak256(freeMemoryPointer, 66)
+                inboxOrderDigest := keccak256(add(message, 32), 66)
+                // The difference between the inbox and settlement order digests is only the domainSeparator word.
+                // So we can get both hashes pretty efficiently through assembly by replacing it
+                // 34 = 32 (length byte) + 2 ("\x19\x01")
+                mstore(add(message, 34), settlementDomainSeparator)
+                settlementOrderDigest := keccak256(add(message, 32), 66)
             }
 
             if (settlementOrderDigest != orderDigest) {
