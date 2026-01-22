@@ -2,7 +2,6 @@
 pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
-import {Create2} from "openzeppelin-contracts/contracts/utils/Create2.sol";
 
 import {ICowSettlement, CowWrapper} from "./CowWrapper.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
