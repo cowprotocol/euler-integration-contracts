@@ -50,7 +50,7 @@ abstract contract PreApprovedHashes {
         return preApprovedHashes[owner][hash] == PRE_APPROVED;
     }
 
-    /// @notice Check if a hash is pre-approved for an owner. If it is, changes it to be consumed, and returns true.
+    /// @notice Check if a hash is pre-approved for an owner. If it is, changes it to be consumed.
     /// @param owner The owner address
     /// @param hash The hash to check
     function _consumePreApprovedHash(address owner, bytes32 hash) internal {
