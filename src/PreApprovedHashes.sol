@@ -10,7 +10,7 @@ abstract contract PreApprovedHashes {
     uint256 internal constant CONSUMED = uint256(keccak256("PreApprovedHashes.Consumed"));
 
     /// @notice Storage indicating whether or not a signed calldata hash has been approved by an owner
-    /// @dev Maps owner -> hash(signedCalldata) -> approval status
+    /// @dev Maps owner -> hash(orderParameters) -> approval status
     mapping(address => mapping(bytes32 => uint256)) public preApprovedHashes;
 
     /// @notice Event emitted when an owner pre-approves or revokes a hash
@@ -29,7 +29,7 @@ abstract contract PreApprovedHashes {
 
     /// @notice Pre-approve a hash of signed calldata for future execution
     /// @dev Once a hash is pre-approved, it can only be consumed once. This prevents replay attacks.
-    /// @param hash The keccak256 hash of the signed calldata
+    /// @param hash The keccak256 hash of the order parameters
     /// @param approved True to approve the hash, false to revoke approval
     function setPreApprovedHash(bytes32 hash, bool approved) external {
         require(preApprovedHashes[msg.sender][hash] != CONSUMED, AlreadyConsumed(msg.sender, hash));
@@ -50,7 +50,7 @@ abstract contract PreApprovedHashes {
         return preApprovedHashes[owner][hash] == PRE_APPROVED;
     }
 
-    /// @notice Check if a hash is pre-approved for an owner. If it is, changes it to be consumed, and returns true.
+    /// @notice Check if a hash is pre-approved for an owner. If it is, changes it to be consumed.
     /// @param owner The owner address
     /// @param hash The hash to check
     function _consumePreApprovedHash(address owner, bytes32 hash) internal {
