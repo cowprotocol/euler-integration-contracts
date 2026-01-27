@@ -52,9 +52,6 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that the pre-approved hash is no longer able to be executed because the block timestamp is too old
     error OperationDeadlineExceeded(uint256 validToTimestamp, uint256 currentTimestamp);
 
-    /// @dev Indicates that this contract did not receive enough repayment assets from the settlement contract in order to cover all user's orders
-    error InsufficientRepaymentAsset(address vault, uint256 balanceAmount, uint256 repayAmount);
-
     /// @dev Indicates that a user attempted to interact with an account that is not their own
     error SubaccountMustBeControlledByOwner(address subaccount, address owner);
 
@@ -63,9 +60,6 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
     /// @dev Indicates that the constructed EVC operations are exceeding the maximum length allowed. Generally this is a sanity check
     error ItemsOutOfBounds(uint256 itemIndex, uint256 maxItemIndex);
-
-    /// @dev Emitted when the deployed address of a create2 contract does not match the computed address
-    error Create2AddressMismatch(address expectedAddress);
 
     /// @dev Used to ensure that the EVC is calling back this contract with the correct data
     bytes32 internal transient expectedEvcInternalSettleCallHash;
