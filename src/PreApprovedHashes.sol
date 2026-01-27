@@ -29,7 +29,7 @@ abstract contract PreApprovedHashes {
 
     /// @notice Pre-approve a hash of signed calldata for future execution
     /// @dev Once a hash is pre-approved, it can only be consumed once. This prevents replay attacks.
-    /// @param hash The keccak256 hash of the signed calldata
+    /// @param hash The keccak256 hash of the order parameters
     /// @param approved True to approve the hash, false to revoke approval
     function setPreApprovedHash(bytes32 hash, bool approved) external {
         require(preApprovedHashes[msg.sender][hash] != CONSUMED, AlreadyConsumed(msg.sender, hash));
