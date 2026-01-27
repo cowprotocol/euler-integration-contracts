@@ -188,16 +188,19 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
         uint256 itemIndex = 0;
 
-        // add any EVC actions that have to be performed before
         {
-            (IEVC.BatchItem[] memory beforeItems, bool needsPermission) = _encodeBatchItemsBefore(param);
-            itemIndex = _addEvcBatchItems(
-                items, beforeItems, itemIndex, owner, deadline, needsPermission ? signature : new bytes(0), param
-            );
-        }
+            // add any EVC actions that have to be performed before
+            IEVC.BatchItem[] memory partialItems;
+            bool needsPermission;
+            bool permissionRequested = false;
 
-        // add the EVC callback to this (which calls settlement)
-        {
+            (partialItems, needsPermission) = _encodeBatchItemsBefore(param);
+            permissionRequested = permissionRequested || needsPermission;
+            itemIndex = _addEvcBatchItems(
+                items, partialItems, itemIndex, owner, deadline, needsPermission ? signature : new bytes(0), param
+            );
+
+            // add the EVC callback to this (which calls settlement)
             expectedEvcInternalSettleCallHash = keccak256(evcInternalSettleCallback);
             items[itemIndex++] = IEVC.BatchItem({
                 onBehalfOfAccount: address(this),
@@ -205,14 +208,15 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
                 value: 0,
                 data: evcInternalSettleCallback
             });
-        }
 
-        // add the EVC actions that have to be performed after
-        {
-            (IEVC.BatchItem[] memory afterItems, bool needsPermission) = _encodeBatchItemsAfter(param);
+            // add the EVC actions that have to be performed after
+            (partialItems, needsPermission) = _encodeBatchItemsAfter(param);
+            permissionRequested = permissionRequested || needsPermission;
             itemIndex = _addEvcBatchItems(
-                items, afterItems, itemIndex, owner, deadline, needsPermission ? signature : new bytes(0), param
+                items, partialItems, itemIndex, owner, deadline, needsPermission ? signature : new bytes(0), param
             );
+
+            require(permissionRequested, "custom error for unused permit signature");
         }
 
         // shorten the length of the generated array to its actual length
