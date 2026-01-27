@@ -88,7 +88,8 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     {}
 
     /// @notice Encode batch items to execute after the settlement
-    /// @dev By default we return the default value (empty array, false)
+    /// @dev By default we return the default value (empty array, false).
+    /// At least one between this function and `_encodeBatchItemsBefore` should need permission (i.e., use the permit signature) for the permit flow to be secure.
     /// @param location The memory storage position where the parameters needed to encode the batch items have been saved
     /// @return items Array of batch items to execute
     /// @return needsPermission Whether these items require user signature or prior authorization as an operator
