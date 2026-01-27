@@ -264,7 +264,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// or `addItems` will be condensed into a single `EVC.permit` call and then added to the batch as a single item.
     /// @param fullItems The items which will ultimately be executed by EVC.batch
     /// @param addItems The items which need to be added to fullItems with appropriate authorization wrapping as needed
-    /// @param itemIndex The location in `fullItems` where `addItems` should be written
+    /// @param itemIndex The index in `fullItems` starting from which `addItems` should be written
     /// @param owner The owner who is granting permission to execute the operations. Needed to construct the `EVC.permit`
     /// @param deadline The time at which the permit signature would expire. needed to construct the `EVC.permit`
     /// @param signature The signature used to validate the EVC.permit. If this is set to `new bytes(0)`, no permit will be used, and the items will be copied directly instead.
