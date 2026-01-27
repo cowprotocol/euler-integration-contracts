@@ -226,6 +226,7 @@ contract CowEvcBaseWrapperTest is Test {
         vm.prank(OWNER);
         wrapper.setPreApprovedHash(approvalHash, true);
 
+        /// forge-lint: disable-next-line(incorrect-shift)
         mockEvc.setOperatorMask(1 << bitPosition);
         vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (ACCOUNT, address(wrapper), false)));
         wrapper.invokeEvc("", abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
@@ -239,6 +240,7 @@ contract CowEvcBaseWrapperTest is Test {
         vm.prank(OWNER);
         wrapper.setPreApprovedHash(approvalHash, true);
 
+        /// forge-lint: disable-next-line(incorrect-shift)
         mockEvc.setOperatorMask(1 | (1 << bitPosition));
         vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (ACCOUNT, address(wrapper), false)));
         vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (OWNER, address(wrapper), false)));
@@ -251,6 +253,7 @@ contract CowEvcBaseWrapperTest is Test {
         MockEvcBaseWrapper.TestParams memory params =
             MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: block.timestamp + 100});
 
+        /// forge-lint: disable-next-line(incorrect-shift)
         mockEvc.setOperatorMask(1 | (1 << bitPosition));
         vm.expectCall(address(mockEvc), abi.encodePacked(IEVC.setAccountOperator.selector), 0);
         wrapper.invokeEvc("", abi.encode(params, signature), new bytes(0), params, signature);
