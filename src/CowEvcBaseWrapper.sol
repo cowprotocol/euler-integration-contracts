@@ -248,7 +248,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
             // the calculation is done in the EthereumVaultConnector contract.
             // https://github.com/euler-xyz/ethereum-vault-connector/blob/v1.0.1/src/EthereumVaultConnector.sol#L387
             /// forge-lint: disable-next-line(incorrect-shift)
-            if (mask & (1 << (uint160(owner) ^ uint160(account))) > 0) {
+            if ((mask & (1 << (uint160(owner) ^ uint160(account)))) > 0) {
                 EVC.setAccountOperator(account, address(this), false);
             }
 
