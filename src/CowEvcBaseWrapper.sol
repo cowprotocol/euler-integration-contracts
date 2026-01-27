@@ -236,17 +236,21 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
         // If we used the pre-approved hash flow, we can now relinquish operator control of the account
         if (signature.length == 0) {
+            // This function returns both account and subaccount operator authorizations as a bitmask.
+            // So we can do one call to find out what accounts are authorized, and then remove them as needed.
             uint256 mask = EVC.getOperator(bytes19(bytes20(owner)), address(this));
 
             // check subaccount control
-            // shift is correct is this is how they reccomend checking subaccount bits in the EVC documentation
+            // despite the lint, the shift is correct. This is the same way
+            // the calculation is done in the EthereumVaultConnector contract.
+            // https://github.com/euler-xyz/ethereum-vault-connector/blob/v1.0.1/src/EthereumVaultConnector.sol#L387
             /// forge-lint: disable-next-line(incorrect-shift)
             if (mask & (1 << (uint160(owner) ^ uint160(account))) > 0) {
                 EVC.setAccountOperator(account, address(this), false);
             }
 
-            // check owner account control
-            if (mask & 1 > 0) {
+            // check owner account control. If the owner is the subaccount, there is no need to set the operator again.
+            if (owner != account && mask & 1 > 0) {
                 EVC.setAccountOperator(owner, address(this), false);
             }
         }
