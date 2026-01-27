@@ -10,7 +10,7 @@ abstract contract PreApprovedHashes {
     uint256 internal constant CONSUMED = uint256(keccak256("PreApprovedHashes.Consumed"));
 
     /// @notice Storage indicating whether or not a signed calldata hash has been approved by an owner
-    /// @dev Maps owner -> hash(signedCalldata) -> approval status
+    /// @dev Maps owner -> hash(orderParameters) -> approval status
     mapping(address => mapping(bytes32 => uint256)) public preApprovedHashes;
 
     /// @notice Event emitted when an owner pre-approves or revokes a hash
