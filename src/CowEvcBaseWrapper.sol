@@ -256,7 +256,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @param deadline The time at which the permit signature would expire. needed to construct the `EVC.permit`
     /// @param signature The signature used to validate the EVC.permit. If this is set to `new bytes(0)`, no permit will be used, and the items will be copied directly instead.
     /// @param param The input parameters for this trade. Needed to construct the `EVC.permit`, as the params data hash is appended to the end of the batch to ensure the signed `EVC.permit` can't be used with parameters that the user didn't sign.
-    /// @return The updated `itemIndex` after any new items have been written to `fullItems`
+    /// @return The index immediately after the last item written to `fullItems`
     function _addEvcBatchItems(
         IEVC.BatchItem[] memory fullItems,
         IEVC.BatchItem[] memory addItems,
