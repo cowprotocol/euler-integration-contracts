@@ -55,9 +55,6 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that the pre-approved hash is no longer able to be executed because the block timestamp is too old
     error OperationDeadlineExceeded(uint256 validToTimestamp, uint256 currentTimestamp);
 
-    /// @dev Indicates that this contract did not receive enough repayment assets from the settlement contract in order to cover all user's orders
-    error InsufficientRepaymentAsset(address vault, uint256 balanceAmount, uint256 repayAmount);
-
     /// @dev Indicates that a user attempted to interact with an account that is not their own
     error SubaccountMustBeControlledByOwner(address subaccount, address owner);
 
@@ -67,8 +64,8 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that the constructed EVC operations are exceeding the maximum length allowed. Generally this is a sanity check
     error ItemsOutOfBounds(uint256 itemIndex, uint256 maxItemIndex);
 
-    /// @dev Emitted when the deployed address of a create2 contract does not match the computed address
-    error Create2AddressMismatch(address expectedAddress);
+    /// @dev Indicates that neither `_encodeBatchItemsBefore` nor `_encodeBatchItemsAfter` requested permission, meaning the provided permit signature is unused.
+    error UnusedPermitSignature();
 
     /// @dev Used to ensure that the EVC is calling back this contract with the correct data
     bytes32 internal transient expectedEvcInternalSettleCallHash;
@@ -84,7 +81,8 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     }
 
     /// @notice Encode batch items to execute before the settlement
-    /// @dev By default we return the default value (empty array, false)
+    /// @dev By default we return the default value (empty array, false).
+    /// At least one between this function and `_encodeBatchItemsAfter` should need permission (i.e., use the permit signature) for the permit flow to be secure.
     /// @param location The memory storage position where the parameters needed to encode the batch items have been saved
     /// @return items Array of batch items to execute
     /// @return needsPermission Whether these items require user signature or prior authorization as an operator
@@ -96,7 +94,8 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     {}
 
     /// @notice Encode batch items to execute after the settlement
-    /// @dev By default we return the default value (empty array, false)
+    /// @dev By default we return the default value (empty array, false).
+    /// At least one between this function and `_encodeBatchItemsBefore` should need permission (i.e., use the permit signature) for the permit flow to be secure.
     /// @param location The memory storage position where the parameters needed to encode the batch items have been saved
     /// @return items Array of batch items to execute
     /// @return needsPermission Whether these items require user signature or prior authorization as an operator
@@ -168,10 +167,24 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         return address(_getInbox(owner, subaccount));
     }
 
+    /// @notice Compute the Inbox address for a given owner and subaccount (view-only, does not deploy)
+    /// @param owner The owner address
+    /// @param subaccount The subaccount address
+    /// @return creationAddress The computed Inbox address
+    /// @return creationCode The code needed to create the contract
+    /// @return salt The salt that should be used to create the contract
+    function _getInboxAddress(address owner, address subaccount)
+        internal
+        view
+        returns (address creationAddress, bytes memory creationCode, bytes32 salt)
+    {
+        salt = bytes32(uint256(uint160(subaccount)));
+        creationCode = abi.encodePacked(type(Inbox).creationCode, abi.encode(address(this), owner, SETTLEMENT));
+        creationAddress = Create2.computeAddress(salt, keccak256(creationCode));
+    }
+
     function _getInbox(address owner, address subaccount) internal returns (Inbox) {
-        bytes32 salt = bytes32(uint256(uint160(subaccount)));
-        bytes memory creationCode = abi.encodePacked(type(Inbox).creationCode, abi.encode(address(this), owner));
-        address expectedAddress = Create2.computeAddress(salt, keccak256(creationCode));
+        (address expectedAddress, bytes memory creationCode, bytes32 salt) = _getInboxAddress(owner, subaccount);
 
         if (expectedAddress.code.length == 0) {
             // `require` here is mostly for sanity
@@ -205,9 +218,9 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         require(bytes19(bytes20(owner)) == bytes19(bytes20(account)), SubaccountMustBeControlledByOwner(account, owner));
 
         // There are 2 ways that this contract can validate user operations: 1) the user pre-approves a hash with an on-chain call and grants this contract ability to operate on the user's behalf, or 2) they issue a signature which can be used to call EVC.permit()
-        // In case the user is using a hash (1), then there would be no signature supplied to this call and we have to resolve the hash instead
-        // If its flow (2), it happens through the call to EVC.permit() elsewhere: if the parameters don't match with the user intent, that call is assumed to revert.
-        // In this case, we need to check that `permit` has been called by the actual wrapper implementation.
+        // The choice of the flow is based on whether `signature` has length zero. If so, then we use the hash approval flow (1).
+        // Otherwise, the signature is assumed to be one for EVC.permit (2).
+        // The permit signature is verified against the permit generated by `_encodePermitData`; the parameters are validated because they are unequivocally encoded in the signed permit.
         if (signature.length == 0) {
             _consumePreApprovedHash(owner, _getApprovalHash(param));
             // The deadline is checked by `EVC.permit()`, so we only check it here if we are using a pre-approved hash (aka, no signature) which would bypass that call
@@ -219,16 +232,19 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
         uint256 itemIndex = 0;
 
-        // add any EVC actions that have to be performed before
         {
-            (IEVC.BatchItem[] memory beforeItems, bool needsPermission) = _encodeBatchItemsBefore(param);
-            itemIndex = _addEvcBatchItems(
-                items, beforeItems, itemIndex, owner, deadline, needsPermission ? signature : new bytes(0), param
-            );
-        }
+            // add any EVC actions that have to be performed before
+            IEVC.BatchItem[] memory partialItems;
+            bool needsPermission;
+            bool permissionRequested = false;
 
-        // add the EVC callback to this (which calls settlement)
-        {
+            (partialItems, needsPermission) = _encodeBatchItemsBefore(param);
+            permissionRequested = permissionRequested || needsPermission;
+            itemIndex = _addEvcBatchItems(
+                items, partialItems, itemIndex, owner, deadline, needsPermission ? signature : new bytes(0), param
+            );
+
+            // add the EVC callback to this (which calls settlement)
             expectedEvcInternalSettleCallHash = keccak256(evcInternalSettleCallback);
             items[itemIndex++] = IEVC.BatchItem({
                 onBehalfOfAccount: address(this),
@@ -236,14 +252,15 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
                 value: 0,
                 data: evcInternalSettleCallback
             });
-        }
 
-        // add the EVC actions that have to be performed after
-        {
-            (IEVC.BatchItem[] memory afterItems, bool needsPermission) = _encodeBatchItemsAfter(param);
+            // add the EVC actions that have to be performed after
+            (partialItems, needsPermission) = _encodeBatchItemsAfter(param);
+            permissionRequested = permissionRequested || needsPermission;
             itemIndex = _addEvcBatchItems(
-                items, afterItems, itemIndex, owner, deadline, needsPermission ? signature : new bytes(0), param
+                items, partialItems, itemIndex, owner, deadline, needsPermission ? signature : new bytes(0), param
             );
+
+            require(permissionRequested, UnusedPermitSignature());
         }
 
         // shorten the length of the generated array to its actual length
@@ -261,15 +278,21 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
         // If we used the pre-approved hash flow, we can now relinquish operator control of the account
         if (signature.length == 0) {
+            // This function returns both account and subaccount operator authorizations as a bitmask.
+            // So we can do one call to find out what accounts are authorized, and then remove them as needed.
             uint256 mask = EVC.getOperator(bytes19(bytes20(owner)), address(this));
 
             // check subaccount control
-            if (mask & (1 << (uint160(owner) ^ uint160(account))) > 0) {
+            // despite the lint, the shift is correct. This is the same way
+            // the calculation is done in the EthereumVaultConnector contract.
+            // https://github.com/euler-xyz/ethereum-vault-connector/blob/v1.0.1/src/EthereumVaultConnector.sol#L387
+            /// forge-lint: disable-next-line(incorrect-shift)
+            if ((mask & (1 << (uint160(owner) ^ uint160(account)))) > 0) {
                 EVC.setAccountOperator(account, address(this), false);
             }
 
-            // check owner account control
-            if (mask & 1 > 0) {
+            // check owner account control. If the owner is the subaccount, there is no need to set the operator again.
+            if (owner != account && mask & 1 > 0) {
                 EVC.setAccountOperator(owner, address(this), false);
             }
         }
@@ -280,12 +303,12 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// or `addItems` will be condensed into a single `EVC.permit` call and then added to the batch as a single item.
     /// @param fullItems The items which will ultimately be executed by EVC.batch
     /// @param addItems The items which need to be added to fullItems with appropriate authorization wrapping as needed
-    /// @param itemIndex The location in `fullItems` where `addItems` should be written
+    /// @param itemIndex The index in `fullItems` starting from which `addItems` should be written
     /// @param owner The owner who is granting permission to execute the operations. Needed to construct the `EVC.permit`
     /// @param deadline The time at which the permit signature would expire. needed to construct the `EVC.permit`
     /// @param signature The signature used to validate the EVC.permit. If this is set to `new bytes(0)`, no permit will be used, and the items will be copied directly instead.
-    /// @param param The input parameters for this trade. Needed to construct the `EVC.permit`, as the params data hash is appended to the end of the batch to ensure it can't be tampered as an additonial protection.
-    /// @return The updated `itemIndex` after any new items have been written to `fullItems`
+    /// @param param The input parameters for this trade. Needed to construct the `EVC.permit`, as the params data hash is appended to the end of the batch to ensure the signed `EVC.permit` can't be used with parameters that the user didn't sign.
+    /// @return The index immediately after the last item written to `fullItems`
     function _addEvcBatchItems(
         IEVC.BatchItem[] memory fullItems,
         IEVC.BatchItem[] memory addItems,

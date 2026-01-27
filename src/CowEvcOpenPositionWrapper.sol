@@ -15,9 +15,8 @@ import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
 ///      3. Deposit collateral
 ///      4. Borrow assets
 /// @dev The settle call by this order should be performing the necessary swap
-/// from IERC20(borrowVault.asset()) -> collateralVault. The recipient of the
-/// swap should be the `owner` (not this contract). Furthermore, the buyAmountIn should
-/// be the same as `maxRepayAmount`.
+/// from IERC20(borrowVault.asset()) -> collateralVault. See below for more information
+/// on how to set the CoW order params.
 contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
     /// @dev The EIP-712 domain name used for computing the domain separator.
     bytes32 constant DOMAIN_NAME = keccak256("CowEvcOpenPositionWrapper");
@@ -66,25 +65,31 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
     /// @dev This structure is used, combined with domain separator, to indicate a pre-approved hash.
     /// the `deadline` is used for deduplication checking, so be careful to ensure this value is unique.
     struct OpenPositionParams {
-        /// @dev The ethereum address that has permission to operate upon the account
+        /// @dev The ethereum address that has permission to operate upon the account.
+        /// The CoW order should be signed or otherwise authorized by this address.
         address owner;
 
         /// @dev The subaccount to open the position on. Learn more about Euler subaccounts https://evc.wtf/docs/concepts/internals/sub-accounts
+        /// The CoW order `receiver` should be equal to this value.
         address account;
 
-        /// @dev A date by which this operation must be completed
+        /// @dev A date by which this operation must be completed.
         uint256 deadline;
 
-        /// @dev The Euler vault to use as collateral
+        /// @dev The Euler vault to use as collateral.
+        /// The CoW order `buyToken` should be equal to this value.
         address collateralVault;
 
-        /// @dev The Euler vault to use as leverage
+        /// @dev The Euler vault to use as leverage.
+        /// The CoW order `sellToken` should be equal to `IERC4626(borrowVault).asset()`.
         address borrowVault;
 
         /// @dev The amount of collateral to import as margin. Set this to `0` if the vault already has margin collateral.
+        /// Contrary to how this looks, this value is *not* the same as `buyAmount` in the CoW order. It only defines how much collateral to deposit into the vault prior to borrowing.
         uint256 collateralAmount;
 
         /// @dev The amount of debt to take out. The borrowed tokens will be converted to `collateralVault` tokens and deposited into the account.
+        /// The CoW order `sellAmount` should be equal to this value.
         uint256 borrowAmount;
     }
 

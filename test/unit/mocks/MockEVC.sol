@@ -12,6 +12,7 @@ contract MockEVC {
     bool public shouldSucceed = true;
     address public onBehalfOf;
     bool public shouldVerifySignatures = false;
+    uint256 public operatorMask = 0;
 
     error InvalidSignature();
 
@@ -38,6 +39,10 @@ contract MockEVC {
         operators[account][operator] = authorized;
     }
 
+    function setOperatorMask(uint256 mask) external {
+        operatorMask = mask;
+    }
+
     function setOnBehalfOf(address shouldBeOnBehalfOf) external {
         onBehalfOf = shouldBeOnBehalfOf;
     }
@@ -46,8 +51,8 @@ contract MockEVC {
         operators[account][operator] = authorized;
     }
 
-    function getOperator(bytes19, address) external pure returns (uint256) {
-        return 0;
+    function getOperator(bytes19, address) external view returns (uint256) {
+        return operatorMask;
     }
 
     function isAccountOperatorAuthorized(address account, address operator) external view returns (bool) {

@@ -16,13 +16,29 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
         uint256 number;
     }
 
+    bool public needsPermission;
+
     constructor(address evc, address cow)
         CowEvcBaseWrapper(evc, ICowSettlement(cow), keccak256("CowEvcBaseWrapperTest"), keccak256("1"))
         EIP712("CowEvcBaseWrapperTest", "1")
     {
         PARAMS_SIZE = abi.encode(TestParams({owner: address(0), account: address(0), number: 0})).length;
-        MAX_BATCH_OPERATIONS = 1;
+        MAX_BATCH_OPERATIONS = 2;
         PARAMS_TYPE_HASH = keccak256("TestParams(address owner,address account,uint256 number)");
+
+        // by default set needs permission so we dont get unused permission error
+        needsPermission = true;
+    }
+
+    function _encodeBatchItemsBefore(ParamsLocation)
+        internal
+        view
+        virtual
+        override
+        returns (IEVC.BatchItem[] memory items, bool _needsPermission)
+    {
+        // prevent unused variable warning
+        return (new IEVC.BatchItem[](0), needsPermission);
     }
 
     function _evcInternalSettle(
@@ -73,6 +89,10 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
             location := params
         }
     }
+
+    function setNeedsPermission(bool flag) external {
+        needsPermission = flag;
+    }
 }
 
 contract CowEvcBaseWrapperTest is Test {
@@ -91,6 +111,41 @@ contract CowEvcBaseWrapperTest is Test {
         mockEvc = new MockEVC();
 
         wrapper = new MockEvcBaseWrapper(address(mockEvc), address(mockSettlement));
+    }
+
+    function test_Constructor() public {
+        // Test that constructor validates EVC address has code
+        vm.expectRevert("EVC address is invalid");
+        new MockEvcBaseWrapper(address(0x1234), address(mockSettlement));
+
+        // Test that constructor sets EVC variable correctly
+        assertEq(address(wrapper.EVC()), address(mockEvc), "EVC variable not set correctly");
+
+        // Test that NONCE_NAMESPACE is set to the wrapper's address cast to uint256
+        uint256 expectedNonceNamespace = uint256(uint160(address(wrapper)));
+        assertEq(wrapper.NONCE_NAMESPACE(), expectedNonceNamespace, "NONCE_NAMESPACE not set correctly");
+
+        // Test that DOMAIN_SEPARATOR is computed correctly according to EIP-712
+        bytes32 domainTypeHash =
+            keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+        bytes32 expectedDomainSeparator = keccak256(
+            abi.encode(
+                domainTypeHash, keccak256("CowEvcBaseWrapperTest"), keccak256("1"), block.chainid, address(wrapper)
+            )
+        );
+        assertEq(wrapper.DOMAIN_SEPARATOR(), expectedDomainSeparator, "DOMAIN_SEPARATOR not computed correctly");
+    }
+
+    function test_UnusedPermitSignature() public {
+        // Test that providing a signature when no permission is needed reverts
+        wrapper.setNeedsPermission(false);
+
+        bytes memory signature = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
+        MockEvcBaseWrapper.TestParams memory params =
+            MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: block.timestamp + 100});
+
+        vm.expectRevert(CowEvcBaseWrapper.UnusedPermitSignature.selector);
+        wrapper.invokeEvc("", abi.encode(params, signature), new bytes(0), params, signature);
     }
 
     function test_EIP712Compliance() public view {
@@ -126,7 +181,6 @@ contract CowEvcBaseWrapperTest is Test {
         MockEvcBaseWrapper.TestParams memory params =
             MockEvcBaseWrapper.TestParams({owner: OWNER, account: invalidSubaccount, number: 0});
         bytes memory wrapperData = abi.encode(params, new bytes(0));
-        bytes memory chainedWrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
         bytes memory settleData = "";
 
@@ -136,5 +190,91 @@ contract CowEvcBaseWrapperTest is Test {
             )
         );
         wrapper.invokeEvc(settleData, wrapperData, new bytes(0), params, new bytes(0));
+    }
+
+    // NOTE: We have to use a bunch of separate tests here because `vm.expectCall` works across
+    // the entire test, and we need to check many different conditions.
+    function test_SetAccountOperator_NoCallsWhenMaskIsZero() public {
+        MockEvcBaseWrapper.TestParams memory params =
+            MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: block.timestamp + 100});
+        bytes32 approvalHash = wrapper.getApprovalHash(params);
+        vm.prank(OWNER);
+        wrapper.setPreApprovedHash(approvalHash, true);
+
+        mockEvc.setOperatorMask(0);
+        vm.expectCall(address(mockEvc), abi.encodePacked(IEVC.setAccountOperator.selector), 0);
+        wrapper.invokeEvc("", abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
+    }
+
+    function test_SetAccountOperator_CallsOwnerWhenOwnerBitSet() public {
+        MockEvcBaseWrapper.TestParams memory params =
+            MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: block.timestamp + 100});
+        bytes32 approvalHash = wrapper.getApprovalHash(params);
+        vm.prank(OWNER);
+        wrapper.setPreApprovedHash(approvalHash, true);
+
+        mockEvc.setOperatorMask(1);
+        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (OWNER, address(wrapper), false)));
+        wrapper.invokeEvc("", abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
+    }
+
+    function test_SetAccountOperator_CallsSubaccountWhenSubaccountBitSet() public {
+        uint256 bitPosition = uint160(OWNER) ^ uint160(ACCOUNT);
+        MockEvcBaseWrapper.TestParams memory params =
+            MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: block.timestamp + 100});
+        bytes32 approvalHash = wrapper.getApprovalHash(params);
+        vm.prank(OWNER);
+        wrapper.setPreApprovedHash(approvalHash, true);
+
+        /// forge-lint: disable-next-line(incorrect-shift)
+        mockEvc.setOperatorMask(1 << bitPosition);
+        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (ACCOUNT, address(wrapper), false)));
+        wrapper.invokeEvc("", abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
+    }
+
+    function test_SetAccountOperator_CallsBothWhenBothBitsSet() public {
+        uint256 bitPosition = uint160(OWNER) ^ uint160(ACCOUNT);
+        MockEvcBaseWrapper.TestParams memory params =
+            MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: block.timestamp + 100});
+        bytes32 approvalHash = wrapper.getApprovalHash(params);
+        vm.prank(OWNER);
+        wrapper.setPreApprovedHash(approvalHash, true);
+
+        /// forge-lint: disable-next-line(incorrect-shift)
+        mockEvc.setOperatorMask(1 | (1 << bitPosition));
+        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (ACCOUNT, address(wrapper), false)));
+        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (OWNER, address(wrapper), false)));
+        wrapper.invokeEvc("", abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
+    }
+
+    function test_SetAccountOperator_NotCalledWithSignature() public {
+        uint256 bitPosition = uint160(OWNER) ^ uint160(ACCOUNT);
+        bytes memory signature = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
+        MockEvcBaseWrapper.TestParams memory params =
+            MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: block.timestamp + 100});
+
+        /// forge-lint: disable-next-line(incorrect-shift)
+        mockEvc.setOperatorMask(1 | (1 << bitPosition));
+        vm.expectCall(address(mockEvc), abi.encodePacked(IEVC.setAccountOperator.selector), 0);
+        wrapper.invokeEvc("", abi.encode(params, signature), new bytes(0), params, signature);
+    }
+
+    function test_SetAccountOperator_SkipsOwnerCallWhenOwnerEqualsAccount() public {
+        address sameAddress = address(0x2222);
+        MockEvcBaseWrapper.TestParams memory params =
+            MockEvcBaseWrapper.TestParams({owner: sameAddress, account: sameAddress, number: block.timestamp + 100});
+        bytes32 approvalHash = wrapper.getApprovalHash(params);
+
+        vm.prank(sameAddress);
+        wrapper.setPreApprovedHash(approvalHash, true);
+
+        // When owner == account, the owner bit check resolves to the subaccount bit check
+        // So with mask = 1, one call is made (for the subaccount which is also the owner)
+        // The separate owner call is skipped due to "owner != account" check
+        mockEvc.setOperatorMask(1);
+        vm.expectCall(
+            address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (sameAddress, address(wrapper), false)), 1
+        );
+        wrapper.invokeEvc("", abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
     }
 }

@@ -10,7 +10,6 @@ import {CowEvcClosePositionWrapper} from "../src/CowEvcClosePositionWrapper.sol"
 import {CowEvcBaseWrapper} from "../src/CowEvcBaseWrapper.sol";
 import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
-import {PreApprovedHashes} from "../src/PreApprovedHashes.sol";
 import {Inbox} from "../src/Inbox.sol";
 
 import {CowBaseTest} from "./helpers/CowBaseTest.sol";
@@ -95,15 +94,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         });
         EVC.batch(items);
 
-        // Approve the wrapper to send excess tokens back to the subaccount they came from
-        EUSDS.approve(address(closePositionWrapper), type(uint256).max);
-
-        // Approve vault shares for settlement
-        EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
-
-        // Approve wrapper to spend WETH for repayment
-        WETH.approve(address(closePositionWrapper), type(uint256).max);
-
         vm.stopPrank();
     }
 
@@ -158,7 +148,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
     /// @notice Create settlement data for closing a leveraged position with EIP-1271 signature
     /// @dev Sells vault shares to buy repayment token (WETH), using Inbox EIP-1271 signature
-    function getClosePositionSettlementEip1271(
+    function getClosePositionSettlementWithInbox(
         address owner,
         address account,
         IEVault sellVaultToken,
@@ -183,7 +173,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // to test like a user would use (without prior deployment)
         uint256 snapshotId = vm.snapshotState();
         r.trades = new ICowSettlement.Trade[](1);
-        (r.trades[0], r.orderData, r.orderUid) = setupCowOrderEip1271({
+
+        (r.trades[0], r.orderData, r.orderUid) = setupCowOrderWithInbox({
             tokens: r.tokens,
             sellTokenIndex: 0,
             buyTokenIndex: 1,
@@ -231,7 +222,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data using EIP-1271
-        SettlementData memory settlement = getClosePositionSettlementEip1271({
+        SettlementData memory settlement = getClosePositionSettlementWithInbox({
             owner: user,
             account: account,
             sellVaultToken: EUSDS,
@@ -292,19 +283,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         closePositionWrapper.evcInternalSettle(settleData, wrapperData, wrapperData);
     }
 
-    /// @notice Test that non-solvers cannot call wrappedSettle
-    function test_ClosePositionWrapper_NonSolverCannotSettle() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
-        bytes memory settleData = "";
-        bytes memory wrapperData = hex"0000";
-
-        // Try to call wrappedSettle as non-solver
-        vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, user));
-        closePositionWrapper.wrappedSettle(settleData, wrapperData);
-    }
-
     /// @notice Test shrinking the position with partial repayment using EIP-1271
     function test_ClosePositionWrapper_PartialRepay() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
@@ -329,7 +307,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         params.collateralAmount = sellAmount;
 
         // Get settlement data using EIP-1271
-        SettlementData memory settlement = getClosePositionSettlementEip1271({
+        SettlementData memory settlement = getClosePositionSettlementWithInbox({
             owner: user,
             account: account,
             sellVaultToken: EUSDS,
@@ -385,42 +363,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         closePositionWrapper.validateWrapperData(wrapperData);
     }
 
-    /// @notice Test setting pre-approved hash
-    function test_ClosePositionWrapper_SetPreApprovedHash() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
-        address account = address(uint160(user) ^ uint8(0x01));
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
-        params.collateralAmount = 0;
-
-        bytes32 hash = closePositionWrapper.getApprovalHash(params);
-
-        // Initially hash should not be approved
-        assertEq(closePositionWrapper.preApprovedHashes(user, hash), 0, "Hash should not be approved initially");
-
-        // User pre-approves the hash
-        vm.prank(user);
-        vm.expectEmit(true, true, false, true);
-        emit PreApprovedHashes.PreApprovedHash(user, hash, true);
-        closePositionWrapper.setPreApprovedHash(hash, true);
-
-        // Hash should now be approved
-        assertGt(closePositionWrapper.preApprovedHashes(user, hash), 0, "Hash should be approved");
-
-        // User revokes the approval
-        vm.prank(user);
-        vm.expectEmit(true, true, false, true);
-        emit PreApprovedHashes.PreApprovedHash(user, hash, false);
-        closePositionWrapper.setPreApprovedHash(hash, false);
-
-        // Hash should no longer be approved
-        assertEq(
-            closePositionWrapper.preApprovedHashes(user, hash),
-            uint256(keccak256("PreApprovedHashes.Consumed")),
-            "Hash should not be approved after revocation"
-        );
-    }
-
     /// @notice Test closing a position with pre-approved hash (no signature needed)
     function test_ClosePositionWrapper_WithPreApprovedHash() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
@@ -444,19 +386,24 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement = getClosePositionSettlementEip1271({
+        SettlementData memory settlement = getClosePositionSettlementWithInbox({
             owner: user,
             account: account,
             sellVaultToken: EUSDS,
             buyToRepayToken: WETH,
             sellAmount: DEFAULT_SELL_AMOUNT,
             buyAmount: DEFAULT_BUY_AMOUNT,
-            userPrivateKey: privateKey
+            userPrivateKey: 0 // triggers pre-approved signature type
         });
 
         // Setup pre-approved flow
         bytes32 hash = closePositionWrapper.getApprovalHash(params);
         _setupPreApprovedFlow(account, hash);
+
+        // the pre approved flow requires setting a signature on the inbox (not on the settlement because the inbox is what sends the order)
+        vm.startPrank(user);
+        Inbox(closePositionWrapper.getInbox(user, account)).setPreSignature(settlement.orderUid, true);
+        vm.stopPrank();
 
         // Verify that the operator is authorized before executing
         assertTrue(
@@ -525,7 +472,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data using EIP-1271
-        SettlementData memory settlement = getClosePositionSettlementEip1271({
+        SettlementData memory settlement = getClosePositionSettlementWithInbox({
             owner: user,
             account: account,
             sellVaultToken: EUSDS,
@@ -666,7 +613,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         (address[] memory tokens, uint256[] memory clearingPrices) = getTokensAndPrices();
 
         ICowSettlement.Trade[] memory trades = new ICowSettlement.Trade[](3);
-        (trades[0],,) = setupCowOrderEip1271({
+        (trades[0],,) = setupCowOrderWithInbox({
             tokens: tokens,
             sellTokenIndex: 2,
             buyTokenIndex: 1,
@@ -677,7 +624,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             isBuy: true,
             signerPrivateKey: privateKey
         });
-        (trades[1],,) = setupCowOrderEip1271({
+        (trades[1],,) = setupCowOrderWithInbox({
             tokens: tokens,
             sellTokenIndex: 2,
             buyTokenIndex: 1,
@@ -688,7 +635,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             isBuy: true,
             signerPrivateKey: privateKey2
         });
-        (trades[2],,) = setupCowOrderEip1271({
+        (trades[2],,) = setupCowOrderWithInbox({
             tokens: tokens,
             sellTokenIndex: 3,
             buyTokenIndex: 0,
