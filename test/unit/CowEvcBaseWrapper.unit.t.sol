@@ -16,13 +16,29 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
         uint256 number;
     }
 
+    bool public needsPermission;
+
     constructor(address evc, address cow)
         CowEvcBaseWrapper(evc, ICowSettlement(cow), keccak256("CowEvcBaseWrapperTest"), keccak256("1"))
         EIP712("CowEvcBaseWrapperTest", "1")
     {
         PARAMS_SIZE = abi.encode(TestParams({owner: address(0), account: address(0), number: 0})).length;
-        MAX_BATCH_OPERATIONS = 1;
+        MAX_BATCH_OPERATIONS = 2;
         PARAMS_TYPE_HASH = keccak256("TestParams(address owner,address account,uint256 number)");
+
+        // by default set needs permission so we dont get unused permission error
+        needsPermission = true;
+    }
+
+    function _encodeBatchItemsBefore(ParamsLocation)
+        internal
+        view
+        virtual
+        override
+        returns (IEVC.BatchItem[] memory items, bool _needsPermission)
+    {
+        // prevent unused variable warning
+        return (new IEVC.BatchItem[](0), needsPermission);
     }
 
     function _evcInternalSettle(
@@ -73,6 +89,10 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
             location := params
         }
     }
+
+    function setNeedsPermission(bool flag) external {
+        needsPermission = flag;
+    }
 }
 
 contract CowEvcBaseWrapperTest is Test {
@@ -91,6 +111,41 @@ contract CowEvcBaseWrapperTest is Test {
         mockEvc = new MockEVC();
 
         wrapper = new MockEvcBaseWrapper(address(mockEvc), address(mockSettlement));
+    }
+
+    function test_Constructor() public {
+        // Test that constructor validates EVC address has code
+        vm.expectRevert("EVC address is invalid");
+        new MockEvcBaseWrapper(address(0x1234), address(mockSettlement));
+
+        // Test that constructor sets EVC variable correctly
+        assertEq(address(wrapper.EVC()), address(mockEvc), "EVC variable not set correctly");
+
+        // Test that NONCE_NAMESPACE is set to the wrapper's address cast to uint256
+        uint256 expectedNonceNamespace = uint256(uint160(address(wrapper)));
+        assertEq(wrapper.NONCE_NAMESPACE(), expectedNonceNamespace, "NONCE_NAMESPACE not set correctly");
+
+        // Test that DOMAIN_SEPARATOR is computed correctly according to EIP-712
+        bytes32 domainTypeHash =
+            keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+        bytes32 expectedDomainSeparator = keccak256(
+            abi.encode(
+                domainTypeHash, keccak256("CowEvcBaseWrapperTest"), keccak256("1"), block.chainid, address(wrapper)
+            )
+        );
+        assertEq(wrapper.DOMAIN_SEPARATOR(), expectedDomainSeparator, "DOMAIN_SEPARATOR not computed correctly");
+    }
+
+    function test_UnusedPermitSignature() public {
+        // Test that providing a signature when no permission is needed reverts
+        wrapper.setNeedsPermission(false);
+
+        bytes memory signature = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
+        MockEvcBaseWrapper.TestParams memory params =
+            MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: block.timestamp + 100});
+
+        vm.expectRevert(CowEvcBaseWrapper.UnusedPermitSignature.selector);
+        wrapper.invokeEvc("", abi.encode(params, signature), new bytes(0), params, signature);
     }
 
     function test_EIP712Compliance() public view {

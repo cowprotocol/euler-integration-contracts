@@ -61,6 +61,9 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that the constructed EVC operations are exceeding the maximum length allowed. Generally this is a sanity check
     error ItemsOutOfBounds(uint256 itemIndex, uint256 maxItemIndex);
 
+    /// @dev Indicates that neither `_encodeBatchItemsBefore` nor `_encodeBatchItemsAfter` requested permission, meaning the provided permit signature is unused.
+    error UnusedPermitSignature();
+
     /// @dev Used to ensure that the EVC is calling back this contract with the correct data
     bytes32 internal transient expectedEvcInternalSettleCallHash;
 
@@ -218,7 +221,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
                 items, partialItems, itemIndex, owner, deadline, needsPermission ? signature : new bytes(0), param
             );
 
-            require(permissionRequested, "custom error for unused permit signature");
+            require(permissionRequested, UnusedPermitSignature());
         }
 
         // shorten the length of the generated array to its actual length
