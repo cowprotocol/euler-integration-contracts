@@ -13,6 +13,8 @@ import {ICowSettlement} from "../../src/CowWrapper.sol";
 
 import {MilkSwap} from "./MilkSwap.sol";
 
+import {Inbox} from "../../src/Inbox.sol";
+
 contract CowBaseTest is Test {
     uint256 mainnetFork;
     uint256 constant BLOCK_NUMBER = 22546006;
@@ -251,7 +253,8 @@ contract CowBaseTest is Test {
     /// @dev Creates an order where the Inbox contract signs on behalf of the user.
     /// This is used for the CowEvcClosePositionWrapper
     /// Note: to reduce params, inboxForUser is assumed to be same as receiver
-    function setupCowOrderEip1271(
+    /// @param signerPrivateKey The private key that should be used to create the signature for the order. If `0` is given (i.e. no private key), it will be assumed that this order is to be pre signed, the cow order flags will be set appropriately, and the order signature will be set to the address of the recipient
+    function setupCowOrderWithInbox(
         address[] memory tokens,
         uint256 sellTokenIndex,
         uint256 buyTokenIndex,
@@ -264,6 +267,10 @@ contract CowBaseTest is Test {
     ) public view returns (ICowSettlement.Trade memory trade, GPv2Order.Data memory order, bytes memory orderId) {
         // Use EIP-1271 signature type (1 << 6)
         uint256 flags = (1 << 6) | (isBuy ? 1 : 0); // EIP-1271 signature type
+        if (signerPrivateKey == 0) {
+            // pre-signature type (3 << 5) (overlaps EIP-1271)
+            flags = flags | (3 << 5); // pre-sign
+        }
 
         order = GPv2Order.Data({
             sellToken: CowERC20(tokens[sellTokenIndex]),
@@ -282,7 +289,10 @@ contract CowBaseTest is Test {
 
         // Create the EIP-1271 signature
         // the "Inbox" for the user is assumed to be the same as the receiver
-        bytes memory eip1271Signature = _createEip1271Signature(receiver, order, signerPrivateKey);
+        // If we don't have a private key, create a pre-signed order (which gives the address of the presign as the signature)
+        bytes memory computedSignature = signerPrivateKey != 0
+            ? _createEip1271Signature(receiver, order, signerPrivateKey)
+            : abi.encodePacked(receiver);
 
         // Create the trade with EIP-1271 signature
         trade = ICowSettlement.Trade({
@@ -296,7 +306,7 @@ contract CowBaseTest is Test {
             feeAmount: 0,
             flags: flags,
             executedAmount: 0,
-            signature: eip1271Signature
+            signature: computedSignature
         });
 
         orderId = getOrderUid(receiver, order);
@@ -309,14 +319,21 @@ contract CowBaseTest is Test {
         view
         returns (bytes memory signature)
     {
-        // Compute the order digest
-        bytes32 orderDigest = GPv2Order.hash(orderData, COW_SETTLEMENT.domainSeparator());
+        bytes memory rawOrderData = abi.encode(orderData);
+        // Compute the order hash (raw)
+        bytes32 wrappedOrderHash = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                Inbox(inboxForUser).INBOX_DOMAIN_SEPARATOR(),
+                keccak256(abi.encodePacked(GPv2Order.TYPE_HASH, rawOrderData))
+            )
+        );
 
         // Sign the digest with the user's private key
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPrivateKey, orderDigest);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPrivateKey, wrappedOrderHash);
 
-        // Return the signature as packed bytes (inbox || r || s || v) (in CoW, first 20 bytes is the 1271 isValidSignature verifier)
-        return abi.encodePacked(inboxForUser, r, s, v);
+        // Return the signature as packed bytes (inbox || r || s || v || orderData) (in CoW, first 20 bytes is the 1271 isValidSignature verifier)
+        return abi.encodePacked(inboxForUser, r, s, v, rawOrderData);
     }
 
     function getTokensAndPrices() public view returns (address[] memory tokens, uint256[] memory clearingPrices) {
