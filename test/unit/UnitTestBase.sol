@@ -7,12 +7,14 @@ import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
 import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
+import {EmptyWrapper} from "../EmptyWrapper.sol";
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 
 abstract contract UnitTestBase is Test {
     MockEVC public mockEvc;
     MockCowSettlement public mockSettlement;
     MockCowAuthentication public mockAuth;
+    EmptyWrapper public emptyWrapper;
 
     CowEvcBaseWrapper public wrapper;
 
@@ -26,9 +28,16 @@ abstract contract UnitTestBase is Test {
         mockAuth = new MockCowAuthentication();
         mockSettlement = new MockCowSettlement(address(mockAuth));
         mockEvc = new MockEVC();
+        emptyWrapper = new EmptyWrapper(ICowSettlement(address(mockSettlement)));
 
         // Set solver as authenticated
         mockAuth.setSolver(SOLVER, true);
+
+        // Set the correct onBehalfOfAccount for evcInternalSettle calls
+        mockEvc.setOnBehalfOf(ACCOUNT);
+
+        vm.label(OWNER, "OWNER");
+        vm.label(ACCOUNT, "ACCOUNT");
     }
 
     /// @notice Helper to get the decoded IEVC.BatchItem[] from a call to `encodePermitData`
