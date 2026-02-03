@@ -92,13 +92,24 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         return hash;
     }
 
-    /// @notice Decode signed calldata helper
-    function _decodeSignedCalldata(bytes memory signedCalldata) internal pure returns (IEVC.BatchItem[] memory) {
-        bytes memory encodedItems = new bytes(signedCalldata.length - 4);
-        for (uint256 i = 4; i < signedCalldata.length; i++) {
-            encodedItems[i - 4] = signedCalldata[i];
+    /// @notice Helper to get the decoded IEVC.BatchItem[] from a call to `encodePermitData`
+    function _decodePermitData(bytes memory permitData)
+        internal
+        pure
+        returns (IEVC.BatchItem[] memory items, bytes32 paramsHash)
+    {
+        bytes memory encodedItems = new bytes(permitData.length - 4);
+        for (uint256 i = 4; i < permitData.length; i++) {
+            encodedItems[i - 4] = permitData[i];
         }
-        return abi.decode(encodedItems, (IEVC.BatchItem[]));
+
+        items = abi.decode(encodedItems, (IEVC.BatchItem[]));
+
+        // normally we subtract 64 here but the length field is at beginning so its just `length`
+        uint256 pos = permitData.length;
+        assembly {
+            paramsHash := mload(add(permitData, pos))
+        }
     }
 
     function setUp() public {
@@ -176,14 +187,16 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                    GET SIGNED CALLDATA TESTS
+                    ENCODE PERMIT DATA TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_GetSignedCalldata_EncodesAsExpected() public view {
+    function test_EncodePermitData_EncodesAsExpected() public view {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
 
-        bytes memory signedCalldata = wrapper.encodePermitData(params);
-        IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
+        bytes memory permitData = wrapper.encodePermitData(params);
+        (IEVC.BatchItem[] memory items, bytes32 paramsHash) = _decodePermitData(permitData);
+
+        assertEq(paramsHash, wrapper.getApprovalHash(params), "Params hash should match");
 
         assertEq(items[0].targetContract, address(mockEvc), "First item should target EVC");
         assertEq(
@@ -212,15 +225,6 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         );
 
         assertEq(items.length, 4, "Should have exactly 4 batch items");
-
-        bytes32 testHash;
-        // normally we subtract 64 here but the length field is at beginning so its just `length`
-        uint256 pos = signedCalldata.length;
-        assembly {
-            testHash := mload(add(signedCalldata, pos))
-        }
-
-        assertEq(testHash, wrapper.getApprovalHash(params), "Calldata should include encoded params at the end");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -354,8 +358,8 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
         params.collateralAmount = 0; // Zero collateral
 
-        bytes memory signedCalldata = wrapper.encodePermitData(params);
-        IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
+        bytes memory permitData = wrapper.encodePermitData(params);
+        (IEVC.BatchItem[] memory items,) = _decodePermitData(permitData);
 
         // Should still have deposit call, just with 0 amount
         assertEq(items[2].data, abi.encodeCall(IERC4626.deposit, (0, ACCOUNT)), "Should deposit 0");
@@ -365,8 +369,8 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
         params.borrowAmount = type(uint256).max;
 
-        bytes memory signedCalldata = wrapper.encodePermitData(params);
-        IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
+        bytes memory permitData = wrapper.encodePermitData(params);
+        (IEVC.BatchItem[] memory items,) = _decodePermitData(permitData);
 
         assertEq(items[3].data, abi.encodeCall(IBorrowing.borrow, (type(uint256).max, OWNER)), "Should borrow max");
     }
@@ -375,8 +379,8 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
         params.account = OWNER; // Same as owner
 
-        bytes memory signedCalldata = wrapper.encodePermitData(params);
-        IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
+        bytes memory permitData = wrapper.encodePermitData(params);
+        (IEVC.BatchItem[] memory items,) = _decodePermitData(permitData);
 
         // Should still work, but with same address
         assertEq(items[2].onBehalfOfAccount, OWNER, "Deposit should be on behalf of owner");
