@@ -152,9 +152,9 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             new ICowSettlement.Interaction[](0)
         ];
         // First interaction: convert the borrowed tokens on a DEX (Uniswap, for example)
-        r.interactions[1][0] = getSwapInteraction(sellToken, IERC20(buyVaultToken.asset()), sellAmount);
+        r.interactions[1][0] = getSwapInteraction(WETH, IERC20(EUSDS.asset()), sellAmount);
         // Second interaction: The converted tokens get transferred to the euler vault (a "deposit")
-        r.interactions[1][1] = getDepositInteraction(buyVaultToken, buyAmount);
+        r.interactions[1][1] = getDepositInteraction(EUSDS, buyAmount);
 
         // By the way, it is technically possible to deposit without having to do a skim. But I find the parameters a bit more convenient, and an extra approval isnt required because we initiate the transfer.
     }
