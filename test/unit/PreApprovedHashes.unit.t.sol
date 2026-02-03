@@ -6,7 +6,7 @@ import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
 
 /// @title Unit tests for PreApprovedHashes
 /// @notice Tests the pre-approved hash management functionality
-contract PreApprovedHashesUnitTest is Test, PreApprovedHashes {
+contract PreApprovedHashesUnitTest is Test {
     TestablePreApprovedHashes public c;
 
     address constant USER = address(0x1111);
@@ -23,14 +23,14 @@ contract PreApprovedHashesUnitTest is Test, PreApprovedHashes {
     function test_SetPreApprovedHash_EmitsEvent() public {
         bytes32 hash = keccak256("test");
 
-        vm.expectEmit(true, true, false, true);
-        emit PreApprovedHash(USER, hash, true);
+        vm.expectEmit();
+        emit PreApprovedHashes.PreApprovedHash(USER, hash, true);
 
         vm.prank(USER);
         c.setPreApprovedHash(hash, true);
 
-        vm.expectEmit(true, true, false, true);
-        emit PreApprovedHash(USER, hash, false);
+        vm.expectEmit();
+        emit PreApprovedHashes.PreApprovedHash(USER, hash, false);
 
         vm.prank(USER);
         c.setPreApprovedHash(hash, false);
@@ -47,7 +47,7 @@ contract PreApprovedHashesUnitTest is Test, PreApprovedHashes {
 
         // Try to approve the consumed hash again
         vm.prank(USER);
-        vm.expectRevert(abi.encodeWithSignature("AlreadyConsumed(address,bytes32)", USER, hash));
+        vm.expectRevert(abi.encodeWithSelector(PreApprovedHashes.AlreadyConsumed.selector, USER, hash));
         c.setPreApprovedHash(hash, true);
     }
 
@@ -62,7 +62,7 @@ contract PreApprovedHashesUnitTest is Test, PreApprovedHashes {
 
         // Try to revoke the consumed hash
         vm.prank(USER);
-        vm.expectRevert(abi.encodeWithSignature("AlreadyConsumed(address,bytes32)", USER, hash));
+        vm.expectRevert(abi.encodeWithSelector(PreApprovedHashes.AlreadyConsumed.selector, USER, hash));
         c.setPreApprovedHash(hash, false);
     }
 
@@ -76,8 +76,8 @@ contract PreApprovedHashesUnitTest is Test, PreApprovedHashes {
         vm.prank(USER);
         c.setPreApprovedHash(hash, true);
 
-        vm.expectEmit(true, true, false, true);
-        emit PreApprovedHashConsumed(USER, hash);
+        vm.expectEmit();
+        emit PreApprovedHashes.PreApprovedHashConsumed(USER, hash);
 
         c.consumeHash(USER, hash);
     }
@@ -115,11 +115,15 @@ contract PreApprovedHashesUnitTest is Test, PreApprovedHashes {
         // After revocation, its CONSUMED
         vm.prank(USER);
         c.setPreApprovedHash(hash, false);
-        assertEq(c.preApprovedHashes(USER, hash), CONSUMED, "Should be 0 after revocation");
+        assertEq(
+            c.preApprovedHashes(USER, hash),
+            uint256(keccak256("PreApprovedHashes.Consumed")),
+            "Should be 0 after revocation"
+        );
 
         // You can't re-approve because its consumed
         vm.prank(USER);
-        vm.expectRevert(abi.encodeWithSelector(AlreadyConsumed.selector, USER, hash));
+        vm.expectRevert(abi.encodeWithSelector(PreApprovedHashes.AlreadyConsumed.selector, USER, hash));
         c.setPreApprovedHash(hash, true);
     }
 

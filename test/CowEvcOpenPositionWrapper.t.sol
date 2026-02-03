@@ -68,7 +68,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         });
     }
 
-    /// @notice Setup user approvals for pre-approved hash flow
+    /// @notice Setup user approvals for pre-approved hash flow. This doesn't include the CoW order pre-signature because out of scope of testing, and handled elsewhere
+    /// in order to simplify order creation.
     function _setupUserPreApprovedFlow(address account, bytes32 hash) internal {
         vm.startPrank(user);
         USDS.approve(address(EUSDS), type(uint256).max);
@@ -160,8 +161,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
     /// @notice Test opening a leveraged position using the new wrapper
     function test_OpenPositionWrapper_Success() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
         // Create params using helper
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
@@ -229,8 +228,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
     /// @notice Test opening a position with pre-approved hash (no signature needed)
     function test_OpenPositionWrapper_WithPreApprovedHash() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
         // Create params using helper
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
@@ -253,11 +250,23 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             EVC.isAccountOperatorAuthorized(user, address(openPositionWrapper)),
             "Wrapper should be an authorized operator for the account before settle"
         );
+        assertTrue(
+            EVC.isAccountOperatorAuthorized(account, address(openPositionWrapper)),
+            "Wrapper should be an authorized operator for the owner before settle"
+        );
 
         // User pre-approves the order on CowSwap
         // Does not need to run here because it was signed as part of the settlement creation
 
-        assertEq(EWETH.debtOf(account), 0, "User should start with no debt");
+        // Verify that no position is open to start with
+        _verifyPositionOpened({
+            account: account,
+            collateralVaultToken: EUSDS,
+            borrowVaultToken: EWETH,
+            expectedCollateral: 0,
+            expectedDebt: 0,
+            allowedDelta: 0
+        });
 
         // Encode settlement and wrapper data (empty signature since pre-approved)
         bytes memory settleData = abi.encodeCall(
@@ -291,16 +300,19 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         });
 
         // Verify that the operator has been revoked for the account after the operation
+        // Verify that the operator is authorized before executing
+        assertFalse(
+            EVC.isAccountOperatorAuthorized(user, address(openPositionWrapper)),
+            "Wrapper should no longer be an authorized operator for the account after settle"
+        );
         assertFalse(
             EVC.isAccountOperatorAuthorized(account, address(openPositionWrapper)),
-            "Wrapper should no longer be an operator for the account"
+            "Wrapper should no longer be an authorized operator for the owner after settle"
         );
     }
 
     /// @notice Test that invalid signature causes the transaction to revert
     function test_OpenPositionWrapper_InvalidSignatureReverts() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
         // Create params using helper
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
@@ -345,8 +357,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     /// @notice Test that the wrapper can handle being called three times in the same chain
     /// @dev Two users open positions in the same direction (long USDS), one user opens opposite (long WETH)
     function test_OpenPositionWrapper_ThreeUsers_TwoSameOneOpposite() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
         // Setup User1: Has USDS, will borrow WETH and swap WETH→USDS (long USDS). Around 1 ETH
         deal(address(USDS), user, 2000 ether);
 

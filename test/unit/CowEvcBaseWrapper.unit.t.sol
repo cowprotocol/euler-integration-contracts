@@ -277,4 +277,26 @@ contract CowEvcBaseWrapperTest is Test {
         );
         wrapper.invokeEvc("", abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
     }
+
+    function test_EvcInternalSettle_OnlyEVC() public {
+        bytes memory settleData = "";
+        bytes memory remainingWrapperData = "";
+
+        vm.expectRevert(abi.encodeWithSelector(CowEvcBaseWrapper.Unauthorized.selector, address(this)));
+        wrapper.evcInternalSettle(settleData, hex"", remainingWrapperData);
+    }
+
+    function test_InvokeEvc_RevertsWhenEvcBatchFails() public {
+        MockEvcBaseWrapper.TestParams memory params =
+            MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: block.timestamp + 100});
+        bytes32 approvalHash = wrapper.getApprovalHash(params);
+        vm.prank(OWNER);
+        wrapper.setPreApprovedHash(approvalHash, true);
+
+        // Configure EVC to fail on batch call
+        mockEvc.setSuccessfulBatch(false);
+
+        vm.expectRevert("MockEVC: batch failed");
+        wrapper.invokeEvc("", abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
+    }
 }
