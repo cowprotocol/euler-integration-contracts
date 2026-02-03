@@ -134,8 +134,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         r.trades = new ICowSettlement.Trade[](1);
         (r.trades[0], r.orderData, r.orderUid) = setupCowOrder({
             tokens: r.tokens,
-            sellTokenIndex: 1,
-            buyTokenIndex: 2,
+            sellTokenIndex: 1, // WETH
+            buyTokenIndex: 2, // eUSDS
             sellAmount: sellAmount,
             buyAmount: buyAmount,
             validTo: validTo,

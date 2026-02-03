@@ -34,15 +34,12 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
 
     address constant OWNER = address(0x1111);
     address constant ACCOUNT = address(0x1112);
-    address constant SOLVER = address(0x3333);
-    address constant COLLATERAL_VAULT = address(0x4444);
-    address constant BORROW_VAULT = address(0x5555);
+    address immutable SOLVER = makeAddr("solver");
+    address immutable COLLATERAL_VAULT = makeAddr("collateral vault");
+    address immutable BORROW_VAULT = makeAddr("borrow vault");
 
     uint256 constant DEFAULT_COLLATERAL_AMOUNT = 1000e18;
     uint256 constant DEFAULT_BORROW_AMOUNT = 500e18;
-
-    event PreApprovedHash(address indexed owner, bytes32 indexed hash, bool approved);
-    event PreApprovedHashConsumed(address indexed owner, bytes32 indexed hash);
 
     /// @notice Get default OpenPositionParams for testing
     function _getDefaultParams() internal view returns (CowEvcOpenPositionWrapper.OpenPositionParams memory) {
