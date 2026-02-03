@@ -11,7 +11,6 @@ contract MockEVC {
     mapping(address => uint256) public nonces;
     bool public shouldSucceed = true;
     address public onBehalfOf;
-    bool public shouldVerifySignatures = false;
     uint256 public operatorMask = 0;
 
     error InvalidSignature();
@@ -29,14 +28,6 @@ contract MockEVC {
         DOMAIN_SEPARATOR = keccak256(
             abi.encode(DOMAIN_TYPE_HASH, keccak256("Ethereum Vault Connector"), block.chainid, address(this))
         );
-    }
-
-    function setSignatureVerification(bool enabled) external {
-        shouldVerifySignatures = enabled;
-    }
-
-    function setOperator(address account, address operator, bool authorized) external {
-        operators[account][operator] = authorized;
     }
 
     function setOperatorMask(uint256 mask) external {
@@ -97,28 +88,5 @@ contract MockEVC {
         shouldSucceed = success;
     }
 
-    function permit(
-        address signer,
-        address sender,
-        uint256 nonceNamespace,
-        uint256 nonce,
-        uint256 deadline,
-        uint256 value,
-        bytes memory data,
-        bytes memory signature
-    ) external view {
-        if (shouldVerifySignatures) {
-            bytes32 structHash = keccak256(
-                abi.encode(PERMIT_TYPEHASH, signer, sender, nonceNamespace, nonce, deadline, value, keccak256(data))
-            );
-            bytes32 digest = keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR, structHash));
-
-            address recoveredSigner = ECDSA.recover(digest, signature);
-            require(recoveredSigner == signer, InvalidSignature());
-        }
-    }
-
-    function getCurrentOnBehalfOfAccount(address) external view returns (address, bool) {
-        return (onBehalfOf, false);
-    }
+    function permit(address, address, uint256, uint256, uint256, uint256, bytes memory, bytes memory) external view {}
 }

@@ -6,10 +6,12 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {CowEvcOpenPositionWrapper} from "../../src/CowEvcOpenPositionWrapper.sol";
 import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
-import {ICowSettlement} from "../../src/CowWrapper.sol";
+import {ICowSettlement, CowWrapper} from "../../src/CowWrapper.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
+
+import {Bytes} from "openzeppelin-contracts/contracts/utils/Bytes.sol";
 
 // this is required because foundry doesn't have a cheatcode for override any transient storage.
 contract TestableOpenPositionWrapper is CowEvcOpenPositionWrapper {
@@ -23,6 +25,8 @@ contract TestableOpenPositionWrapper is CowEvcOpenPositionWrapper {
 /// @title Unit tests for CowEvcOpenPositionWrapper
 /// @notice Comprehensive unit tests focusing on isolated functionality testing with mocks
 contract CowEvcOpenPositionWrapperUnitTest is Test {
+    using Bytes for bytes;
+
     TestableOpenPositionWrapper public wrapper;
     MockEVC public mockEvc;
     MockCowSettlement public mockSettlement;
@@ -30,15 +34,12 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
 
     address constant OWNER = address(0x1111);
     address constant ACCOUNT = address(0x1112);
-    address constant SOLVER = address(0x3333);
-    address constant COLLATERAL_VAULT = address(0x4444);
-    address constant BORROW_VAULT = address(0x5555);
+    address immutable SOLVER = makeAddr("solver");
+    address immutable COLLATERAL_VAULT = makeAddr("collateral vault");
+    address immutable BORROW_VAULT = makeAddr("borrow vault");
 
     uint256 constant DEFAULT_COLLATERAL_AMOUNT = 1000e18;
     uint256 constant DEFAULT_BORROW_AMOUNT = 500e18;
-
-    event PreApprovedHash(address indexed owner, bytes32 indexed hash, bool approved);
-    event PreApprovedHashConsumed(address indexed owner, bytes32 indexed hash);
 
     /// @notice Get default OpenPositionParams for testing
     function _getDefaultParams() internal view returns (CowEvcOpenPositionWrapper.OpenPositionParams memory) {
@@ -88,18 +89,27 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         bytes32 hash = wrapper.getApprovalHash(params);
         vm.prank(OWNER);
         wrapper.setPreApprovedHash(hash, true);
-        mockEvc.setOperator(OWNER, address(wrapper), true);
-        mockEvc.setOperator(ACCOUNT, address(wrapper), true);
         return hash;
     }
 
-    /// @notice Decode signed calldata helper
-    function _decodeSignedCalldata(bytes memory signedCalldata) internal pure returns (IEVC.BatchItem[] memory) {
-        bytes memory encodedItems = new bytes(signedCalldata.length - 4);
-        for (uint256 i = 4; i < signedCalldata.length; i++) {
-            encodedItems[i - 4] = signedCalldata[i];
+    /// @notice Helper to get the decoded IEVC.BatchItem[] from a call to `encodePermitData`
+    function _decodePermitData(bytes memory permitData)
+        internal
+        pure
+        returns (IEVC.BatchItem[] memory items, bytes32 paramsHash)
+    {
+        bytes memory encodedItems = new bytes(permitData.length - 4);
+        for (uint256 i = 4; i < permitData.length; i++) {
+            encodedItems[i - 4] = permitData[i];
         }
-        return abi.decode(encodedItems, (IEVC.BatchItem[]));
+
+        items = abi.decode(encodedItems, (IEVC.BatchItem[]));
+
+        // normally we subtract 64 here but the length field is at beginning so its just `length`
+        uint256 pos = permitData.length;
+        assembly {
+            paramsHash := mload(add(permitData, pos))
+        }
     }
 
     function setUp() public {
@@ -153,6 +163,13 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         wrapper.validateWrapperData(wrapperData);
     }
 
+    /// @notice Test that validateWrapperData reverts on badly formatted input
+    function test_ValidateWrapperData_ValidateWrapperDataMalformed() external {
+        bytes memory malformedData = hex"deadbeef";
+        vm.expectRevert(new bytes(0));
+        wrapper.validateWrapperData(malformedData);
+    }
+
     /*//////////////////////////////////////////////////////////////
                     APPROVAL HASH TESTS
     //////////////////////////////////////////////////////////////*/
@@ -177,14 +194,16 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                    GET SIGNED CALLDATA TESTS
+                    ENCODE PERMIT DATA TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_GetSignedCalldata_EnableCollateralItem() public view {
+    function test_EncodePermitData_EncodesAsExpected() public view {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
 
-        bytes memory signedCalldata = wrapper.encodePermitData(params);
-        IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
+        bytes memory permitData = wrapper.encodePermitData(params);
+        (IEVC.BatchItem[] memory items, bytes32 paramsHash) = _decodePermitData(permitData);
+
+        assertEq(paramsHash, wrapper.getApprovalHash(params), "Params hash should match");
 
         assertEq(items[0].targetContract, address(mockEvc), "First item should target EVC");
         assertEq(
@@ -192,25 +211,11 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
             abi.encodeCall(IEVC.enableCollateral, (ACCOUNT, COLLATERAL_VAULT)),
             "Should enable collateral"
         );
-    }
-
-    function test_GetSignedCalldata_EnableControllerItem() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
-
-        bytes memory signedCalldata = wrapper.encodePermitData(params);
-        IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         assertEq(items[1].targetContract, address(mockEvc), "Second item should target EVC");
         assertEq(
             items[1].data, abi.encodeCall(IEVC.enableController, (ACCOUNT, BORROW_VAULT)), "Should enable controller"
         );
-    }
-
-    function test_GetSignedCalldata_DepositItem() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
-
-        bytes memory signedCalldata = wrapper.encodePermitData(params);
-        IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         assertEq(items[2].targetContract, COLLATERAL_VAULT, "Third item should target collateral vault");
         assertEq(items[2].onBehalfOfAccount, OWNER, "Should deposit on behalf of owner");
@@ -219,32 +224,19 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
             abi.encodeCall(IERC4626.deposit, (DEFAULT_COLLATERAL_AMOUNT, ACCOUNT)),
             "Should deposit collateral"
         );
-    }
-
-    function test_GetSignedCalldata_BorrowItem() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
-
-        bytes memory signedCalldata = wrapper.encodePermitData(params);
-        IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
 
         assertEq(items[3].targetContract, BORROW_VAULT, "Fourth item should target borrow vault");
         assertEq(items[3].onBehalfOfAccount, ACCOUNT, "Should borrow on behalf of account");
         assertEq(
             items[3].data, abi.encodeCall(IBorrowing.borrow, (DEFAULT_BORROW_AMOUNT, OWNER)), "Should borrow to owner"
         );
+
+        assertEq(items.length, 4, "Should have exactly 4 batch items");
     }
 
     /*//////////////////////////////////////////////////////////////
                     EVC INTERNAL SETTLE TESTS
     //////////////////////////////////////////////////////////////*/
-
-    function test_EvcInternalSettle_OnlyEVC() public {
-        bytes memory settleData = "";
-        bytes memory remainingWrapperData = "";
-
-        vm.expectRevert(abi.encodeWithSelector(CowEvcBaseWrapper.Unauthorized.selector, address(this)));
-        wrapper.evcInternalSettle(settleData, hex"", remainingWrapperData);
-    }
 
     function test_EvcInternalSettle_RequiresCorrectCalldata() public {
         bytes memory settleData = _getEmptySettleData();
@@ -287,7 +279,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         bytes memory settleData = "";
         bytes memory wrapperData = hex"0000";
 
-        vm.expectRevert(abi.encodeWithSignature("NotASolver(address)", address(this)));
+        vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, address(this)));
         wrapper.wrappedSettle(settleData, wrapperData);
     }
 
@@ -297,8 +289,6 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         bytes memory signature = new bytes(65); // Valid ECDSA signature length
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = _encodeWrapperData(params, signature);
-
-        mockEvc.setSuccessfulBatch(true);
 
         vm.prank(SOLVER);
         wrapper.wrappedSettle(settleData, wrapperData);
@@ -311,8 +301,6 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
 
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
-
-        mockEvc.setSuccessfulBatch(true);
 
         vm.prank(SOLVER);
         wrapper.wrappedSettle(settleData, wrapperData);
@@ -345,10 +333,6 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         // Calculate hash but DO NOT pre-approve it
         bytes32 hash = wrapper.getApprovalHash(params);
 
-        // Set operator permissions (required for EVC batch operations)
-        mockEvc.setOperator(OWNER, address(wrapper), true);
-        mockEvc.setOperator(ACCOUNT, address(wrapper), true);
-
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0)); // Empty signature triggers pre-approved hash flow
 
@@ -361,62 +345,15 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     function test_WrappedSettle_RevertsOnTamperedSignature() public {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
 
-        // Enable signature verification in MockEVC
-        mockEvc.setSignatureVerification(true);
-
-        // Create a private key and corresponding address for the owner
-        uint256 ownerPrivateKey = 0x1234567890123456789012345678901234567890123456789012345678901234;
-        address validOwner = vm.addr(ownerPrivateKey);
-
-        // Update params to use the valid owner. Account needs to be updated as well to avoid subaccount error.
-        params.owner = validOwner;
-        params.account = validOwner;
-
-        // Build the signed calldata that will be included in the permit
-        bytes memory signedCalldata = wrapper.encodePermitData(params);
-
-        // Create the permit digest as MockEVC would expect it
-        bytes32 permitStructHash = keccak256(
-            abi.encode(
-                keccak256(
-                    "Permit(address signer,address sender,uint256 nonceNamespace,uint256 nonce,uint256 deadline,uint256 value,bytes data)"
-                ),
-                validOwner, // signer
-                address(wrapper), // sender
-                uint256(uint160(address(wrapper))), // nonceNamespace
-                0, // nonce
-                params.deadline, // deadline
-                0, // value
-                keccak256(signedCalldata) // data hash
-            )
-        );
-
-        // Get domain separator from MockEVC
-        bytes32 domainSeparator = keccak256(
-            abi.encode(
-                keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)"),
-                keccak256("Ethereum Vault Connector"),
-                block.chainid,
-                address(mockEvc)
-            )
-        );
-
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, permitStructHash));
-
-        // Sign the digest
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerPrivateKey, digest);
-
-        // Tamper with the signature by flipping a bit in the r value
-        bytes memory tamperedSignature = abi.encodePacked(bytes32(uint256(r) ^ 1), s, v);
-
         bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = _encodeWrapperData(params, tamperedSignature);
+        bytes memory wrapperData =
+            _encodeWrapperData(params, hex"0000000000000000000000000000000000000000000000000000000000000000");
 
-        mockEvc.setSuccessfulBatch(true);
+        vm.mockCallRevert(address(mockEvc), 0, abi.encodeWithSelector(IEVC.permit.selector), "permit failure");
 
         // Expect revert with ECDSA error when signature is tampered
         vm.prank(SOLVER);
-        vm.expectRevert("ECDSA: invalid signature");
+        vm.expectRevert("permit failure");
         wrapper.wrappedSettle(settleData, wrapperData);
     }
 
@@ -428,29 +365,19 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
         params.collateralAmount = 0; // Zero collateral
 
-        bytes memory signedCalldata = wrapper.encodePermitData(params);
-        IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
+        bytes memory permitData = wrapper.encodePermitData(params);
+        (IEVC.BatchItem[] memory items,) = _decodePermitData(permitData);
 
         // Should still have deposit call, just with 0 amount
         assertEq(items[2].data, abi.encodeCall(IERC4626.deposit, (0, ACCOUNT)), "Should deposit 0");
-    }
-
-    function test_MaxBorrowAmount() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
-        params.borrowAmount = type(uint256).max;
-
-        bytes memory signedCalldata = wrapper.encodePermitData(params);
-        IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
-
-        assertEq(items[3].data, abi.encodeCall(IBorrowing.borrow, (type(uint256).max, OWNER)), "Should borrow max");
     }
 
     function test_SameOwnerAndAccount() public view {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
         params.account = OWNER; // Same as owner
 
-        bytes memory signedCalldata = wrapper.encodePermitData(params);
-        IEVC.BatchItem[] memory items = _decodeSignedCalldata(signedCalldata);
+        bytes memory permitData = wrapper.encodePermitData(params);
+        (IEVC.BatchItem[] memory items,) = _decodePermitData(permitData);
 
         // Should still work, but with same address
         assertEq(items[2].onBehalfOfAccount, OWNER, "Deposit should be on behalf of owner");

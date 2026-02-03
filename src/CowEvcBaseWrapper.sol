@@ -152,7 +152,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         bytes calldata settleData,
         bytes calldata wrapperData,
         bytes calldata remainingWrapperData
-    ) external payable {
+    ) external {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
         require(expectedEvcInternalSettleCallHash == keccak256(msg.data), InvalidCallback());
         expectedEvcInternalSettleCallHash = bytes32(0);
