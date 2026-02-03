@@ -45,7 +45,10 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
         bytes calldata settleData,
         bytes calldata wrapperData,
         bytes calldata remainingWrapperData
-    ) internal override {}
+    ) internal override {
+        // We dont have anything special to do here, just call the next in chain
+        _next(settleData, remainingWrapperData);
+    }
 
     function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
         internal
@@ -102,6 +105,13 @@ contract CowEvcBaseWrapperTest is Test {
 
     address constant OWNER = address(0x1111);
     address constant ACCOUNT = address(0x1112);
+
+    bytes MOCK_SETTLEMENT_CALL =
+        abi.encodeCall(ICowSettlement.settle, (new address[](0), new uint256[](0), new ICowSettlement.Trade[](0), [
+            new ICowSettlement.Interaction[](0),
+            new ICowSettlement.Interaction[](0),
+            new ICowSettlement.Interaction[](0)
+        ]));
 
     MockEvcBaseWrapper wrapper;
 
@@ -203,7 +213,7 @@ contract CowEvcBaseWrapperTest is Test {
 
         mockEvc.setOperatorMask(0);
         vm.expectCall(address(mockEvc), abi.encodePacked(IEVC.setAccountOperator.selector), 0);
-        wrapper.invokeEvc("", abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
+        wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
     }
 
     function test_SetAccountOperator_CallsOwnerWhenOwnerBitSet() public {
@@ -215,7 +225,7 @@ contract CowEvcBaseWrapperTest is Test {
 
         mockEvc.setOperatorMask(1);
         vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (OWNER, address(wrapper), false)));
-        wrapper.invokeEvc("", abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
+        wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
     }
 
     function test_SetAccountOperator_CallsSubaccountWhenSubaccountBitSet() public {
@@ -229,7 +239,7 @@ contract CowEvcBaseWrapperTest is Test {
         /// forge-lint: disable-next-line(incorrect-shift)
         mockEvc.setOperatorMask(1 << bitPosition);
         vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (ACCOUNT, address(wrapper), false)));
-        wrapper.invokeEvc("", abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
+        wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
     }
 
     function test_SetAccountOperator_CallsBothWhenBothBitsSet() public {
@@ -244,7 +254,7 @@ contract CowEvcBaseWrapperTest is Test {
         mockEvc.setOperatorMask(1 | (1 << bitPosition));
         vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (ACCOUNT, address(wrapper), false)));
         vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (OWNER, address(wrapper), false)));
-        wrapper.invokeEvc("", abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
+        wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
     }
 
     function test_SetAccountOperator_NotCalledWithSignature() public {
@@ -256,7 +266,7 @@ contract CowEvcBaseWrapperTest is Test {
         /// forge-lint: disable-next-line(incorrect-shift)
         mockEvc.setOperatorMask(1 | (1 << bitPosition));
         vm.expectCall(address(mockEvc), abi.encodePacked(IEVC.setAccountOperator.selector), 0);
-        wrapper.invokeEvc("", abi.encode(params, signature), new bytes(0), params, signature);
+        wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, signature), new bytes(0), params, signature);
     }
 
     function test_SetAccountOperator_SkipsOwnerCallWhenOwnerEqualsAccount() public {
@@ -275,7 +285,7 @@ contract CowEvcBaseWrapperTest is Test {
         vm.expectCall(
             address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (sameAddress, address(wrapper), false)), 1
         );
-        wrapper.invokeEvc("", abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
+        wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
     }
 
     function test_EvcInternalSettle_OnlyEVC() public {
@@ -297,6 +307,22 @@ contract CowEvcBaseWrapperTest is Test {
         mockEvc.setSuccessfulBatch(false);
 
         vm.expectRevert("MockEVC: batch failed");
-        wrapper.invokeEvc("", abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
+        wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
+    }
+
+    function test_InvokeEvc_CallsSettlement() public {
+        MockEvcBaseWrapper.TestParams memory params =
+            MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: block.timestamp + 100});
+        bytes32 approvalHash = wrapper.getApprovalHash(params);
+        vm.prank(OWNER);
+        wrapper.setPreApprovedHash(approvalHash, true);
+
+        // Ensure that the settlement is called
+        vm.expectCall(
+            address(mockSettlement),
+            0,
+            MOCK_SETTLEMENT_CALL
+        );
+        wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
     }
 }

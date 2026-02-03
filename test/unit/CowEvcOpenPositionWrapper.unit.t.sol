@@ -6,7 +6,7 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {CowEvcOpenPositionWrapper} from "../../src/CowEvcOpenPositionWrapper.sol";
 import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
-import {ICowSettlement} from "../../src/CowWrapper.sol";
+import {ICowSettlement, CowWrapper} from "../../src/CowWrapper.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
@@ -163,6 +163,13 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         wrapper.validateWrapperData(wrapperData);
     }
 
+    /// @notice Test that validateWrapperData reverts on badly formatted input                                                     
+    function test_ValidateWrapperData_ValidateWrapperDataMalformed() external {                                                    
+        bytes memory malformedData = hex"deadbeef";
+        vm.expectRevert(new bytes(0));
+        wrapper.validateWrapperData(malformedData);
+    }
+
     /*//////////////////////////////////////////////////////////////
                     APPROVAL HASH TESTS
     //////////////////////////////////////////////////////////////*/
@@ -272,7 +279,7 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         bytes memory settleData = "";
         bytes memory wrapperData = hex"0000";
 
-        vm.expectRevert(abi.encodeWithSignature("NotASolver(address)", address(this)));
+        vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, address(this)));
         wrapper.wrappedSettle(settleData, wrapperData);
     }
 
