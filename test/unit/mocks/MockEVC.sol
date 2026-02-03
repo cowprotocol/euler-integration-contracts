@@ -2,7 +2,6 @@
 pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
-import {ECDSA} from "openzeppelin/utils/cryptography/ECDSA.sol";
 
 /// @title MockEVC
 /// @notice Mock implementation of EVC for unit testing

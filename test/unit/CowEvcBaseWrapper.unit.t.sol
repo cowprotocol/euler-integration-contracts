@@ -43,7 +43,7 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
 
     function _evcInternalSettle(
         bytes calldata settleData,
-        bytes calldata wrapperData,
+        bytes calldata,
         bytes calldata remainingWrapperData
     ) internal override {
         // We dont have anything special to do here, just call the next in chain
@@ -106,7 +106,7 @@ contract CowEvcBaseWrapperTest is Test {
     address constant OWNER = address(0x1111);
     address constant ACCOUNT = address(0x1112);
 
-    bytes MOCK_SETTLEMENT_CALL = abi.encodeCall(
+    bytes constant MOCK_SETTLEMENT_CALL = abi.encodeCall(
         ICowSettlement.settle,
         (
             new address[](0),
