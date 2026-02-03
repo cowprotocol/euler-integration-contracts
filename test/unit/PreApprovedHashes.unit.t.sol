@@ -128,8 +128,6 @@ contract PreApprovedHashesUnitTest is Test, PreApprovedHashes {
     //////////////////////////////////////////////////////////////*/
 
     function testFuzz_SetPreApprovedHash(address owner, bytes32 hash) public {
-        vm.assume(owner != address(0));
-
         vm.prank(owner);
         c.setPreApprovedHash(hash, true);
 
@@ -142,8 +140,6 @@ contract PreApprovedHashesUnitTest is Test, PreApprovedHashes {
     }
 
     function testFuzz_ConsumePreApprovedHash(address owner, bytes32 hash) public {
-        vm.assume(owner != address(0));
-
         vm.prank(owner);
         c.setPreApprovedHash(hash, true);
 
@@ -156,7 +152,6 @@ contract PreApprovedHashesUnitTest is Test, PreApprovedHashes {
     }
 
     function testFuzz_MultipleUsersAndHashes(address user1, address user2, bytes32 hash1, bytes32 hash2) public {
-        vm.assume(user1 != address(0) && user2 != address(0));
         vm.assume(user1 != user2);
         vm.assume(hash1 != hash2);
 
