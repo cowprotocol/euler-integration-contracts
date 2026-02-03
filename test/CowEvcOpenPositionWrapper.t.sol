@@ -119,8 +119,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     function getOpenPositionSettlement(
         address owner,
         address receiver,
-        IERC20 sellToken,
-        IEVault buyVaultToken,
         uint256 sellAmount,
         uint256 buyAmount
     ) public returns (SettlementData memory r) {
@@ -168,8 +166,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         SettlementData memory settlement = getOpenPositionSettlement({
             owner: user,
             receiver: account,
-            sellToken: WETH,
-            buyVaultToken: EUSDS,
             sellAmount: DEFAULT_BORROW_AMOUNT,
             buyAmount: MIN_BUY_SHARES_AMOUNT
         });
@@ -235,8 +231,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         SettlementData memory settlement = getOpenPositionSettlement({
             owner: user,
             receiver: account,
-            sellToken: WETH,
-            buyVaultToken: EUSDS,
             sellAmount: DEFAULT_BORROW_AMOUNT,
             buyAmount: MIN_BUY_SHARES_AMOUNT
         });
@@ -320,8 +314,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         SettlementData memory settlement = getOpenPositionSettlement({
             owner: user,
             receiver: account,
-            sellToken: WETH,
-            buyVaultToken: EUSDS,
             sellAmount: DEFAULT_BORROW_AMOUNT,
             buyAmount: DEFAULT_BUY_AMOUNT
         });
