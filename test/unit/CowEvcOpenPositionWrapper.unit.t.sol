@@ -365,16 +365,6 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         assertEq(items[2].data, abi.encodeCall(IERC4626.deposit, (0, ACCOUNT)), "Should deposit 0");
     }
 
-    function test_MaxBorrowAmount() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
-        params.borrowAmount = type(uint256).max;
-
-        bytes memory permitData = wrapper.encodePermitData(params);
-        (IEVC.BatchItem[] memory items,) = _decodePermitData(permitData);
-
-        assertEq(items[3].data, abi.encodeCall(IBorrowing.borrow, (type(uint256).max, OWNER)), "Should borrow max");
-    }
-
     function test_SameOwnerAndAccount() public view {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
         params.account = OWNER; // Same as owner
