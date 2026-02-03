@@ -163,8 +163,8 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
         wrapper.validateWrapperData(wrapperData);
     }
 
-    /// @notice Test that validateWrapperData reverts on badly formatted input                                                     
-    function test_ValidateWrapperData_ValidateWrapperDataMalformed() external {                                                    
+    /// @notice Test that validateWrapperData reverts on badly formatted input
+    function test_ValidateWrapperData_ValidateWrapperDataMalformed() external {
         bytes memory malformedData = hex"deadbeef";
         vm.expectRevert(new bytes(0));
         wrapper.validateWrapperData(malformedData);

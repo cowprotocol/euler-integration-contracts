@@ -106,12 +106,19 @@ contract CowEvcBaseWrapperTest is Test {
     address constant OWNER = address(0x1111);
     address constant ACCOUNT = address(0x1112);
 
-    bytes MOCK_SETTLEMENT_CALL =
-        abi.encodeCall(ICowSettlement.settle, (new address[](0), new uint256[](0), new ICowSettlement.Trade[](0), [
-            new ICowSettlement.Interaction[](0),
-            new ICowSettlement.Interaction[](0),
-            new ICowSettlement.Interaction[](0)
-        ]));
+    bytes MOCK_SETTLEMENT_CALL = abi.encodeCall(
+        ICowSettlement.settle,
+        (
+            new address[](0),
+            new uint256[](0),
+            new ICowSettlement.Trade[](0),
+            [
+                new ICowSettlement.Interaction[](0),
+                new ICowSettlement.Interaction[](0),
+                new ICowSettlement.Interaction[](0)
+            ]
+        )
+    );
 
     MockEvcBaseWrapper wrapper;
 
@@ -318,11 +325,7 @@ contract CowEvcBaseWrapperTest is Test {
         wrapper.setPreApprovedHash(approvalHash, true);
 
         // Ensure that the settlement is called
-        vm.expectCall(
-            address(mockSettlement),
-            0,
-            MOCK_SETTLEMENT_CALL
-        );
+        vm.expectCall(address(mockSettlement), 0, MOCK_SETTLEMENT_CALL);
         wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
     }
 }
