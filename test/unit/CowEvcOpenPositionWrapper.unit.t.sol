@@ -37,9 +37,6 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     uint256 constant DEFAULT_COLLATERAL_AMOUNT = 1000e18;
     uint256 constant DEFAULT_BORROW_AMOUNT = 500e18;
 
-    event PreApprovedHash(address indexed owner, bytes32 indexed hash, bool approved);
-    event PreApprovedHashConsumed(address indexed owner, bytes32 indexed hash);
-
     /// @notice Get default OpenPositionParams for testing
     function _getDefaultParams() internal view returns (CowEvcOpenPositionWrapper.OpenPositionParams memory) {
         return CowEvcOpenPositionWrapper.OpenPositionParams({
