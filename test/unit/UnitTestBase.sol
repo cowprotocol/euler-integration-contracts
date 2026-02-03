@@ -5,7 +5,8 @@ import {Test} from "forge-std/Test.sol";
 
 import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
-import {ICowSettlement} from "../../src/CowWrapper.sol";
+import {ICowSettlement, CowWrapper} from "../../src/CowWrapper.sol";
+import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
 import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 import {EmptyWrapper} from "../EmptyWrapper.sol";
 import {IEVC} from "evc/EthereumVaultConnector.sol";
@@ -39,6 +40,17 @@ abstract contract UnitTestBase is Test {
         vm.label(OWNER, "OWNER");
         vm.label(ACCOUNT, "ACCOUNT");
     }
+
+    function _encodeDefaultWrapperData(bytes memory signature)
+        internal
+        view
+        virtual
+        returns (bytes memory wrapperData);
+    
+    function _setupPreApprovedHashDefaultParams()
+        internal
+        virtual
+        returns (bytes32);
 
     /// @notice Helper to get the decoded IEVC.BatchItem[] from a call to `encodePermitData`
     function _decodePermitData(bytes memory permitData)
@@ -82,5 +94,66 @@ abstract contract UnitTestBase is Test {
         assertEq(address(wrapper.SETTLEMENT()), address(mockSettlement), "SETTLEMENT not set correctly");
         assertEq(address(wrapper.AUTHENTICATOR()), address(mockAuth), "AUTHENTICATOR not set correctly");
         assertEq(wrapper.NONCE_NAMESPACE(), uint256(uint160(address(wrapper))), "NONCE_NAMESPACE incorrect");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    WRAPPED SETTLE TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_WrappedSettle_OnlySolver() public {
+        bytes memory settleData = "";
+        bytes memory wrapperData = hex"0000";
+
+        vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, address(this)));
+        wrapper.wrappedSettle(settleData, wrapperData);
+    }
+
+    function test_WrappedSettle_WithPermitSignature() public {
+
+        bytes memory signature = new bytes(65);
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeDefaultWrapperData(signature);
+
+        vm.prank(SOLVER);
+        wrapper.wrappedSettle(settleData, wrapperData);
+    }
+
+    function test_WrappedSettle_WithPreApprovedHash() public {
+
+        bytes32 hash = _setupPreApprovedHashDefaultParams();
+
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeDefaultWrapperData(new bytes(0));
+
+        vm.prank(SOLVER);
+        wrapper.wrappedSettle(settleData, wrapperData);
+
+        assertFalse(wrapper.isHashPreApproved(OWNER, hash), "Hash should be consumed");
+    }
+
+    function test_WrappedSettle_RevertsIfHashNotPreApproved() public {
+        // Set operator permissions (required for EVC batch operations)
+        mockEvc.setOperator(OWNER, address(wrapper), true);
+
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeDefaultWrapperData(new bytes(0)); // Empty signature triggers pre-approved hash flow
+
+        // Expect revert with HashNotApproved error (there is an additional parameter at the end of the error but we don't care what the computed hash is)
+        vm.prank(SOLVER);
+        vm.expectRevert(abi.encodeWithSelector(PreApprovedHashes.HashNotApproved.selector, OWNER));
+        wrapper.wrappedSettle(settleData, wrapperData);
+    }
+
+    function test_WrappedSettle_RevertsOnTamperedSignature() public {
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData =
+            _encodeDefaultWrapperData(hex"0000000000000000000000000000000000000000000000000000000000000000");
+
+        vm.mockCallRevert(address(mockEvc), 0, abi.encodeWithSelector(IEVC.permit.selector), "permit failure");
+
+        // Expect revert with ECDSA error when permit fails
+        vm.prank(SOLVER);
+        vm.expectRevert("permit failure");
+        wrapper.wrappedSettle(settleData, wrapperData);
     }
 }

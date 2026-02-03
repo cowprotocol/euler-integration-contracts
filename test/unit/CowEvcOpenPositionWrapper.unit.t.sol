@@ -51,6 +51,15 @@ contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
         return abi.encodePacked(uint16(wrapperData.length), wrapperData);
     }
 
+    function _encodeDefaultWrapperData(bytes memory signature)
+        internal
+        view
+        override
+        returns (bytes memory wrapperData)
+    {
+        return _encodeWrapperData(_getDefaultParams(), signature);
+    }
+
     /// @notice Setup pre-approved hash flow
     function _setupPreApprovedHash(CowEvcOpenPositionWrapper.OpenPositionParams memory params)
         internal
@@ -60,6 +69,14 @@ contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
         vm.prank(OWNER);
         wrapper.setPreApprovedHash(hash, true);
         return hash;
+    }
+
+    function _setupPreApprovedHashDefaultParams()
+        internal
+        override
+        returns (bytes32)
+    {
+        return _setupPreApprovedHash(_getDefaultParams());
     }
 
     function setUp() public override {
@@ -218,88 +235,6 @@ contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
     /*//////////////////////////////////////////////////////////////
                     WRAPPED SETTLE TESTS
     //////////////////////////////////////////////////////////////*/
-
-    function test_WrappedSettle_OnlySolver() public {
-        bytes memory settleData = "";
-        bytes memory wrapperData = hex"0000";
-
-        vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, address(this)));
-        wrapper.wrappedSettle(settleData, wrapperData);
-    }
-
-    function test_WrappedSettle_WithPermitSignature() public {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
-
-        bytes memory signature = new bytes(65); // Valid ECDSA signature length
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = _encodeWrapperData(params, signature);
-
-        vm.prank(SOLVER);
-        wrapper.wrappedSettle(settleData, wrapperData);
-    }
-
-    function test_WrappedSettle_WithPreApprovedHash() public {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
-
-        bytes32 hash = _setupPreApprovedHash(params);
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
-
-        vm.prank(SOLVER);
-        wrapper.wrappedSettle(settleData, wrapperData);
-
-        // Verify hash was consumed
-        assertFalse(wrapper.isHashPreApproved(OWNER, hash), "Hash should be consumed");
-    }
-
-    function test_WrappedSettle_PreApprovedHashRevertsIfDeadlineExceeded() public {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
-        params.deadline = block.timestamp - 1; // Deadline in the past
-
-        _setupPreApprovedHash(params);
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
-
-        vm.prank(SOLVER);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                CowEvcBaseWrapper.OperationDeadlineExceeded.selector, params.deadline, block.timestamp
-            )
-        );
-        wrapper.wrappedSettle(settleData, wrapperData);
-    }
-
-    function test_WrappedSettle_RevertsIfHashNotPreApproved() public {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
-
-        // Calculate hash but DO NOT pre-approve it
-        bytes32 hash = CowEvcOpenPositionWrapper(address(wrapper)).getApprovalHash(params);
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0)); // Empty signature triggers pre-approved hash flow
-
-        // Expect revert with HashNotApproved error
-        vm.prank(SOLVER);
-        vm.expectRevert(abi.encodeWithSelector(PreApprovedHashes.HashNotApproved.selector, OWNER, hash));
-        wrapper.wrappedSettle(settleData, wrapperData);
-    }
-
-    function test_WrappedSettle_RevertsOnTamperedSignature() public {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData =
-            _encodeWrapperData(params, hex"0000000000000000000000000000000000000000000000000000000000000000");
-
-        vm.mockCallRevert(address(mockEvc), 0, abi.encodeWithSelector(IEVC.permit.selector), "permit failure");
-
-        // Expect revert with ECDSA error when permit fails
-        vm.prank(SOLVER);
-        vm.expectRevert("permit failure");
-        wrapper.wrappedSettle(settleData, wrapperData);
-    }
 
     /*//////////////////////////////////////////////////////////////
                     EDGE CASE TESTS

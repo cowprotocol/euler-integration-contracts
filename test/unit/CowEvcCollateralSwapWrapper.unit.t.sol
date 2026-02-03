@@ -6,7 +6,7 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 import {CowEvcCollateralSwapWrapper} from "../../src/CowEvcCollateralSwapWrapper.sol";
 import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
-import {ICowSettlement} from "../../src/CowWrapper.sol";
+import {ICowSettlement, CowWrapper} from "../../src/CowWrapper.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
 import {MockERC20, MockVault} from "./mocks/MockERC20AndVaults.sol";
@@ -60,6 +60,15 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         return abi.encodePacked(uint16(wrapperData.length), wrapperData);
     }
 
+    function _encodeDefaultWrapperData(bytes memory signature)
+        internal
+        view
+        override
+        returns (bytes memory wrapperData)
+    {
+        return _encodeWrapperData(_getDefaultParams(), signature);
+    }
+    
     /// @notice Setup pre-approved hash flow
     function _setupPreApprovedHash(CowEvcCollateralSwapWrapper.CollateralSwapParams memory params)
         internal
@@ -70,6 +79,14 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         wrapper.setPreApprovedHash(hash, true);
         mockEvc.setOperator(OWNER, address(wrapper), true);
         return hash;
+    }
+
+    function _setupPreApprovedHashDefaultParams()
+        internal
+        override
+        returns (bytes32)
+    {
+        return _setupPreApprovedHash(_getDefaultParams());
     }
 
     function setUp() public override {
@@ -84,6 +101,13 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         // Set solver as authenticated
         mockAuth.setSolver(address(wrapper), true);
         mockAuth.setSolver(address(emptyWrapper), true);
+
+
+        mockFromVault.mint(OWNER, 2000e18);
+
+        vm.prank(OWNER);
+        mockFromVault.approve(address(wrapper), 2000e18);
+
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -140,10 +164,32 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
     }
 
     /*//////////////////////////////////////////////////////////////
+                    WRAPPED SETTLE TESTS
+    //////////////////////////////////////////////////////////////*/
+    function test_WrappedSettle_PreApprovedHashRevertsIfDeadlineExceeded() public {
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
+        params.account = OWNER; // Same account
+        params.deadline = block.timestamp - 1; // Past deadline
+
+        _setupPreApprovedHash(params);
+
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeDefaultWrapperData(new bytes(0));
+
+        vm.prank(SOLVER);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CowEvcBaseWrapper.OperationDeadlineExceeded.selector, params.deadline, block.timestamp
+            )
+        );
+        wrapper.wrappedSettle(settleData, wrapperData);
+    }
+
+    /*//////////////////////////////////////////////////////////////
                     ENCODE PERMIT DATA TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_GetSignedCalldata_IsCorrect() public view {
+    function test_EncodePermitData_IsCorrect() public view {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
 
         bytes memory permitData = CowEvcCollateralSwapWrapper(address(wrapper)).encodePermitData(params);
@@ -239,111 +285,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
     }
 
     /*//////////////////////////////////////////////////////////////
-                    WRAPPED SETTLE TESTS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_WrappedSettle_OnlySolver() public {
-        bytes memory settleData = "";
-        bytes memory wrapperData = hex"0000";
-
-        vm.expectRevert(abi.encodeWithSignature("NotASolver(address)", address(this)));
-        wrapper.wrappedSettle(settleData, wrapperData);
-    }
-
-    function test_WrappedSettle_WithPermitSignature() public {
-        mockFromVault.mint(OWNER, 2000e18);
-
-        vm.prank(OWNER);
-        mockFromVault.approve(address(wrapper), 2000e18);
-
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
-        params.account = OWNER; // Same account
-
-        bytes memory signature = new bytes(65);
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = _encodeWrapperData(params, signature);
-
-        mockEvc.setSuccessfulBatch(true);
-
-        vm.prank(SOLVER);
-        wrapper.wrappedSettle(settleData, wrapperData);
-    }
-
-    function test_WrappedSettle_WithPreApprovedHash() public {
-        mockFromVault.mint(OWNER, 2000e18);
-
-        vm.prank(OWNER);
-        mockFromVault.approve(address(wrapper), 2000e18);
-
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
-        params.account = OWNER; // Same account
-
-        bytes32 hash = _setupPreApprovedHash(params);
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
-
-        mockEvc.setSuccessfulBatch(true);
-
-        vm.prank(SOLVER);
-        wrapper.wrappedSettle(settleData, wrapperData);
-
-        assertFalse(wrapper.isHashPreApproved(OWNER, hash), "Hash should be consumed");
-    }
-
-    function test_WrappedSettle_RevertsIfHashNotPreApproved() public {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
-
-        // Calculate hash but DO NOT pre-approve it
-        bytes32 hash = CowEvcCollateralSwapWrapper(address(wrapper)).getApprovalHash(params);
-
-        // Set operator permissions (required for EVC batch operations)
-        mockEvc.setOperator(OWNER, address(wrapper), true);
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0)); // Empty signature triggers pre-approved hash flow
-
-        // Expect revert with HashNotApproved error
-        vm.prank(SOLVER);
-        vm.expectRevert(abi.encodeWithSelector(PreApprovedHashes.HashNotApproved.selector, OWNER, hash));
-        wrapper.wrappedSettle(settleData, wrapperData);
-    }
-
-    function test_WrappedSettle_PreApprovedHashRevertsIfDeadlineExceeded() public {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
-        params.account = OWNER; // Same account
-        params.deadline = block.timestamp - 1; // Past deadline
-
-        _setupPreApprovedHash(params);
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
-
-        vm.prank(SOLVER);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                CowEvcBaseWrapper.OperationDeadlineExceeded.selector, params.deadline, block.timestamp
-            )
-        );
-        wrapper.wrappedSettle(settleData, wrapperData);
-    }
-
-    function test_WrappedSettle_RevertsOnTamperedSignature() public {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData =
-            _encodeWrapperData(params, hex"0000000000000000000000000000000000000000000000000000000000000000");
-
-        vm.mockCallRevert(address(mockEvc), 0, abi.encodeWithSelector(IEVC.permit.selector), "permit failure");
-
-        // Expect revert with ECDSA error when permit fails
-        vm.prank(SOLVER);
-        vm.expectRevert("permit failure");
-        wrapper.wrappedSettle(settleData, wrapperData);
-    }
-
-    /*//////////////////////////////////////////////////////////////
                     EDGE CASE TESTS
     //////////////////////////////////////////////////////////////*/
 
@@ -410,8 +351,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         bytes memory wrapperData = abi.encode(params, signature);
         wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
-        mockEvc.setSuccessfulBatch(true);
-
         mockFromVault.mint(1000 ether, OWNER);
 
         vm.prank(SOLVER);
@@ -440,7 +379,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
-        mockEvc.setSuccessfulBatch(true);
         mockFromVault.mint(1000 ether, OWNER);
 
         vm.prank(SOLVER);
