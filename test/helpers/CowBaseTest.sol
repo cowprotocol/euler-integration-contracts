@@ -47,9 +47,7 @@ contract CowBaseTest is Test {
     uint256 privateKey3;
 
     function setUp() public virtual {
-        if (bytes(forkRpcUrl).length == 0) {
-            revert("Must supply FORK_RPC_URL");
-        }
+        vm.skip(bytes(forkRpcUrl).length == 0);
 
         mainnetFork = vm.createSelectFork(forkRpcUrl);
         vm.rollFork(BLOCK_NUMBER);
