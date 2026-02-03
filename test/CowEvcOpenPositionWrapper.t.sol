@@ -68,7 +68,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         });
     }
 
-    /// @notice Setup user approvals for pre-approved hash flow
+    /// @notice Setup user approvals for pre-approved hash flow. This doesn't include the CoW order pre-signature because out of scope of testing, and handled elsewhere
+    /// in order to simplify order creation.
     function _setupUserPreApprovedFlow(address account, bytes32 hash) internal {
         vm.startPrank(user);
         USDS.approve(address(EUSDS), type(uint256).max);
@@ -118,8 +119,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     function getOpenPositionSettlement(
         address owner,
         address receiver,
-        IERC20 sellToken,
-        IEVault buyVaultToken,
         uint256 sellAmount,
         uint256 buyAmount
     ) public returns (SettlementData memory r) {
@@ -133,8 +132,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         r.trades = new ICowSettlement.Trade[](1);
         (r.trades[0], r.orderData, r.orderUid) = setupCowOrder({
             tokens: r.tokens,
-            sellTokenIndex: 1,
-            buyTokenIndex: 2,
+            sellTokenIndex: 1, // WETH
+            buyTokenIndex: 2, // eUSDS
             sellAmount: sellAmount,
             buyAmount: buyAmount,
             validTo: validTo,
@@ -151,17 +150,15 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             new ICowSettlement.Interaction[](0)
         ];
         // First interaction: convert the borrowed tokens on a DEX (Uniswap, for example)
-        r.interactions[1][0] = getSwapInteraction(sellToken, IERC20(buyVaultToken.asset()), sellAmount);
+        r.interactions[1][0] = getSwapInteraction(WETH, IERC20(EUSDS.asset()), sellAmount);
         // Second interaction: The converted tokens get transferred to the euler vault (a "deposit")
-        r.interactions[1][1] = getDepositInteraction(buyVaultToken, buyAmount);
+        r.interactions[1][1] = getDepositInteraction(EUSDS, buyAmount);
 
         // By the way, it is technically possible to deposit without having to do a skim. But I find the parameters a bit more convenient, and an extra approval isnt required because we initiate the transfer.
     }
 
     /// @notice Test opening a leveraged position using the new wrapper
     function test_OpenPositionWrapper_Success() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
         // Create params using helper
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
@@ -169,8 +166,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         SettlementData memory settlement = getOpenPositionSettlement({
             owner: user,
             receiver: account,
-            sellToken: WETH,
-            buyVaultToken: EUSDS,
             sellAmount: DEFAULT_BORROW_AMOUNT,
             buyAmount: MIN_BUY_SHARES_AMOUNT
         });
@@ -229,8 +224,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
     /// @notice Test opening a position with pre-approved hash (no signature needed)
     function test_OpenPositionWrapper_WithPreApprovedHash() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
         // Create params using helper
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
@@ -238,8 +231,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         SettlementData memory settlement = getOpenPositionSettlement({
             owner: user,
             receiver: account,
-            sellToken: WETH,
-            buyVaultToken: EUSDS,
             sellAmount: DEFAULT_BORROW_AMOUNT,
             buyAmount: MIN_BUY_SHARES_AMOUNT
         });
@@ -253,11 +244,23 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             EVC.isAccountOperatorAuthorized(user, address(openPositionWrapper)),
             "Wrapper should be an authorized operator for the account before settle"
         );
+        assertTrue(
+            EVC.isAccountOperatorAuthorized(account, address(openPositionWrapper)),
+            "Wrapper should be an authorized operator for the owner before settle"
+        );
 
         // User pre-approves the order on CowSwap
         // Does not need to run here because it was signed as part of the settlement creation
 
-        assertEq(EWETH.debtOf(account), 0, "User should start with no debt");
+        // Verify that no position is open to start with
+        _verifyPositionOpened({
+            account: account,
+            collateralVaultToken: EUSDS,
+            borrowVaultToken: EWETH,
+            expectedCollateral: 0,
+            expectedDebt: 0,
+            allowedDelta: 0
+        });
 
         // Encode settlement and wrapper data (empty signature since pre-approved)
         bytes memory settleData = abi.encodeCall(
@@ -291,16 +294,19 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         });
 
         // Verify that the operator has been revoked for the account after the operation
+        // Verify that the operator is authorized before executing
+        assertFalse(
+            EVC.isAccountOperatorAuthorized(user, address(openPositionWrapper)),
+            "Wrapper should no longer be an authorized operator for the account after settle"
+        );
         assertFalse(
             EVC.isAccountOperatorAuthorized(account, address(openPositionWrapper)),
-            "Wrapper should no longer be an operator for the account"
+            "Wrapper should no longer be an authorized operator for the owner after settle"
         );
     }
 
     /// @notice Test that invalid signature causes the transaction to revert
     function test_OpenPositionWrapper_InvalidSignatureReverts() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
         // Create params using helper
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
@@ -308,8 +314,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         SettlementData memory settlement = getOpenPositionSettlement({
             owner: user,
             receiver: account,
-            sellToken: WETH,
-            buyVaultToken: EUSDS,
             sellAmount: DEFAULT_BORROW_AMOUNT,
             buyAmount: DEFAULT_BUY_AMOUNT
         });
@@ -345,8 +349,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     /// @notice Test that the wrapper can handle being called three times in the same chain
     /// @dev Two users open positions in the same direction (long USDS), one user opens opposite (long WETH)
     function test_OpenPositionWrapper_ThreeUsers_TwoSameOneOpposite() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
         // Setup User1: Has USDS, will borrow WETH and swap WETH→USDS (long USDS). Around 1 ETH
         deal(address(USDS), user, 2000 ether);
 

@@ -67,6 +67,9 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that neither `_encodeBatchItemsBefore` nor `_encodeBatchItemsAfter` requested permission, meaning the provided permit signature is unused.
     error UnusedPermitSignature();
 
+    /// @dev Indicates that the computed Create2 address does not match the expected address. Mostly exists as a sanity check.
+    error Create2AddressMismatch(address expectedAddress);
+
     /// @dev Used to ensure that the EVC is calling back this contract with the correct data
     bytes32 internal transient expectedEvcInternalSettleCallHash;
 
@@ -152,7 +155,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         bytes calldata settleData,
         bytes calldata wrapperData,
         bytes calldata remainingWrapperData
-    ) external payable {
+    ) external {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
         require(expectedEvcInternalSettleCallHash == keccak256(msg.data), InvalidCallback());
         expectedEvcInternalSettleCallHash = bytes32(0);
