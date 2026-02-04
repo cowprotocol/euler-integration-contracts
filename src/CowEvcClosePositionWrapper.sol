@@ -127,7 +127,8 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
         _parseClosePositionParams(wrapperData);
     }
 
-    /// @notice Called by an offchain process to determine what data should be signed in a call to `wrappedSettle`.
+    /// @notice Called by an offchain process to determine what data should be signed for the permit flow.
+    /// This signature should be encoded with the wrapper data in `wrappedSettle`.
     /// @param params The parameters object provided as input to the wrapper
     /// @return The `EVC` call that would be submitted to `EVC.permit`. This would need to be signed as documented https://evc.wtf/docs/concepts/internals/permit.
     function encodePermitData(ClosePositionParams memory params) external view returns (bytes memory) {
