@@ -11,8 +11,6 @@ import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
 
-import {Bytes} from "openzeppelin-contracts/contracts/utils/Bytes.sol";
-
 // this is required because foundry doesn't have a cheatcode for override any transient storage.
 contract TestableOpenPositionWrapper is CowEvcOpenPositionWrapper {
     constructor(address _evc, ICowSettlement _settlement) CowEvcOpenPositionWrapper(_evc, _settlement) {}
@@ -25,8 +23,6 @@ contract TestableOpenPositionWrapper is CowEvcOpenPositionWrapper {
 /// @title Unit tests for CowEvcOpenPositionWrapper
 /// @notice Comprehensive unit tests focusing on isolated functionality testing with mocks
 contract CowEvcOpenPositionWrapperUnitTest is Test {
-    using Bytes for bytes;
-
     TestableOpenPositionWrapper public wrapper;
     MockEVC public mockEvc;
     MockCowSettlement public mockSettlement;
