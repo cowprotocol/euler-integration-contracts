@@ -78,7 +78,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         vm.startPrank(user);
 
         // Set operators
-        EVC.setAccountOperator(user, address(closePositionWrapper), true);
         EVC.setAccountOperator(account, address(closePositionWrapper), true);
 
         // Pre-approve hash
@@ -156,7 +155,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 sellAmount,
         uint256 buyAmount,
         uint256 userPrivateKey
-    ) public returns (SettlementData memory r) {
+    ) public view returns (SettlementData memory r) {
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
         // Get tokens and prices
