@@ -13,8 +13,6 @@ import {ICowSettlement} from "../../src/CowWrapper.sol";
 
 import {MilkSwap} from "./MilkSwap.sol";
 
-import {Inbox} from "../../src/Inbox.sol";
-
 contract CowBaseTest is Test {
     uint256 mainnetFork;
     uint256 constant BLOCK_NUMBER = 22546006;
@@ -318,7 +316,7 @@ contract CowBaseTest is Test {
         bytes32 inboxDomainSeparator,
         GPv2Order.Data memory orderData,
         uint256 userPrivateKey
-    ) internal view returns (bytes memory signature) {
+    ) internal pure returns (bytes memory signature) {
         bytes memory rawOrderData = abi.encode(orderData);
         // Compute the order hash (raw)
         bytes32 wrappedOrderHash = keccak256(
