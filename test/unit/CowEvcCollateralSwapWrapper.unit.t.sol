@@ -68,7 +68,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
     {
         return _encodeWrapperData(_getDefaultParams(), signature);
     }
-    
+
     /// @notice Setup pre-approved hash flow
     function _setupPreApprovedHash(CowEvcCollateralSwapWrapper.CollateralSwapParams memory params)
         internal
@@ -81,11 +81,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         return hash;
     }
 
-    function _setupPreApprovedHashDefaultParams()
-        internal
-        override
-        returns (bytes32)
-    {
+    function _setupPreApprovedHashDefaultParams() internal override returns (bytes32) {
         return _setupPreApprovedHash(_getDefaultParams());
     }
 
@@ -96,18 +92,18 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         mockFromVault = new MockVault(mockEvc, address(mockFromAsset), "Mock From Vault", "mFROM");
         mockToVault = new MockVault(mockEvc, address(mockToAsset), "Mock To Vault", "mTO");
 
-        wrapper = CowEvcBaseWrapper(new TestableCollateralSwapWrapper(address(mockEvc), ICowSettlement(address(mockSettlement))));
+        wrapper = CowEvcBaseWrapper(
+            new TestableCollateralSwapWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)))
+        );
 
         // Set solver as authenticated
         mockAuth.setSolver(address(wrapper), true);
         mockAuth.setSolver(address(emptyWrapper), true);
 
-
         mockFromVault.mint(OWNER, 2000e18);
 
         vm.prank(OWNER);
         mockFromVault.approve(address(wrapper), 2000e18);
-
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -212,7 +208,9 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         assertEq(items[1].onBehalfOfAccount, address(0), "Should have zero onBehalfOfAccount");
 
         assertEq(
-            paramsHash, CowEvcCollateralSwapWrapper(address(wrapper)).getApprovalHash(params), "Params hash should match"
+            paramsHash,
+            CowEvcCollateralSwapWrapper(address(wrapper)).getApprovalHash(params),
+            "Params hash should match"
         );
     }
 
@@ -250,9 +248,10 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         mockEvc.setOnBehalfOf(address(0x9999));
 
         // the wrapper data is omitted in the expected call
-        TestableCollateralSwapWrapper(address(wrapper)).setExpectedEvcInternalSettleCall(
-            abi.encodeCall(wrapper.evcInternalSettle, (settleData, new bytes(0), remainingWrapperData))
-        );
+        TestableCollateralSwapWrapper(address(wrapper))
+            .setExpectedEvcInternalSettleCall(
+                abi.encodeCall(wrapper.evcInternalSettle, (settleData, new bytes(0), remainingWrapperData))
+            );
 
         vm.prank(address(mockEvc));
         vm.expectRevert(CowEvcBaseWrapper.InvalidCallback.selector);
@@ -276,9 +275,10 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
 
         mockSettlement.setSuccessfulSettle(true);
 
-        TestableCollateralSwapWrapper(address(wrapper)).setExpectedEvcInternalSettleCall(
-            abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
-        );
+        TestableCollateralSwapWrapper(address(wrapper))
+            .setExpectedEvcInternalSettleCall(
+                abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
+            );
 
         vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
@@ -324,9 +324,10 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
 
         mockSettlement.setSuccessfulSettle(true);
 
-        TestableCollateralSwapWrapper(address(wrapper)).setExpectedEvcInternalSettleCall(
-            abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
-        );
+        TestableCollateralSwapWrapper(address(wrapper))
+            .setExpectedEvcInternalSettleCall(
+                abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
+            );
 
         vm.prank(address(mockEvc));
 

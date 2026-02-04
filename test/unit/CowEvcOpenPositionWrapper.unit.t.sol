@@ -71,11 +71,7 @@ contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
         return hash;
     }
 
-    function _setupPreApprovedHashDefaultParams()
-        internal
-        override
-        returns (bytes32)
-    {
+    function _setupPreApprovedHashDefaultParams() internal override returns (bytes32) {
         return _setupPreApprovedHash(_getDefaultParams());
     }
 

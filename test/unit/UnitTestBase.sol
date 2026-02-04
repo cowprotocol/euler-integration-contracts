@@ -41,16 +41,9 @@ abstract contract UnitTestBase is Test {
         vm.label(ACCOUNT, "ACCOUNT");
     }
 
-    function _encodeDefaultWrapperData(bytes memory signature)
-        internal
-        view
-        virtual
-        returns (bytes memory wrapperData);
-    
-    function _setupPreApprovedHashDefaultParams()
-        internal
-        virtual
-        returns (bytes32);
+    function _encodeDefaultWrapperData(bytes memory signature) internal view virtual returns (bytes memory wrapperData);
+
+    function _setupPreApprovedHashDefaultParams() internal virtual returns (bytes32);
 
     /// @notice Helper to get the decoded IEVC.BatchItem[] from a call to `encodePermitData`
     function _decodePermitData(bytes memory permitData)
@@ -109,7 +102,6 @@ abstract contract UnitTestBase is Test {
     }
 
     function test_WrappedSettle_WithPermitSignature() public {
-
         bytes memory signature = new bytes(65);
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = _encodeDefaultWrapperData(signature);
@@ -119,7 +111,6 @@ abstract contract UnitTestBase is Test {
     }
 
     function test_WrappedSettle_WithPreApprovedHash() public {
-
         bytes32 hash = _setupPreApprovedHashDefaultParams();
 
         bytes memory settleData = _getEmptySettleData();
