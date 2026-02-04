@@ -27,12 +27,15 @@ contract Inbox is IERC1271 {
         "Order(address sellToken,address buyToken,address receiver,uint256 sellAmount,uint256 buyAmount,uint32 validTo,bytes32 appData,uint256 feeAmount,string kind,bool partiallyFillable,string sellTokenBalance,string buyTokenBalance)"
     );
 
-    address public immutable OWNER;
+    /// @notice The contract which is taking action on behalf of the user. Is authorized to execute certain operations specified in this contract.
+    address public immutable OPERATOR;
+    /// @notice The address to which the funds ultimately belong to. Is authorized to execute certain operations specified in this contract (in case funds are somehow stuck).
     address public immutable BENEFICIARY;
+    /// @notice The CoW settlement contract address for purposes of signature verification
     address public immutable SETTLEMENT;
 
-    constructor(address owner, address beneficiary, address settlement) {
-        OWNER = owner;
+    constructor(address executor, address beneficiary, address settlement) {
+        OPERATOR = executor;
         BENEFICIARY = beneficiary;
         SETTLEMENT = settlement;
 
@@ -123,8 +126,12 @@ contract Inbox is IERC1271 {
         ICowSettlement(SETTLEMENT).setPreSignature(orderUid, approved);
     }
 
+    /// @notice Safe proxy function to set a token approval from this contract
+    /// @param token The address to call `approve` on
+    /// @param spender The `spender` parameter to use for the approve call
+    /// @param amount The `amount` parameter to use for the approve call
     function callApprove(address token, address spender, uint256 amount) external {
-        require(msg.sender == OWNER || msg.sender == BENEFICIARY, Unauthorized(msg.sender));
+        require(msg.sender == OPERATOR || msg.sender == BENEFICIARY, Unauthorized(msg.sender));
         IERC20(token).forceApprove(spender, amount);
     }
 
@@ -133,7 +140,7 @@ contract Inbox is IERC1271 {
     /// @param to The recipient address
     /// @param amount The amount to transfer
     function callTransfer(address token, address to, uint256 amount) external {
-        require(msg.sender == OWNER || msg.sender == BENEFICIARY, Unauthorized(msg.sender));
+        require(msg.sender == OPERATOR || msg.sender == BENEFICIARY, Unauthorized(msg.sender));
         IERC20(token).safeTransfer(to, amount);
     }
 
@@ -142,7 +149,7 @@ contract Inbox is IERC1271 {
     /// @param amount The amount to repay
     /// @param account The account to repay debt for
     function callVaultRepay(address vault, address asset, uint256 amount, address account) external {
-        require(msg.sender == OWNER || msg.sender == BENEFICIARY, Unauthorized(msg.sender));
+        require(msg.sender == OPERATOR || msg.sender == BENEFICIARY, Unauthorized(msg.sender));
         IERC20(asset).forceApprove(vault, amount);
         IBorrowing(vault).repay(amount, account);
     }
