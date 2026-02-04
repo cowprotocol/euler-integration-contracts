@@ -116,14 +116,10 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
     /// @notice Create settlement data for opening a leveraged position
     /// @dev Sells borrowed WETH to buy USDS which gets deposited into the vault
-    function getOpenPositionSettlement(
-        address owner,
-        address receiver,
-        IERC20 sellToken,
-        IEVault buyVaultToken,
-        uint256 sellAmount,
-        uint256 buyAmount
-    ) public returns (SettlementData memory r) {
+    function getOpenPositionSettlement(address owner, address receiver, uint256 sellAmount, uint256 buyAmount)
+        public
+        returns (SettlementData memory r)
+    {
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
         // Create trade and extract order data
@@ -166,12 +162,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Get settlement data
         SettlementData memory settlement = getOpenPositionSettlement({
-            owner: user,
-            receiver: account,
-            sellToken: WETH,
-            buyVaultToken: EUSDS,
-            sellAmount: DEFAULT_BORROW_AMOUNT,
-            buyAmount: MIN_BUY_SHARES_AMOUNT
+            owner: user, receiver: account, sellAmount: DEFAULT_BORROW_AMOUNT, buyAmount: MIN_BUY_SHARES_AMOUNT
         });
 
         // Setup user approvals
@@ -233,12 +224,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Get settlement data
         SettlementData memory settlement = getOpenPositionSettlement({
-            owner: user,
-            receiver: account,
-            sellToken: WETH,
-            buyVaultToken: EUSDS,
-            sellAmount: DEFAULT_BORROW_AMOUNT,
-            buyAmount: MIN_BUY_SHARES_AMOUNT
+            owner: user, receiver: account, sellAmount: DEFAULT_BORROW_AMOUNT, buyAmount: MIN_BUY_SHARES_AMOUNT
         });
 
         // Setup user approvals and pre-approve hash
@@ -318,12 +304,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Get settlement data
         SettlementData memory settlement = getOpenPositionSettlement({
-            owner: user,
-            receiver: account,
-            sellToken: WETH,
-            buyVaultToken: EUSDS,
-            sellAmount: DEFAULT_BORROW_AMOUNT,
-            buyAmount: DEFAULT_BUY_AMOUNT
+            owner: user, receiver: account, sellAmount: DEFAULT_BORROW_AMOUNT, buyAmount: DEFAULT_BUY_AMOUNT
         });
 
         // Setup user approvals
