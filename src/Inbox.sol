@@ -153,9 +153,10 @@ contract Inbox is IERC1271 {
     /// @param vault The vault contract to call repay on
     /// @param amount The amount to repay
     /// @param account The account to repay debt for
-    function callVaultRepay(address vault, address asset, uint256 amount, address account) external {
+    /// @return The amount repaid as returned by the vault
+    function callVaultRepay(address vault, address asset, uint256 amount, address account) external returns (uint256) {
         require(msg.sender == OPERATOR || msg.sender == BENEFICIARY, Unauthorized(msg.sender));
         IERC20(asset).forceApprove(vault, amount);
-        IBorrowing(vault).repay(amount, account);
+        return IBorrowing(vault).repay(amount, account);
     }
 }

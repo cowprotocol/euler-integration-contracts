@@ -30,6 +30,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
 
     error NoSwapOutput(address inboxForSwap);
     error InsufficientDebt(uint256 expectedMinDebt, uint256 actualDebt);
+    error UnexpectedRepayResult(uint256 expectedRepayAmount, uint256 actualRepaidAmount);
 
     /// @dev The EIP-712 domain name used for computing the domain separator.
     bytes32 constant DOMAIN_NAME = keccak256("CowEvcClosePositionWrapper");
@@ -40,14 +41,21 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Close Position";
 
-    /// @dev Emitted when a position is closed via this wrapper
+    /// @dev Emitted when a position is closed or reduced in size via this wrapper
+    /// @param owner The owner of the account that was closed
+    /// @param account The subaccount that was closed
+    /// @param borrowVault The vault of the borrowed asset
+    /// @param collateralVault The collateral asset used to repay
+    /// @param collateralAmount The amount of collateral that was used to repay the debt
+    /// @param repaidAmount The actual amount of debt repaid
+    /// @param leftoverAmount The amount of borrow token (dust) left over after repaying debt, sent back to the owner
     event CowEvcPositionClosed(
         address indexed owner,
         address account,
         address indexed borrowVault,
         address indexed collateralVault,
         uint256 collateralAmount,
-        uint256 repayAmount,
+        uint256 repaidAmount,
         uint256 leftoverAmount
     );
 
@@ -220,7 +228,11 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
         }
 
         // repay what was requested on the vault
-        inbox.callVaultRepay(params.borrowVault, address(borrowAsset), repayAmount, params.account);
+        uint256 repaidAmount =
+            inbox.callVaultRepay(params.borrowVault, address(borrowAsset), repayAmount, params.account);
+
+        // we already calculated the amount of debt that was going to be repaid, so this is sanity to ensure we repaid as expected
+        require(repaidAmount == repayAmount, UnexpectedRepayResult(repayAmount, repaidAmount));
 
         emit CowEvcPositionClosed(
             params.owner,
