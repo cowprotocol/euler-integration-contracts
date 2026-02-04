@@ -67,7 +67,6 @@ contract Inbox is IERC1271 {
             // in the EIP proposal, noting that the order struct has 12 fields, and
             // prefixing the type hash `(1 + 12) * 32 = 416` bytes to hash.
             // <https://github.com/ethereum/EIPs/blob/master/EIPS/eip-712.md#rationale-for-encodedata>
-            // solhint-disable-next-line no-inline-assembly
             assembly {
                 mstore(orderData, typeHash)
                 structHash := keccak256(orderData, 416)
@@ -101,8 +100,7 @@ contract Inbox is IERC1271 {
         uint8 v;
 
         // NOTE: Use assembly to efficiently decode signature data.
-        // solhint-disable-next-line no-inline-assembly
-        assembly {
+        assembly ("memory-safe") {
             // r = uint256(signature[0:32])
             r := calldataload(signature.offset)
             // s = uint256(signature[32:64])
