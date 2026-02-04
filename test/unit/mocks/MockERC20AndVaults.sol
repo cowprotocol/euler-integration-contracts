@@ -139,7 +139,6 @@ contract MockERC20 is IERC20 {
         mapping(address => uint256) public debts;
         uint256 public repayAmount;
         bool public repayAllWasCalled;
-        uint256 public repayCallCount;
 
         constructor(address _asset, string memory _name, string memory _symbol) MockVault(_asset, _name, _symbol) {}
 
@@ -160,8 +159,6 @@ contract MockERC20 is IERC20 {
         }
 
         function repay(uint256 amount, address receiver) external override returns (uint256) {
-            repayCallCount++;
-
             if (amount == type(uint256).max) {
                 repayAllWasCalled = true;
                 amount = debts[receiver];
