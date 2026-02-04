@@ -10,11 +10,10 @@ import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
 
 /// @title CowEvcCollateralSwapWrapper
 /// @notice A specialized wrapper for swapping collateral between vaults with EVC
-/// @dev This wrapper enables atomic collateral swaps:
-///      1. Enable new collateral vault
-///      2. Transfer collateral from EVC subaccount to main account (if using subaccount)
-///      3. Execute settlement to swap collateral (new collateral is deposited directly into user's account)
-///      All operations are atomic within EVC batch
+/// @dev This wrapper enables atomic collateral swaps by:
+///      1. Enabling new collateral vault
+///      2. Transfering collateral from EVC subaccount to main account (if using subaccount)
+///      3. Executing the settlement contract to swap collateral (new collateral is deposited directly into user's account)
 contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
     error InvalidSettlement(address fromVault, address toVault, uint256 fromVaultPrice, uint256 toVaultPrice);
 
@@ -166,22 +165,21 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
             params.account,
             params.deadline
         );
+
+        // Emit event - funds are now in the account from the settlement
+        emit CowEvcCollateralSwapped(
+            params.owner, params.account, params.fromVault, params.toVault, params.fromAmount, params.toAmount
+        );
     }
 
     function _evcInternalSettle(
         bytes calldata settleData,
-        bytes calldata wrapperData,
+        bytes calldata,
         bytes calldata remainingWrapperData
     ) internal override {
         // Use CowWrapper's _next to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
         _next(settleData, remainingWrapperData);
-
-        (CollateralSwapParams memory params,) = _parseCollateralSwapParams(wrapperData);
-        // Emit event - funds are now in the account from the settlement
-        emit CowEvcCollateralSwapped(
-            params.owner, params.account, params.fromVault, params.toVault, params.fromAmount, params.toAmount
-        );
     }
 
     function memoryLocation(CollateralSwapParams memory params) internal pure returns (ParamsLocation location) {
