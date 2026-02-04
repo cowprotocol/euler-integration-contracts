@@ -169,9 +169,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         r.clearingPrices[1] = milkSwap.prices(address(buyToRepayToken));
 
         // Get trade data using EIP-1271
-        // Use snapshot becuase `getInbox` deploys the Inbox contract with Create2, and we want
-        // to test like a user would use (without prior deployment)
-        uint256 snapshotId = vm.snapshotState();
         r.trades = new ICowSettlement.Trade[](1);
 
         (r.trades[0], r.orderData, r.orderUid) = setupCowOrderWithInbox({
@@ -181,11 +178,10 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             sellAmount: sellAmount,
             buyAmount: buyAmount,
             validTo: validTo,
-            receiver: closePositionWrapper.getInbox(owner, account),
+            receiver: closePositionWrapper.getInboxAddress(owner, account),
             isBuy: true,
             signerPrivateKey: userPrivateKey
         });
-        vm.revertToState(snapshotId);
 
         // Setup interactions - withdraw from vault, swap to repayment token
         r.interactions = [

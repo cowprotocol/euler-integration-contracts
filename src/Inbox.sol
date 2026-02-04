@@ -13,7 +13,7 @@ import {ICowSettlement} from "./CowWrapper.sol";
 /// The purpose of the BENEFICIARY is to allow the ultimate holder of the funds to be able to access this contract in the case of trouble (ex. funds got stuck, etc.)
 /// There are two general ways that this contract should be used in accordance with the wrappers:
 /// 1. If the wrapper authenticates the users through the permit flow, then the user is expected to sign the Inbox order through an ECDSA signature verified through EIP1271.
-/// 2. If the wrapper authenticates the user through pre-approved hashes, then the user is expected to use the pre-sign flow on CoW Settlement by enabling the order using the setPreSignature proxy function.
+/// 2. If the wrapper authenticates the user through pre-approved hashes, then the user is expected to use the pre-sign flow on CoW Settlement by enabling the order using the `setPreSignature` proxy function.
 contract Inbox is IERC1271 {
     using SafeERC20 for IERC20;
 

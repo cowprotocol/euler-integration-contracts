@@ -170,6 +170,13 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         return address(_getInbox(owner, subaccount));
     }
 
+    /// @notice Similar to `getInbox` but does not deploy the Inbox contract if it does not already exist (making this contract view-only). It only returns the address
+    /// that it would be deployed to.
+    function getInboxAddress(address owner, address subaccount) external view returns (address) {
+        (address creationAddress,,) = _getInboxAddress(owner, subaccount);
+        return creationAddress;
+    }
+
     /// @notice Compute the Inbox address for a given owner and subaccount (view-only, does not deploy)
     /// @param owner The owner address
     /// @param subaccount The subaccount address
