@@ -5,6 +5,7 @@ import {GPv2Order} from "cow/libraries/GPv2Order.sol";
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {Errors as EVaultErrors} from "euler-vault-kit/src/EVault/shared/Errors.sol";
 
 import {CowEvcBaseWrapper} from "../src/CowEvcBaseWrapper.sol";
 import {CowEvcCollateralSwapWrapper} from "../src/CowEvcCollateralSwapWrapper.sol";
@@ -20,7 +21,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     CowEvcCollateralSwapWrapper public collateralSwapWrapper;
     SignerECDSA internal ecdsa;
 
-    uint256 constant USDS_MARGIN = 2000e18;
     uint256 constant DEFAULT_SWAP_AMOUNT = 500e18;
     uint256 constant DEFAULT_BUY_AMOUNT = 0.0045e8;
 
@@ -177,6 +177,19 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     function test_CollateralSwapWrapper_MainAccount() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
+        uint256 borrowAmount = 0.5e18; // Borrow 0.5 WETH
+        uint256 collateralAmount = 1000e18;
+
+        // Set up a leveraged position
+        setupLeveragedPositionFor({
+            owner: user,
+            ownerAccount: user,
+            collateralVault: EUSDS,
+            borrowVault: EWETH,
+            collateralAmount: collateralAmount + borrowAmount * 2500e18 / 0.99e18,
+            borrowAmount: borrowAmount
+        });
+
         // Create params using helper
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, user);
 
@@ -190,15 +203,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             buyAmount: DEFAULT_BUY_AMOUNT
         });
 
-        // User deposits USDS collateral
+        // Approve spending of the EUSDS to send collateral to COW settlement
         vm.startPrank(user);
-        USDS.approve(address(EUSDS), type(uint256).max);
-        uint256 depositAmount = 1000e18;
-        EUSDS.deposit(depositAmount, user);
-
-        // User signs the order and approves vault shares for settlement (already done in setupCowOrder)
-
-        // Approve spending of the EUSDS to repay debt
         EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
         vm.stopPrank();
 
@@ -234,6 +240,19 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     function test_CollateralSwapWrapper_Subaccount() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
+        uint256 borrowAmount = 0.5e18; // Borrow 0.5 WETH
+        uint256 collateralAmount = 2000e18;
+
+        // Set up a leveraged position
+        setupLeveragedPositionFor({
+            owner: user,
+            ownerAccount: account,
+            collateralVault: EUSDS,
+            borrowVault: EWETH,
+            collateralAmount: collateralAmount + borrowAmount * 2500e18 / 0.99e18,
+            borrowAmount: borrowAmount
+        });
+
         // Create params using helper
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, account);
 
@@ -246,16 +265,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             sellAmount: DEFAULT_SWAP_AMOUNT,
             buyAmount: DEFAULT_BUY_AMOUNT
         });
-
-        // User deposits USDS collateral to subaccount
-        vm.startPrank(user);
-        USDS.approve(address(EUSDS), type(uint256).max);
-        uint256 depositAmount = 1000e18;
-        EUSDS.deposit(depositAmount, account);
-
-        // User signs the order on cowswap (already done in setupCowOrder)
-
-        vm.stopPrank();
 
         // Setup subaccount approvals and pre-approved hash
         _setupSubaccountApprovals(params);
@@ -287,37 +296,75 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             "Subaccount should have less EUSDS after swap"
         );
         assertGt(EWBTC.balanceOf(account), wbtcBalanceBefore, "Subaccount should have more EWBTC after swap");
-
-        // Main account balance should remain unchanged (transfer is atomic through settlement)
-        assertEq(EUSDS.balanceOf(user), 0, "Main account EUSDS balance should be 0");
+        assertEq(EWBTC.balanceOf(user), 0, "User should have no EWBTC after swap");
     }
 
     /// @notice Test that invalid signature causes the transaction to revert
     function test_CollateralSwapWrapper_InvalidSignatureReverts() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
+        uint256 borrowAmount = 0.5e18; // Borrow 0.5 WETH
+        uint256 collateralAmount = 2000e18;
+
+        // Set up a leveraged position
+        setupLeveragedPositionFor({
+            owner: user,
+            ownerAccount: user,
+            collateralVault: EUSDS,
+            borrowVault: EWETH,
+            collateralAmount: collateralAmount + borrowAmount * 2500e18 / 0.99e18,
+            borrowAmount: borrowAmount
+        });
+
         // Create params using helper (use user as both owner and account to avoid subaccount transfers)
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, user);
 
         // Get settlement data
-        SettlementData memory settlement = getCollateralSwapSettlement({
-            owner: user,
-            account: user,
-            sellVaultToken: EUSDS,
-            buyVaultToken: EWBTC,
-            sellAmount: DEFAULT_SWAP_AMOUNT,
-            buyAmount: DEFAULT_BUY_AMOUNT
-        });
+        SettlementData memory settlement;
+        {
+            uint32 validTo = uint32(block.timestamp + 1 hours);
 
-        // User deposits USDS collateral
-        vm.startPrank(user);
-        USDS.approve(address(EUSDS), type(uint256).max);
-        uint256 depositAmount = 1000e18;
-        EUSDS.deposit(depositAmount, user);
+            // Get tokens and prices
+            settlement.tokens = new address[](2);
+            settlement.tokens[0] = address(EUSDS);
+            settlement.tokens[1] = address(WBTC);
 
-        // User approves vault shares for settlement
+            settlement.clearingPrices = new uint256[](2);
+            settlement.clearingPrices[0] = milkSwap.prices(IERC4626(EUSDS).asset());
+            settlement.clearingPrices[1] = milkSwap.prices(address(WBTC)) * 1 ether / 0.98 ether;
+
+            // Get trade data
+            settlement.trades = new ICowSettlement.Trade[](1);
+            (settlement.trades[0], settlement.orderData, settlement.orderUid) = setupCowOrder({
+                tokens: settlement.tokens,
+                sellTokenIndex: 0,
+                buyTokenIndex: 1,
+                sellAmount: params.fromAmount,
+                buyAmount: params.toAmount,
+                validTo: validTo,
+                owner: params.owner,
+                receiver: params.account,
+                isBuy: false
+            });
+
+            // Setup interactions - withdraw from sell vault, swap underlying assets, deposit to buy vault
+            settlement.interactions = [
+                new ICowSettlement.Interaction[](0),
+                new ICowSettlement.Interaction[](2),
+                new ICowSettlement.Interaction[](0)
+            ];
+
+            // Withdraw from sell vault
+            settlement.interactions[1][0] = getWithdrawInteraction(EUSDS, params.fromAmount);
+
+            // Swap underlying assets
+            uint256 swapAmount = params.fromAmount * 0.999 ether / 1 ether;
+            settlement.interactions[1][1] = getSwapInteraction(IERC20(EUSDS.asset()), WBTC, swapAmount);
+        }
+
+        // Approve vault shares for settlement
+        vm.prank(user);
         EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
-        vm.stopPrank();
 
         // Create INVALID permit signature by signing with wrong private key (user2's key instead of user's)
         ecdsa.setPrivateKey(privateKey2); // Wrong private key!

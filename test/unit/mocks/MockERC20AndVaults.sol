@@ -159,13 +159,13 @@ contract MockERC20 is IERC20 {
         }
 
         function transferFrom(address from, address to, uint256 amount) external override returns (bool) {
-            address sender = msg.sender;
-            if (sender == address(EVC)) {
-                (sender,) = EVC.getCurrentOnBehalfOfAccount(address(0));
+            address spender = msg.sender;
+            if (spender == address(EVC)) {
+                (spender,) = EVC.getCurrentOnBehalfOfAccount(address(0));
             }
-            if (allowance[from][sender] != type(uint256).max) {
-                require(allowance[from][sender] >= amount, "ERC20Mock: insufficient allowance");
-                allowance[from][sender] -= amount;
+            if (allowance[from][spender] != type(uint256).max) {
+                require(allowance[from][spender] >= amount, "ERC20Mock: insufficient allowance");
+                allowance[from][spender] -= amount;
             }
             require(balanceOf[from] >= amount, "ERC20Mock: insufficient balance");
             balanceOf[from] -= amount;

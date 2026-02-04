@@ -172,11 +172,10 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         );
     }
 
-    function _evcInternalSettle(
-        bytes calldata settleData,
-        bytes calldata,
-        bytes calldata remainingWrapperData
-    ) internal override {
+    function _evcInternalSettle(bytes calldata settleData, bytes calldata, bytes calldata remainingWrapperData)
+        internal
+        override
+    {
         // Use CowWrapper's _next to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
         _next(settleData, remainingWrapperData);
