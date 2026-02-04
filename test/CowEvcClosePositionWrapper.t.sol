@@ -79,6 +79,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Set operators
         EVC.setAccountOperator(account, address(closePositionWrapper), true);
+        EVC.setAccountOperator(user, address(closePositionWrapper), true);
 
         // Pre-approve hash
         closePositionWrapper.setPreApprovedHash(hash, true);
@@ -170,6 +171,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Get trade data using EIP-1271
         r.trades = new ICowSettlement.Trade[](1);
 
+        (address inboxAddress, bytes32 inboxDomainSeparator) =
+            closePositionWrapper.getInboxAddressAndDomainSeparator(owner, account);
+
         (r.trades[0], r.orderData, r.orderUid) = setupCowOrderWithInbox({
             tokens: r.tokens,
             sellTokenIndex: 0,
@@ -177,7 +181,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             sellAmount: sellAmount,
             buyAmount: buyAmount,
             validTo: validTo,
-            receiver: closePositionWrapper.getInboxAddress(owner, account),
+            receiver: inboxAddress,
+            inboxDomainSeparator: inboxDomainSeparator,
             isBuy: true,
             signerPrivateKey: userPrivateKey
         });
@@ -608,39 +613,55 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         (address[] memory tokens, uint256[] memory clearingPrices) = getTokensAndPrices();
 
         ICowSettlement.Trade[] memory trades = new ICowSettlement.Trade[](3);
-        (trades[0],,) = setupCowOrderWithInbox({
-            tokens: tokens,
-            sellTokenIndex: 2,
-            buyTokenIndex: 1,
-            sellAmount: params1.collateralAmount,
-            buyAmount: 1.001 ether,
-            validTo: validTo,
-            receiver: closePositionWrapper.getInbox(user, account),
-            isBuy: true,
-            signerPrivateKey: privateKey
-        });
-        (trades[1],,) = setupCowOrderWithInbox({
-            tokens: tokens,
-            sellTokenIndex: 2,
-            buyTokenIndex: 1,
-            sellAmount: params2.collateralAmount,
-            buyAmount: 3.003 ether,
-            validTo: validTo,
-            receiver: closePositionWrapper.getInbox(user2, account2),
-            isBuy: true,
-            signerPrivateKey: privateKey2
-        });
-        (trades[2],,) = setupCowOrderWithInbox({
-            tokens: tokens,
-            sellTokenIndex: 3,
-            buyTokenIndex: 0,
-            sellAmount: params3.collateralAmount,
-            buyAmount: 5005 ether,
-            validTo: validTo,
-            receiver: closePositionWrapper.getInbox(user3, account3),
-            isBuy: true,
-            signerPrivateKey: privateKey3
-        });
+        {
+            (address inboxAddress, bytes32 inboxDomainSeparator) =
+                closePositionWrapper.getInboxAddressAndDomainSeparator(user, account);
+            (trades[0],,) = setupCowOrderWithInbox({
+                tokens: tokens,
+                sellTokenIndex: 2,
+                buyTokenIndex: 1,
+                sellAmount: params1.collateralAmount,
+                buyAmount: 1.001 ether,
+                validTo: validTo,
+                receiver: inboxAddress,
+                isBuy: true,
+                inboxDomainSeparator: inboxDomainSeparator,
+                signerPrivateKey: privateKey
+            });
+        }
+        {
+            (address inboxAddress, bytes32 inboxDomainSeparator) =
+                closePositionWrapper.getInboxAddressAndDomainSeparator(user2, account2);
+            (trades[1],,) = setupCowOrderWithInbox({
+                tokens: tokens,
+                sellTokenIndex: 2,
+                buyTokenIndex: 1,
+                sellAmount: params2.collateralAmount,
+                buyAmount: 3.003 ether,
+                validTo: validTo,
+                receiver: inboxAddress,
+                isBuy: true,
+                inboxDomainSeparator: inboxDomainSeparator,
+                signerPrivateKey: privateKey2
+            });
+        }
+        {
+            (address inboxAddress, bytes32 inboxDomainSeparator) =
+                closePositionWrapper.getInboxAddressAndDomainSeparator(user3, account3);
+
+            (trades[2],,) = setupCowOrderWithInbox({
+                tokens: tokens,
+                sellTokenIndex: 3,
+                buyTokenIndex: 0,
+                sellAmount: params3.collateralAmount,
+                buyAmount: 5005 ether,
+                validTo: validTo,
+                receiver: inboxAddress,
+                isBuy: true,
+                inboxDomainSeparator: inboxDomainSeparator,
+                signerPrivateKey: privateKey3
+            });
+        }
 
         // Setup interactions
         ICowSettlement.Interaction[][3] memory interactions;

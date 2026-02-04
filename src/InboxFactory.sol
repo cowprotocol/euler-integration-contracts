@@ -2,12 +2,12 @@
 pragma solidity ^0.8;
 
 import {Create2} from "openzeppelin-contracts/contracts/utils/Create2.sol";
-import {Inbox} from "./Inbox.sol";
+import {Inbox, InboxConstants} from "./Inbox.sol";
 
 /// @title InboxFactory
-/// @notice Abstract mixin contract for managing Inbox contract creation and address computation
+/// @notice Mixin contract for managing Inbox contract creation and address computation
 /// @dev Provides utilities for computing and deploying Inbox contracts used in wrapper operations
-abstract contract InboxFactory {
+contract InboxFactory {
     /// @notice Settlement contract address used for Inbox creation
     /// @dev Stored as immutable to avoid name collision with CowWrapper's public SETTLEMENT
     address internal immutable INBOX_SETTLEMENT;
@@ -30,14 +30,23 @@ abstract contract InboxFactory {
         return address(_getInbox(owner, subaccount));
     }
 
-    /// @notice Get the address where an Inbox would be deployed without deploying it
-    /// @dev This is a view-only function that only returns the address
+    /// @notice Get the address where an Inbox would be deployed without deploying it, and the domain separator needed to sign a message to it
+    /// @dev This is a view-only function that only returns the address and domain separator
     /// @param owner The owner address
     /// @param subaccount The subaccount address
-    /// @return The computed Inbox address
-    function getInboxAddress(address owner, address subaccount) external view returns (address) {
-        (address creationAddress,,) = _getInboxAddress(owner, subaccount);
-        return creationAddress;
+    /// @return creationAddress The computed Inbox address
+    /// @return domainSeparator The domain separator for the Inbox contract
+    function getInboxAddressAndDomainSeparator(address owner, address subaccount)
+        external
+        view
+        returns (address creationAddress, bytes32 domainSeparator)
+    {
+        (creationAddress,,) = _getInboxAddress(owner, subaccount);
+        domainSeparator = keccak256(
+            abi.encode(
+                InboxConstants.DOMAIN_TYPE_HASH, keccak256("Inbox"), keccak256("1"), block.chainid, creationAddress
+            )
+        );
     }
 
     /// @notice Compute the Inbox address for a given owner and subaccount (view-only, does not deploy)

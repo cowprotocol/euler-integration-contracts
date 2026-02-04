@@ -4,20 +4,23 @@ pragma solidity ^0.8;
 import {Test} from "forge-std/Test.sol";
 
 import {Inbox} from "../../src/Inbox.sol";
+import {InboxFactory} from "../../src/InboxFactory.sol";
 import {MockCowSettlement, MockCowAuthentication} from "./mocks/MockCowProtocol.sol";
 import {MockERC20, MockBorrowVault} from "./mocks/MockERC20AndVaults.sol";
 
 contract InboxUnitTest is Test {
+    InboxFactory public inboxFactory;
     Inbox public inbox;
     MockCowSettlement public mockSettlement;
     MockCowAuthentication public mockAuth;
     MockERC20 public mockToken;
     MockBorrowVault public mockVault;
 
-    address constant OPERATOR = address(0x1111);
-    address constant BENEFICIARY = address(0x2222);
-    address constant RECIPIENT = address(0x3333);
-    address constant OTHER_USER = address(0x4444);
+    uint256 immutable BENEFICIARY_PRIVATE_KEY;
+
+    address immutable BENEFICIARY;
+    address immutable RECIPIENT = makeAddr("recipient");
+    address immutable OTHER_USER = makeAddr("other user");
 
     // EIP-712 constants from Inbox
     bytes32 constant DOMAIN_TYPE_HASH =
@@ -42,41 +45,49 @@ contract InboxUnitTest is Test {
         string buyTokenBalance;
     }
 
+    constructor() public {
+        (BENEFICIARY, BENEFICIARY_PRIVATE_KEY) = makeAddrAndKey("beneficiary");
+    }
+
     function setUp() public {
         mockAuth = new MockCowAuthentication();
         mockSettlement = new MockCowSettlement(address(mockAuth));
         mockToken = new MockERC20("Mock Token", "MOCK");
         mockVault = new MockBorrowVault(address(mockToken), "Mock Vault", "mMOCK");
 
-        inbox = new Inbox(OPERATOR, BENEFICIARY, address(mockSettlement));
+        inboxFactory = new InboxFactory(address(mockSettlement));
+        inbox = Inbox(inboxFactory.getInbox(BENEFICIARY, (address(this))));
     }
 
     // ============== Constructor Tests ==============
 
     function test_Constructor_SetsMutablesCorrectly() public view {
-        assertEq(inbox.OPERATOR(), OPERATOR, "OPERATOR not set");
+        assertEq(inbox.OPERATOR(), address(inboxFactory), "OPERATOR not set");
         assertEq(inbox.BENEFICIARY(), BENEFICIARY, "BENEFICIARY not set");
         assertEq(inbox.SETTLEMENT(), address(mockSettlement), "SETTLEMENT not set");
     }
 
-    function test_Constructor_SetsDomainSeparators() public view {
-        // Verify that domain separators are computed correctly
-        bytes32 expectedInboxDomain =
-            keccak256(abi.encode(DOMAIN_TYPE_HASH, keccak256("Inbox"), keccak256("1"), block.chainid, address(inbox)));
-        assertEq(inbox.INBOX_DOMAIN_SEPARATOR(), expectedInboxDomain, "INBOX_DOMAIN_SEPARATOR incorrect");
+    function test_InboxFactory_ViewFunctionReturnsCorrectValues() public view {
+        (address computedAddress, bytes32 domainSeparator) =
+            inboxFactory.getInboxAddressAndDomainSeparator(BENEFICIARY, address(this));
 
-        bytes32 expectedSettlementDomain = keccak256(
-            abi.encode(
-                DOMAIN_TYPE_HASH, keccak256("Gnosis Protocol"), keccak256("v2"), block.chainid, address(mockSettlement)
-            )
-        );
-        assertEq(inbox.SETTLEMENT_DOMAIN_SEPARATOR(), expectedSettlementDomain, "SETTLEMENT_DOMAIN_SEPARATOR incorrect");
+        assertEq(computedAddress, address(inbox), "Computed address mismatch");
+        assertEq(domainSeparator, inbox.INBOX_DOMAIN_SEPARATOR(), "Domain separator mismatch");
+    }
+
+    // ============== getInbox Tests ==============
+    function test_InboxFactory_GetInbox_ReturnsNewInboxForNewSubaccount() external {
+        address newSubaccount = makeAddr("new subaccount");
+        address newInboxAddress = inboxFactory.getInbox(BENEFICIARY, newSubaccount);
+
+        assertTrue(newInboxAddress.code.length > 0, "Inbox not deployed");
+        assertNotEq(newInboxAddress, address(inbox), "Inbox address should be different");
     }
 
     // ============== callApprove Tests ==============
 
     function test_CallApprove_ByOperator() public {
-        vm.startPrank(OPERATOR);
+        vm.startPrank(address(inboxFactory));
         inbox.callApprove(address(mockToken), RECIPIENT, 1000e18);
         vm.stopPrank();
 
@@ -99,7 +110,7 @@ contract InboxUnitTest is Test {
     }
 
     function test_CallApprove_AllowsZeroAmount() public {
-        vm.startPrank(OPERATOR);
+        vm.startPrank(address(inboxFactory));
         inbox.callApprove(address(mockToken), RECIPIENT, 0);
         vm.stopPrank();
 
@@ -107,7 +118,7 @@ contract InboxUnitTest is Test {
     }
 
     function test_CallApprove_UpdatesExistingApproval() public {
-        vm.startPrank(OPERATOR);
+        vm.startPrank(address(inboxFactory));
         inbox.callApprove(address(mockToken), RECIPIENT, 1000e18);
         inbox.callApprove(address(mockToken), RECIPIENT, 2000e18);
         vm.stopPrank();
@@ -121,7 +132,7 @@ contract InboxUnitTest is Test {
         // Setup: give inbox some tokens
         mockToken.mint(address(inbox), 1000e18);
 
-        vm.startPrank(OPERATOR);
+        vm.startPrank(address(inboxFactory));
         inbox.callTransfer(address(mockToken), RECIPIENT, 500e18);
         vm.stopPrank();
 
@@ -148,11 +159,12 @@ contract InboxUnitTest is Test {
         vm.stopPrank();
     }
 
-    function test_CallTransfer_RevertsIfInsufficientBalance() public {
+    function test_CallTransfer_PassesThroughRevert() public {
         mockToken.mint(address(inbox), 100e18);
 
-        vm.startPrank(OPERATOR);
+        vm.startPrank(address(inboxFactory));
         vm.expectRevert();
+        // should be insufficient balance
         inbox.callTransfer(address(mockToken), RECIPIENT, 500e18);
         vm.stopPrank();
     }
@@ -163,16 +175,13 @@ contract InboxUnitTest is Test {
         mockToken.mint(address(inbox), 1000e18);
         mockVault.setDebt(BENEFICIARY, 500e18);
 
-        vm.startPrank(OPERATOR);
+        vm.startPrank(address(inboxFactory));
+        vm.expectCall(
+            address(mockToken), abi.encodeWithSelector(MockERC20.approve.selector, address(mockVault), 500e18)
+        );
+        vm.expectCall(address(mockVault), abi.encodeWithSelector(MockBorrowVault.repay.selector, 500e18, BENEFICIARY));
         inbox.callVaultRepay(address(mockVault), address(mockToken), 500e18, BENEFICIARY);
         vm.stopPrank();
-
-        // Verify approval was set
-        assertEq(mockToken.allowance(address(inbox), address(mockVault)), 500e18, "Approval not set for vault");
-
-        // Verify repay was called
-        assertEq(mockVault.repayCallCount(), 1, "repay not called");
-        assertEq(mockVault.debtOf(BENEFICIARY), 0, "Debt not repaid");
     }
 
     function test_CallVaultRepay_ByBeneficiary() public {
@@ -221,8 +230,8 @@ contract InboxUnitTest is Test {
     function test_SetPreSignature_RevertsIfCalledByOperator() public {
         bytes memory orderUid = abi.encodePacked(bytes32(0), address(0), uint32(0));
 
-        vm.startPrank(OPERATOR);
-        vm.expectRevert(abi.encodeWithSelector(Inbox.Unauthorized.selector, OPERATOR));
+        vm.startPrank(address(inboxFactory));
+        vm.expectRevert(abi.encodeWithSelector(Inbox.Unauthorized.selector, inboxFactory));
         inbox.setPreSignature(orderUid, true);
         vm.stopPrank();
     }
@@ -251,15 +260,15 @@ contract InboxUnitTest is Test {
         bytes32 orderDigest = keccak256("order");
         bytes memory invalidSignature = new bytes(64); // Too short (needs 65 + 384)
 
-        vm.expectRevert(abi.encodeWithSelector(Inbox.InvalidSignatureOrderData.selector, new bytes(0)));
+        vm.expectRevert(abi.encodeWithSelector(Inbox.InvalidSignatureOrderData.selector, invalidSignature));
         inbox.isValidSignature(orderDigest, invalidSignature);
     }
 
     function test_IsValidSignature_RevertsOnInsufficientOrderData() public {
         bytes32 orderDigest = keccak256("order");
-        bytes memory insufficientData = new bytes(65 + 100); // 65 sig + 100 order (need 384)
+        bytes memory insufficientData = new bytes(65 + 383); // 65 sig + 383 order (need 384)
 
-        vm.expectRevert(abi.encodeWithSelector(Inbox.InvalidSignatureOrderData.selector));
+        vm.expectRevert(abi.encodeWithSelector(Inbox.InvalidSignatureOrderData.selector, insufficientData));
         inbox.isValidSignature(orderDigest, insufficientData);
     }
 
@@ -267,58 +276,55 @@ contract InboxUnitTest is Test {
         // Create a signature with the wrong signer
         bytes memory orderData = _createMockOrderData();
         bytes32 structHash = _getOrderStructHash(orderData);
-        bytes32 inboxOrderDigest = keccak256(abi.encodePacked("\x19\x01", inbox.INBOX_DOMAIN_SEPARATOR(), structHash));
-        bytes32 settlementOrderDigest =
-            keccak256(abi.encodePacked("\x19\x01", inbox.SETTLEMENT_DOMAIN_SEPARATOR(), structHash));
+        (bytes32 settlementOrderDigest, bytes32 inboxOrderDigest) = _getOrderDigests(orderData);
 
         // Sign with a different private key (not BENEFICIARY)
         uint256 wrongPrivateKey = 999;
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(wrongPrivateKey, inboxOrderDigest);
 
-        bytes memory signature = abi.encodePacked(r, s, v);
-        bytes memory signatureData = abi.encodePacked(signature, orderData);
+        bytes memory signatureData = abi.encodePacked(r, s, v, orderData);
 
-        vm.expectRevert(abi.encodeWithSelector(Inbox.Unauthorized.selector));
+        vm.expectRevert(abi.encodeWithSelector(Inbox.Unauthorized.selector, vm.addr(wrongPrivateKey)));
         inbox.isValidSignature(settlementOrderDigest, signatureData);
     }
 
     function test_IsValidSignature_RevertsOnOrderDigestMismatch() public {
         bytes32 wrongDigest = keccak256("wrong");
         (, bytes memory signatureData) = _createValidSignature();
+        (bytes32 rightDigest,) = _getOrderDigests(_createMockOrderData());
 
-        vm.expectRevert(abi.encodeWithSelector(Inbox.OrderHashMismatch.selector));
+        vm.expectRevert(abi.encodeWithSelector(Inbox.OrderHashMismatch.selector, rightDigest, wrongDigest));
         inbox.isValidSignature(wrongDigest, signatureData);
     }
 
     // ============== Helper Functions ==============
 
     function _createValidSignature() internal view returns (bytes32 orderDigest, bytes memory signatureData) {
-        // Create mock order data (416 bytes)
+        // Create mock order data (384 bytes)
         bytes memory orderData = _createMockOrderData();
 
         // Compute the inbox order digest
-        bytes32 inboxOrderDigest = _hashInboxOrder();
-
-        // Compute settlement order digest (with settlement domain separator)
-        bytes32 settlementOrderDigest = keccak256(
-            abi.encodePacked("\x19\x01", inbox.SETTLEMENT_DOMAIN_SEPARATOR(), _getOrderStructHash(orderData))
-        );
+        (bytes32 settlementOrderDigest, bytes32 inboxOrderDigest) = _getOrderDigests(orderData);
 
         // Sign with beneficiary
-        uint256 beneficiaryPrivateKey = uint256(uint160(BENEFICIARY));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(beneficiaryPrivateKey, inboxOrderDigest);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(BENEFICIARY_PRIVATE_KEY, inboxOrderDigest);
 
-        bytes memory signature = abi.encodePacked(r, s, v);
-        signatureData = abi.encodePacked(signature, orderData);
+        signatureData = abi.encodePacked(r, s, v, orderData);
 
         return (settlementOrderDigest, signatureData);
     }
 
-    function _hashInboxOrder() internal view returns (bytes32) {
-        bytes memory orderData = _createMockOrderData();
+    function _getOrderDigests(bytes memory orderData)
+        internal
+        view
+        returns (bytes32 settlementHash, bytes32 inboxHash)
+    {
         bytes32 structHash = _getOrderStructHash(orderData);
 
-        return keccak256(abi.encodePacked("\x19\x01", inbox.INBOX_DOMAIN_SEPARATOR(), structHash));
+        return (
+            keccak256(abi.encodePacked("\x19\x01", inbox.SETTLEMENT_DOMAIN_SEPARATOR(), structHash)),
+            keccak256(abi.encodePacked("\x19\x01", inbox.INBOX_DOMAIN_SEPARATOR(), structHash))
+        );
     }
 
     function _createMockOrderData() internal view returns (bytes memory) {
@@ -340,7 +346,7 @@ contract InboxUnitTest is Test {
         });
 
         // Manually construct the 416-byte structure matching EIP-712 Order encoding
-        return abi.encodePacked(
+        return abi.encode(
             order.sellToken,
             order.buyToken,
             order.receiver,
@@ -363,6 +369,7 @@ contract InboxUnitTest is Test {
         assembly {
             mstore(orderData, typeHash)
             structHash := keccak256(orderData, 416)
+            mstore(orderData, 384) // restore original length
         }
     }
 }

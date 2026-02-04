@@ -7,6 +7,15 @@ import {IERC1271} from "openzeppelin-contracts/contracts/interfaces/IERC1271.sol
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ICowSettlement} from "./CowWrapper.sol";
 
+library InboxConstants {
+    /// @dev EIP-712 type hashes. These hashes match those used by the CoW settlement contract.
+    bytes32 internal constant DOMAIN_TYPE_HASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 internal constant ORDER_TYPE_HASH = keccak256(
+        "Order(address sellToken,address buyToken,address receiver,uint256 sellAmount,uint256 buyAmount,uint32 validTo,bytes32 appData,uint256 feeAmount,string kind,bool partiallyFillable,string sellTokenBalance,string buyTokenBalance)"
+    );
+}
+
 /// @notice A contract for receiving funds from the CoW Settlement contract which can then be operated upon by a different contract in post (i.e. a wrapper)
 /// @dev The contract has two associated accounts-- the OPERATOR, and the BENEFICIARY. Both associated accounts have the ability to execute token operations against this contract.
 /// The purpose of the OPERATOR is to allow the wrapper to execute whatever operations it needs following a settlement contract operation without needing to store funds in the wrapper itself (ex. potentially intermingled with other user's funds) or the user's own wallet.
@@ -24,13 +33,6 @@ contract Inbox is IERC1271 {
     bytes32 public immutable INBOX_DOMAIN_SEPARATOR;
     bytes32 public immutable SETTLEMENT_DOMAIN_SEPARATOR;
 
-    /// @dev EIP-712 type hashes. These hashes match those used by the CoW settlement contract.
-    bytes32 internal constant DOMAIN_TYPE_HASH =
-        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
-    bytes32 internal constant ORDER_TYPE_HASH = keccak256(
-        "Order(address sellToken,address buyToken,address receiver,uint256 sellAmount,uint256 buyAmount,uint32 validTo,bytes32 appData,uint256 feeAmount,string kind,bool partiallyFillable,string sellTokenBalance,string buyTokenBalance)"
-    );
-
     /// @notice The contract which is taking action on behalf of the user. Is authorized to execute certain operations specified in this contract.
     address public immutable OPERATOR;
     /// @notice The address to which the funds ultimately belong to. Is authorized to execute certain operations specified in this contract (in case funds are somehow stuck).
@@ -43,11 +45,20 @@ contract Inbox is IERC1271 {
         BENEFICIARY = beneficiary;
         SETTLEMENT = settlement;
 
-        INBOX_DOMAIN_SEPARATOR =
-            keccak256(abi.encode(DOMAIN_TYPE_HASH, keccak256("Inbox"), keccak256("1"), block.chainid, address(this)));
+        INBOX_DOMAIN_SEPARATOR = keccak256(
+            abi.encode(
+                InboxConstants.DOMAIN_TYPE_HASH, keccak256("Inbox"), keccak256("1"), block.chainid, address(this)
+            )
+        );
 
         SETTLEMENT_DOMAIN_SEPARATOR = keccak256(
-            abi.encode(DOMAIN_TYPE_HASH, keccak256("Gnosis Protocol"), keccak256("v2"), block.chainid, settlement)
+            abi.encode(
+                InboxConstants.DOMAIN_TYPE_HASH,
+                keccak256("Gnosis Protocol"),
+                keccak256("v2"),
+                block.chainid,
+                settlement
+            )
         );
     }
 
@@ -63,12 +74,12 @@ contract Inbox is IERC1271 {
     {
         bytes32 inboxOrderDigest;
         {
-            bytes memory orderData = signatureData[65:];
-            bytes32 typeHash = ORDER_TYPE_HASH;
-            bytes32 structHash;
+            // Ensure that we have all the order data. 65 for the signature length, plus 384 (12 fields * 32 bytes) for the order data.
+            require(signatureData.length >= 65 + 384, InvalidSignatureOrderData(signatureData));
 
-            // Ensure that we have all the order data
-            require(orderData.length >= 384, InvalidSignatureOrderData(orderData));
+            bytes memory orderData = signatureData[65:];
+            bytes32 typeHash = InboxConstants.ORDER_TYPE_HASH;
+            bytes32 structHash;
 
             // NOTE: Compute the EIP-712 order struct hash in place. As suggested
             // in the EIP proposal, noting that the order struct has 12 fields, and
@@ -119,7 +130,7 @@ contract Inbox is IERC1271 {
         address signer = ecrecover(inboxOrderDigest, v, r, s);
         require(signer == BENEFICIARY, Unauthorized(signer));
 
-        return bytes4(keccak256("isValidSignature(bytes32,bytes)"));
+        return IERC1271.isValidSignature.selector;
     }
 
     /// @notice Calls the settlement contract function with the same signature to set a pre signature on behalf of the Inbox
