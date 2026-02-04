@@ -41,11 +41,10 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
         return (new IEVC.BatchItem[](0), needsPermission);
     }
 
-    function _evcInternalSettle(
-        bytes calldata settleData,
-        bytes calldata,
-        bytes calldata remainingWrapperData
-    ) internal override {
+    function _evcInternalSettle(bytes calldata settleData, bytes calldata, bytes calldata remainingWrapperData)
+        internal
+        override
+    {
         // We dont have anything special to do here, just call the next in chain
         _next(settleData, remainingWrapperData);
     }
