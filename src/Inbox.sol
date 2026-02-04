@@ -8,9 +8,12 @@ import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/Safe
 import {ICowSettlement} from "./CowWrapper.sol";
 
 /// @notice A contract for receiving funds from the CoW Settlement contract which can then be operated upon by a different contract in post (i.e. a wrapper)
-/// @dev The contract has two associated accounts-- the OWNER, and the BENEFICIARY. Both associated accounts have the ability to execute token operations against this contract.
-/// The purpose of the OWNER is to allow the wrapper to execute whatever operations it needs following a settlement contract operation without needing to store in the wrapper itself (ex. potentially intermingled with other user's funds) or the user's own wallet.
+/// @dev The contract has two associated accounts-- the OPERATOR, and the BENEFICIARY. Both associated accounts have the ability to execute token operations against this contract.
+/// The purpose of the OPERATOR is to allow the wrapper to execute whatever operations it needs following a settlement contract operation without needing to store in the wrapper itself (ex. potentially intermingled with other user's funds) or the user's own wallet.
 /// The purpose of the BENEFICIARY is to allow the ultimate holder of the funds to be able to access this contract in the case of trouble (ex. funds got stuck, etc.)
+/// There are two general ways that this contract should be used in accordance with the wrappers:
+/// 1. If the wrapper authenticates the users through the permit flow, then the user is expected to sign the Inbox order through an ECDSA signature verified through EIP1271.
+/// 2. If the wrapper authenticates the user through pre-approved hashes, then the user is expected to use the pre-sign flow on CoW Settlement by enabling the order using the setPreSignature proxy function.
 contract Inbox is IERC1271 {
     using SafeERC20 for IERC20;
 
