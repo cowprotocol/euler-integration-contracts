@@ -94,6 +94,9 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
 
         // Set the correct onBehalfOfAccount for evcInternalSettle calls
         mockEvc.setOnBehalfOf(address(wrapper));
+
+        // Supply tokens for inbox to prevent a revert we don't want in certain tests
+        deal(address(mockDebtAsset), CowEvcClosePositionWrapper(address(wrapper)).getInbox(OWNER, ACCOUNT), 1);
     }
 
     /// @notice Create settle data with tokens and prices

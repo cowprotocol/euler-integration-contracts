@@ -100,6 +100,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         mockAuth.setSolver(address(wrapper), true);
         mockAuth.setSolver(address(emptyWrapper), true);
 
+        mockFromVault.mint(ACCOUNT, 1000e18);
+
         mockFromVault.mint(OWNER, 2000e18);
 
         vm.prank(OWNER);
@@ -170,7 +172,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         _setupPreApprovedHash(params);
 
         bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = _encodeDefaultWrapperData(new bytes(0));
+        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
 
         vm.prank(SOLVER);
         vm.expectRevert(

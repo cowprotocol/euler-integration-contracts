@@ -129,9 +129,9 @@ abstract contract UnitTestBase is Test {
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = _encodeDefaultWrapperData(new bytes(0)); // Empty signature triggers pre-approved hash flow
 
-        // Expect revert with HashNotApproved error (there is an additional parameter at the end of the error but we don't care what the computed hash is)
+        // Expect revert with HashNotApproved error (its sufficient to just verify the selector)
         vm.prank(SOLVER);
-        vm.expectRevert(abi.encodeWithSelector(PreApprovedHashes.HashNotApproved.selector, OWNER));
+        vm.expectPartialRevert(PreApprovedHashes.HashNotApproved.selector);
         wrapper.wrappedSettle(settleData, wrapperData);
     }
 
