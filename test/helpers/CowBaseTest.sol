@@ -13,8 +13,6 @@ import {ICowSettlement} from "../../src/CowWrapper.sol";
 
 import {MilkSwap} from "./MilkSwap.sol";
 
-import {Inbox} from "../../src/Inbox.sol";
-
 contract CowBaseTest is Test {
     uint256 mainnetFork;
     uint256 constant BLOCK_NUMBER = 22546006;
@@ -260,6 +258,7 @@ contract CowBaseTest is Test {
         uint256 buyAmount,
         uint32 validTo,
         address receiver,
+        bytes32 inboxDomainSeparator,
         bool isBuy,
         uint256 signerPrivateKey
     ) public view returns (ICowSettlement.Trade memory trade, GPv2Order.Data memory order, bytes memory orderId) {
@@ -289,7 +288,7 @@ contract CowBaseTest is Test {
         // the "Inbox" for the user is assumed to be the same as the receiver
         // If we don't have a private key, create a pre-signed order (which gives the address of the presign as the signature)
         bytes memory computedSignature = signerPrivateKey != 0
-            ? _createEip1271Signature(receiver, order, signerPrivateKey)
+            ? _createEip1271Signature(receiver, inboxDomainSeparator, order, signerPrivateKey)
             : abi.encodePacked(receiver);
 
         // Create the trade with EIP-1271 signature
@@ -312,18 +311,17 @@ contract CowBaseTest is Test {
 
     /// @notice Create EIP-1271 signature for a CoW order
     /// @dev Signs the order digest with the user's private key and returns the signature
-    function _createEip1271Signature(address inboxForUser, GPv2Order.Data memory orderData, uint256 userPrivateKey)
-        internal
-        view
-        returns (bytes memory signature)
-    {
+    function _createEip1271Signature(
+        address inboxForUser,
+        bytes32 inboxDomainSeparator,
+        GPv2Order.Data memory orderData,
+        uint256 userPrivateKey
+    ) internal pure returns (bytes memory signature) {
         bytes memory rawOrderData = abi.encode(orderData);
         // Compute the order hash (raw)
         bytes32 wrappedOrderHash = keccak256(
             abi.encodePacked(
-                "\x19\x01",
-                Inbox(inboxForUser).INBOX_DOMAIN_SEPARATOR(),
-                keccak256(abi.encodePacked(GPv2Order.TYPE_HASH, rawOrderData))
+                "\x19\x01", inboxDomainSeparator, keccak256(abi.encodePacked(GPv2Order.TYPE_HASH, rawOrderData))
             )
         );
 

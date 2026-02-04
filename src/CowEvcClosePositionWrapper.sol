@@ -7,6 +7,7 @@ import {ICowSettlement, CowWrapper} from "./CowWrapper.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {SafeERC20, IERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
+import {InboxFactory} from "./InboxFactory.sol";
 import {Inbox} from "./Inbox.sol";
 
 /// @title CowEvcClosePositionWrapper
@@ -17,16 +18,19 @@ import {Inbox} from "./Inbox.sol";
 ///      3. Repay debt and return remaining assets to the subaccount
 /// @dev The settle call by this order should be performing the necessary swap
 /// from collateralVault -> IERC20(borrowVault.asset()). The recipient of the
-/// swap should be the account returned by `getInbox(address)`, where `address` is the subaccount. Following this, the account will repay the loan after the settlement returns.
+/// swap should be the account returned by `getInbox(address owner, address subaccount)`. The Inbox is used to temporarily hold the swapped hold funds while the transaction is in flight.
+/// Following this, the Inbox will repay the loan after the settlement returns.
+/// Due to the potential side effects of multiple orders executing in a single settlement, do not attempt to execute a new close position on the same subaccount until it either expires or is settled.
 /// If the position will be fully closed, the CoW order should be of type GPv2Order.KIND_BUY to prevent excess repay asset from being sent to the contract, leaving excess dust in the user.
-/// Leave a small buffer for interest accumulation, and the dust will be returned to the owner's wallet.
-contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
+/// Leave a small buffer for interest accumulation, and any dust on the buy side will be returned to the owner's wallet.
+contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
     using SafeERC20 for IERC20;
 
     address immutable VAULT_RELAYER;
 
     error NoSwapOutput(address inboxForSwap);
     error InsufficientDebt(uint256 expectedMinDebt, uint256 actualDebt);
+    error UnexpectedRepayResult(uint256 expectedRepayAmount, uint256 actualRepaidAmount);
 
     /// @dev The EIP-712 domain name used for computing the domain separator.
     bytes32 constant DOMAIN_NAME = keccak256("CowEvcClosePositionWrapper");
@@ -37,19 +41,27 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Close Position";
 
-    /// @dev Emitted when a position is closed via this wrapper
+    /// @dev Emitted when a position is closed or reduced in size via this wrapper
+    /// @param owner The owner of the account that was closed
+    /// @param account The subaccount that was closed
+    /// @param borrowVault The vault of the borrowed asset
+    /// @param collateralVault The collateral asset used to repay
+    /// @param collateralAmount The amount of collateral that was used to repay the debt
+    /// @param repaidAmount The actual amount of debt repaid
+    /// @param leftoverAmount The amount of borrow token (dust) left over after repaying debt, sent back to the owner
     event CowEvcPositionClosed(
         address indexed owner,
         address account,
         address indexed borrowVault,
         address indexed collateralVault,
         uint256 collateralAmount,
-        uint256 repayAmount,
+        uint256 repaidAmount,
         uint256 leftoverAmount
     );
 
     constructor(address _evc, ICowSettlement _settlement)
         CowEvcBaseWrapper(_evc, _settlement, DOMAIN_NAME, DOMAIN_VERSION)
+        InboxFactory(address(_settlement))
     {
         PARAMS_SIZE =
         abi.encode(
@@ -97,6 +109,10 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         uint256 collateralAmount;
     }
 
+    /// @notice Decode the wrapper data into ClosePositionParams and signature
+    /// @param wrapperData The wrapper data excluding length provided to the `wrappedSettle` call `chainedWrapperData`
+    /// @return params The decoded ClosePositionParams
+    /// @return signature The signature over the EVC permit data
     function _parseClosePositionParams(bytes calldata wrapperData)
         internal
         pure
@@ -105,7 +121,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         (params, signature) = abi.decode(wrapperData, (ClosePositionParams, bytes));
     }
 
-    /// @notice Helper function to compute the hash that would be approved
+    /// @notice Helper function to compute the hash that would need to be approved via `setPreApprovedHash` for the given `ClosePositionParams`
     /// @param params The ClosePositionParams to hash
     /// @return The hash of the signed calldata for these params
     function getApprovalHash(ClosePositionParams memory params) external view returns (bytes32) {
@@ -119,7 +135,8 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         _parseClosePositionParams(wrapperData);
     }
 
-    /// @notice Called by an offchain process to determine what data should be signed in a call to `wrappedSettle`.
+    /// @notice Called by an offchain process to determine what data should be signed for the permit flow.
+    /// This signature should be encoded with the wrapper data in `wrappedSettle`.
     /// @param params The parameters object provided as input to the wrapper
     /// @return The `EVC` call that would be submitted to `EVC.permit`. This would need to be signed as documented https://evc.wtf/docs/concepts/internals/permit.
     function encodePermitData(ClosePositionParams memory params) external view returns (bytes memory) {
@@ -127,6 +144,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         return _encodePermitData(items, memoryLocation(params));
     }
 
+    /// @inheritdoc CowEvcBaseWrapper
     function _encodeBatchItemsBefore(ParamsLocation paramsLocation)
         internal
         view
@@ -149,9 +167,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         needsPermission = true;
     }
 
-    /// @notice Implementation of CowWrapper._wrap - executes EVC operations to close a position
-    /// @param settleData Data which will be used for the parameters in a call to `CowSettlement.settle`
-    /// @param wrapperData Additional data containing ClosePositionParams
+    /// @inheritdoc CowWrapper
     function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
         internal
         override
@@ -169,6 +185,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         );
     }
 
+    /// @inheritdoc CowEvcBaseWrapper
     function _evcInternalSettle(
         bytes calldata settleData,
         bytes calldata wrapperData,
@@ -211,7 +228,11 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         }
 
         // repay what was requested on the vault
-        inbox.callVaultRepay(params.borrowVault, address(borrowAsset), repayAmount, params.account);
+        uint256 repaidAmount =
+            inbox.callVaultRepay(params.borrowVault, address(borrowAsset), repayAmount, params.account);
+
+        // we already calculated the amount of debt that was going to be repaid, so this is sanity to ensure we repaid as expected
+        require(repaidAmount == repayAmount, UnexpectedRepayResult(repayAmount, repaidAmount));
 
         emit CowEvcPositionClosed(
             params.owner,
@@ -224,12 +245,14 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
         );
     }
 
+    /// @notice Helper to convert memory struct (used by CowEvcBaseWrapper) to ParamsLocation
     function memoryLocation(ClosePositionParams memory params) internal pure returns (ParamsLocation location) {
         assembly ("memory-safe") {
             location := params
         }
     }
 
+    /// @notice Helper to convert ParamsLocation (used by CowEvcBaseWrapper) back to memory struct
     function paramsFromMemory(ParamsLocation location) internal pure returns (ClosePositionParams memory params) {
         assembly {
             params := location

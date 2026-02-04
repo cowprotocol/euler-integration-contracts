@@ -22,6 +22,7 @@ contract MockCowAuthentication is ICowAuthentication {
 contract MockCowSettlement is ICowSettlement {
     ICowAuthentication public immutable AUTH;
     bool public shouldSucceed = true;
+    mapping(bytes => bool) public preSignatures;
 
     constructor(address _auth) {
         AUTH = ICowAuthentication(_auth);
@@ -39,7 +40,9 @@ contract MockCowSettlement is ICowSettlement {
         return keccak256("MockDomainSeparator");
     }
 
-    function setPreSignature(bytes calldata, bool) external pure override {}
+    function setPreSignature(bytes calldata orderUid, bool approved) external override {
+        preSignatures[orderUid] = approved;
+    }
 
     function settle(address[] calldata, uint256[] calldata, Trade[] calldata, Interaction[][3] calldata)
         external

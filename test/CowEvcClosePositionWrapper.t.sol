@@ -78,8 +78,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         vm.startPrank(user);
 
         // Set operators
-        EVC.setAccountOperator(user, address(closePositionWrapper), true);
         EVC.setAccountOperator(account, address(closePositionWrapper), true);
+        EVC.setAccountOperator(user, address(closePositionWrapper), true);
 
         // Pre-approve hash
         closePositionWrapper.setPreApprovedHash(hash, true);
@@ -93,37 +93,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             data: abi.encodeCall(IERC20.approve, (address(closePositionWrapper), type(uint256).max))
         });
         EVC.batch(items);
-
-        vm.stopPrank();
-    }
-
-    /// @notice Setup approvals for a specific user to close their position
-    function _setupClosePositionApprovalsFor(
-        address owner,
-        address account,
-        IEVault collateralVault,
-        IERC20 repaymentAsset
-    ) internal {
-        vm.startPrank(owner);
-
-        // Approve vault shares from subaccount
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
-        items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: account,
-            targetContract: address(collateralVault),
-            value: 0,
-            data: abi.encodeCall(IERC20.approve, (address(closePositionWrapper), type(uint256).max))
-        });
-        EVC.batch(items);
-
-        // Approve transfer of any remaining vault shares from the wrapper back to the subaccount
-        collateralVault.approve(address(closePositionWrapper), type(uint256).max);
-
-        // Approve vault shares for settlement
-        collateralVault.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
-
-        // Approve wrapper to spend repayment asset
-        repaymentAsset.approve(address(closePositionWrapper), type(uint256).max);
 
         vm.stopPrank();
     }
@@ -156,7 +125,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 sellAmount,
         uint256 buyAmount,
         uint256 userPrivateKey
-    ) public returns (SettlementData memory r) {
+    ) public view returns (SettlementData memory r) {
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
         // Get tokens and prices
@@ -169,10 +138,10 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         r.clearingPrices[1] = milkSwap.prices(address(buyToRepayToken));
 
         // Get trade data using EIP-1271
-        // Use snapshot becuase `getInbox` deploys the Inbox contract with Create2, and we want
-        // to test like a user would use (without prior deployment)
-        uint256 snapshotId = vm.snapshotState();
         r.trades = new ICowSettlement.Trade[](1);
+
+        (address inboxAddress, bytes32 inboxDomainSeparator) =
+            closePositionWrapper.getInboxAddressAndDomainSeparator(owner, account);
 
         (r.trades[0], r.orderData, r.orderUid) = setupCowOrderWithInbox({
             tokens: r.tokens,
@@ -181,11 +150,11 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             sellAmount: sellAmount,
             buyAmount: buyAmount,
             validTo: validTo,
-            receiver: closePositionWrapper.getInbox(owner, account),
+            receiver: inboxAddress,
+            inboxDomainSeparator: inboxDomainSeparator,
             isBuy: true,
             signerPrivateKey: userPrivateKey
         });
-        vm.revertToState(snapshotId);
 
         // Setup interactions - withdraw from vault, swap to repayment token
         r.interactions = [
@@ -231,9 +200,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             buyAmount: DEFAULT_BUY_AMOUNT,
             userPrivateKey: privateKey
         });
-
-        // Setup approvals
-        _setupClosePositionApprovalsFor(user, account, EUSDS, WETH);
 
         // Create permit signature
         bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
@@ -316,9 +282,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             buyAmount: buyAmount,
             userPrivateKey: privateKey
         });
-
-        // Setup approvals
-        _setupClosePositionApprovalsFor(user, account, EUSDS, WETH);
 
         // Create permit signature
         bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
@@ -482,9 +445,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             userPrivateKey: privateKey2 // Use wrong private key to create invalid signature
         });
 
-        // Setup approvals
-        _setupClosePositionApprovalsFor(user, account, EUSDS, WETH);
-
         // Create INVALID permit signature by signing with wrong private key (user2's key instead of user's)
         ecdsa.setPrivateKey(privateKey2); // Wrong private key!
         bytes memory invalidPermitSignature = ecdsa.signPermit(
@@ -569,11 +529,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             "User3 should have some EWETH collateral before closing"
         );
 
-        // Setup approvals for all users
-        _setupClosePositionApprovalsFor(user, account, EUSDS, WETH);
-        _setupClosePositionApprovalsFor(user2, account2, EUSDS, WETH);
-        _setupClosePositionApprovalsFor(user3, account3, EWETH, USDS);
-
         // Create params for all users
         CowEvcClosePositionWrapper.ClosePositionParams memory params1 = CowEvcClosePositionWrapper.ClosePositionParams({
             owner: user,
@@ -613,39 +568,55 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         (address[] memory tokens, uint256[] memory clearingPrices) = getTokensAndPrices();
 
         ICowSettlement.Trade[] memory trades = new ICowSettlement.Trade[](3);
-        (trades[0],,) = setupCowOrderWithInbox({
-            tokens: tokens,
-            sellTokenIndex: 2,
-            buyTokenIndex: 1,
-            sellAmount: params1.collateralAmount,
-            buyAmount: 1.001 ether,
-            validTo: validTo,
-            receiver: closePositionWrapper.getInbox(user, account),
-            isBuy: true,
-            signerPrivateKey: privateKey
-        });
-        (trades[1],,) = setupCowOrderWithInbox({
-            tokens: tokens,
-            sellTokenIndex: 2,
-            buyTokenIndex: 1,
-            sellAmount: params2.collateralAmount,
-            buyAmount: 3.003 ether,
-            validTo: validTo,
-            receiver: closePositionWrapper.getInbox(user2, account2),
-            isBuy: true,
-            signerPrivateKey: privateKey2
-        });
-        (trades[2],,) = setupCowOrderWithInbox({
-            tokens: tokens,
-            sellTokenIndex: 3,
-            buyTokenIndex: 0,
-            sellAmount: params3.collateralAmount,
-            buyAmount: 5005 ether,
-            validTo: validTo,
-            receiver: closePositionWrapper.getInbox(user3, account3),
-            isBuy: true,
-            signerPrivateKey: privateKey3
-        });
+        {
+            (address inboxAddress, bytes32 inboxDomainSeparator) =
+                closePositionWrapper.getInboxAddressAndDomainSeparator(user, account);
+            (trades[0],,) = setupCowOrderWithInbox({
+                tokens: tokens,
+                sellTokenIndex: 2,
+                buyTokenIndex: 1,
+                sellAmount: params1.collateralAmount,
+                buyAmount: 1.001 ether,
+                validTo: validTo,
+                receiver: inboxAddress,
+                isBuy: true,
+                inboxDomainSeparator: inboxDomainSeparator,
+                signerPrivateKey: privateKey
+            });
+        }
+        {
+            (address inboxAddress, bytes32 inboxDomainSeparator) =
+                closePositionWrapper.getInboxAddressAndDomainSeparator(user2, account2);
+            (trades[1],,) = setupCowOrderWithInbox({
+                tokens: tokens,
+                sellTokenIndex: 2,
+                buyTokenIndex: 1,
+                sellAmount: params2.collateralAmount,
+                buyAmount: 3.003 ether,
+                validTo: validTo,
+                receiver: inboxAddress,
+                isBuy: true,
+                inboxDomainSeparator: inboxDomainSeparator,
+                signerPrivateKey: privateKey2
+            });
+        }
+        {
+            (address inboxAddress, bytes32 inboxDomainSeparator) =
+                closePositionWrapper.getInboxAddressAndDomainSeparator(user3, account3);
+
+            (trades[2],,) = setupCowOrderWithInbox({
+                tokens: tokens,
+                sellTokenIndex: 3,
+                buyTokenIndex: 0,
+                sellAmount: params3.collateralAmount,
+                buyAmount: 5005 ether,
+                validTo: validTo,
+                receiver: inboxAddress,
+                isBuy: true,
+                inboxDomainSeparator: inboxDomainSeparator,
+                signerPrivateKey: privateKey3
+            });
+        }
 
         // Setup interactions
         ICowSettlement.Interaction[][3] memory interactions;

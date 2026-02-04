@@ -7,40 +7,58 @@ import {IERC1271} from "openzeppelin-contracts/contracts/interfaces/IERC1271.sol
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ICowSettlement} from "./CowWrapper.sol";
 
-/// @notice A contract for receiving funds from the CoW Settlement contract which can then be operated upon by a different contract in post (i.e. a wrapper)
-/// @dev The contract has two associated accounts-- the OWNER, and the BENEFICIARY. Both associated accounts have the ability to execute token operations against this contract.
-/// The purpose of the OWNER is to allow the wrapper to execute whatever operations it needs following a settlement contract operation without needing to store in the wrapper itself (ex. potentially intermingled with other user's funds) or the user's own wallet.
-/// The purpose of the BENEFICIARY is to allow the ultimate holder of the funds to be able to access this contract in the case of trouble (ex. funds got stuck, etc.)
-contract Inbox is IERC1271 {
-    using SafeERC20 for IERC20;
-
-    error Unauthorized(address);
-    error OrderHashMismatch(bytes32 computed, bytes32 provided);
-
-    bytes32 public immutable INBOX_DOMAIN_SEPARATOR;
-    bytes32 public immutable SETTLEMENT_DOMAIN_SEPARATOR;
-
+library InboxConstants {
     /// @dev EIP-712 type hashes. These hashes match those used by the CoW settlement contract.
     bytes32 internal constant DOMAIN_TYPE_HASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes32 internal constant ORDER_TYPE_HASH = keccak256(
         "Order(address sellToken,address buyToken,address receiver,uint256 sellAmount,uint256 buyAmount,uint32 validTo,bytes32 appData,uint256 feeAmount,string kind,bool partiallyFillable,string sellTokenBalance,string buyTokenBalance)"
     );
+}
 
-    address public immutable OWNER;
+/// @notice A contract for receiving funds from the CoW Settlement contract which can then be operated upon by a different contract in post (i.e. a wrapper)
+/// @dev The contract has two associated accounts-- the OPERATOR, and the BENEFICIARY. Both associated accounts have the ability to execute token operations against this contract.
+/// The purpose of the OPERATOR is to allow the wrapper to execute whatever operations it needs following a settlement contract operation without needing to store funds in the wrapper itself (ex. potentially intermingled with other user's funds) or the user's own wallet.
+/// The purpose of the BENEFICIARY is to allow the ultimate holder of the funds to be able to access this contract in the case of trouble (ex. funds got stuck, etc.)
+/// There are two general ways that this contract should be used in accordance with the wrappers:
+/// 1. If the wrapper authenticates the users through the permit flow, then the user is expected to sign the Inbox order through an ECDSA signature verified through EIP1271.
+/// 2. If the wrapper authenticates the user through pre-approved hashes, then the user is expected to use the pre-sign flow on CoW Settlement by enabling the order using the `setPreSignature` proxy function.
+contract Inbox is IERC1271 {
+    using SafeERC20 for IERC20;
+
+    error Unauthorized(address);
+    error OrderHashMismatch(bytes32 computed, bytes32 provided);
+    error InvalidSignatureOrderData(bytes data);
+
+    bytes32 public immutable INBOX_DOMAIN_SEPARATOR;
+    bytes32 public immutable SETTLEMENT_DOMAIN_SEPARATOR;
+
+    /// @notice The contract which is taking action on behalf of the user. Is authorized to execute certain operations specified in this contract.
+    address public immutable OPERATOR;
+    /// @notice The address to which the funds ultimately belong to. Is authorized to execute certain operations specified in this contract (in case funds are somehow stuck).
     address public immutable BENEFICIARY;
+    /// @notice The CoW settlement contract address for purposes of signature verification
     address public immutable SETTLEMENT;
 
-    constructor(address owner, address beneficiary, address settlement) {
-        OWNER = owner;
+    constructor(address executor, address beneficiary, address settlement) {
+        OPERATOR = executor;
         BENEFICIARY = beneficiary;
         SETTLEMENT = settlement;
 
-        INBOX_DOMAIN_SEPARATOR =
-            keccak256(abi.encode(DOMAIN_TYPE_HASH, keccak256("Inbox"), keccak256("1"), block.chainid, address(this)));
+        INBOX_DOMAIN_SEPARATOR = keccak256(
+            abi.encode(
+                InboxConstants.DOMAIN_TYPE_HASH, keccak256("Inbox"), keccak256("1"), block.chainid, address(this)
+            )
+        );
 
         SETTLEMENT_DOMAIN_SEPARATOR = keccak256(
-            abi.encode(DOMAIN_TYPE_HASH, keccak256("Gnosis Protocol"), keccak256("v2"), block.chainid, settlement)
+            abi.encode(
+                InboxConstants.DOMAIN_TYPE_HASH,
+                keccak256("Gnosis Protocol"),
+                keccak256("v2"),
+                block.chainid,
+                settlement
+            )
         );
     }
 
@@ -56,15 +74,17 @@ contract Inbox is IERC1271 {
     {
         bytes32 inboxOrderDigest;
         {
+            // Ensure that we have all the order data. 65 for the signature length, plus 384 (12 fields * 32 bytes) for the order data.
+            require(signatureData.length >= 65 + 384, InvalidSignatureOrderData(signatureData));
+
             bytes memory orderData = signatureData[65:];
-            bytes32 typeHash = ORDER_TYPE_HASH;
+            bytes32 typeHash = InboxConstants.ORDER_TYPE_HASH;
             bytes32 structHash;
 
             // NOTE: Compute the EIP-712 order struct hash in place. As suggested
             // in the EIP proposal, noting that the order struct has 12 fields, and
             // prefixing the type hash `(1 + 12) * 32 = 416` bytes to hash.
             // <https://github.com/ethereum/EIPs/blob/master/EIPS/eip-712.md#rationale-for-encodedata>
-            // solhint-disable-next-line no-inline-assembly
             assembly {
                 mstore(orderData, typeHash)
                 structHash := keccak256(orderData, 416)
@@ -77,7 +97,7 @@ contract Inbox is IERC1271 {
             bytes memory message = abi.encodePacked("\x19\x01", inboxDomainSeparator, structHash);
 
             // We use assembly for the keccak256 hashing due to inefficient impl warning by foundry https://getfoundry.sh/forge/linting/#asm-keccak256
-            assembly {
+            assembly ("memory-safe") {
                 inboxOrderDigest := keccak256(add(message, 32), 66)
                 // The difference between the inbox and settlement order digests is only the domainSeparator word.
                 // So we can get both hashes pretty efficiently through assembly by replacing it
@@ -98,8 +118,7 @@ contract Inbox is IERC1271 {
         uint8 v;
 
         // NOTE: Use assembly to efficiently decode signature data.
-        // solhint-disable-next-line no-inline-assembly
-        assembly {
+        assembly ("memory-safe") {
             // r = uint256(signature[0:32])
             r := calldataload(signature.offset)
             // s = uint256(signature[32:64])
@@ -111,7 +130,7 @@ contract Inbox is IERC1271 {
         address signer = ecrecover(inboxOrderDigest, v, r, s);
         require(signer == BENEFICIARY, Unauthorized(signer));
 
-        return bytes4(keccak256("isValidSignature(bytes32,bytes)"));
+        return IERC1271.isValidSignature.selector;
     }
 
     /// @notice Calls the settlement contract function with the same signature to set a pre signature on behalf of the Inbox
@@ -123,8 +142,12 @@ contract Inbox is IERC1271 {
         ICowSettlement(SETTLEMENT).setPreSignature(orderUid, approved);
     }
 
+    /// @notice Safe proxy function to set a token approval from this contract
+    /// @param token The address to call `approve` on
+    /// @param spender The `spender` parameter to use for the approve call
+    /// @param amount The `amount` parameter to use for the approve call
     function callApprove(address token, address spender, uint256 amount) external {
-        require(msg.sender == OWNER || msg.sender == BENEFICIARY, Unauthorized(msg.sender));
+        require(msg.sender == OPERATOR || msg.sender == BENEFICIARY, Unauthorized(msg.sender));
         IERC20(token).forceApprove(spender, amount);
     }
 
@@ -133,7 +156,7 @@ contract Inbox is IERC1271 {
     /// @param to The recipient address
     /// @param amount The amount to transfer
     function callTransfer(address token, address to, uint256 amount) external {
-        require(msg.sender == OWNER || msg.sender == BENEFICIARY, Unauthorized(msg.sender));
+        require(msg.sender == OPERATOR || msg.sender == BENEFICIARY, Unauthorized(msg.sender));
         IERC20(token).safeTransfer(to, amount);
     }
 
@@ -141,9 +164,10 @@ contract Inbox is IERC1271 {
     /// @param vault The vault contract to call repay on
     /// @param amount The amount to repay
     /// @param account The account to repay debt for
-    function callVaultRepay(address vault, address asset, uint256 amount, address account) external {
-        require(msg.sender == OWNER || msg.sender == BENEFICIARY, Unauthorized(msg.sender));
+    /// @return The amount repaid as returned by the vault
+    function callVaultRepay(address vault, address asset, uint256 amount, address account) external returns (uint256) {
+        require(msg.sender == OPERATOR || msg.sender == BENEFICIARY, Unauthorized(msg.sender));
         IERC20(asset).forceApprove(vault, amount);
-        IBorrowing(vault).repay(amount, account);
+        return IBorrowing(vault).repay(amount, account);
     }
 }

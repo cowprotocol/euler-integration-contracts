@@ -248,7 +248,8 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                CowEvcClosePositionWrapper.NoSwapOutput.selector, wrapper.getInbox(params.owner, params.account)
+                CowEvcClosePositionWrapper.NoSwapOutput.selector,
+                CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account)
             )
         );
         vm.prank(address(mockEvc));
@@ -271,7 +272,11 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
             );
 
         // put funds in the inbox so it doesn't revert
-        deal(address(mockDebtAsset), wrapper.getInbox(params.owner, params.account), 1);
+        deal(
+            address(mockDebtAsset),
+            CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account),
+            1
+        );
 
         vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
@@ -288,7 +293,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
             collateralAmount: 1000e18
         });
 
-        address inbox = wrapper.getInbox(params.owner, params.account);
+        address inbox = CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account);
 
         // Give  some collateral vault tokens (what it would received previously from transferring from the user in the EVC.permit)
         mockCollateralVault.mint(inbox, 5000e18);
