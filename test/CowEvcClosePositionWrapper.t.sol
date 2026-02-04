@@ -78,7 +78,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         vm.startPrank(user);
 
         // Set operators
-        EVC.setAccountOperator(user, address(closePositionWrapper), true);
         EVC.setAccountOperator(account, address(closePositionWrapper), true);
 
         // Pre-approve hash
