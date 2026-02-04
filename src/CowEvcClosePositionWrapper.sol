@@ -18,9 +18,11 @@ import {Inbox} from "./Inbox.sol";
 ///      3. Repay debt and return remaining assets to the subaccount
 /// @dev The settle call by this order should be performing the necessary swap
 /// from collateralVault -> IERC20(borrowVault.asset()). The recipient of the
-/// swap should be the account returned by `getInbox(address)`, where `address` is the subaccount. Following this, the account will repay the loan after the settlement returns.
+/// swap should be the account returned by `getInbox(address owner, address subaccount)`. The Inbox is used to temporarily hold the swapped hold funds while the transaction is in flight.
+/// Following this, the Inbox will repay the loan after the settlement returns.
+/// Due to the potential side effects of multiple orders executing in a single settlement, do not attempt to execute a new close position on the same subaccount until it either expires or is settled.
 /// If the position will be fully closed, the CoW order should be of type GPv2Order.KIND_BUY to prevent excess repay asset from being sent to the contract, leaving excess dust in the user.
-/// Leave a small buffer for interest accumulation, and the dust will be returned to the owner's wallet.
+/// Leave a small buffer for interest accumulation, and any dust on the buy side will be returned to the owner's wallet.
 contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
     using SafeERC20 for IERC20;
 
