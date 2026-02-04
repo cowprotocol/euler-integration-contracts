@@ -16,6 +16,7 @@ contract Inbox is IERC1271 {
 
     error Unauthorized(address);
     error OrderHashMismatch(bytes32 computed, bytes32 provided);
+    error InvalidSignatureOrderData(bytes data);
 
     bytes32 public immutable INBOX_DOMAIN_SEPARATOR;
     bytes32 public immutable SETTLEMENT_DOMAIN_SEPARATOR;
@@ -63,6 +64,9 @@ contract Inbox is IERC1271 {
             bytes32 typeHash = ORDER_TYPE_HASH;
             bytes32 structHash;
 
+            // Ensure that we have all the order data
+            require(orderData.length >= 384, InvalidSignatureOrderData(orderData));
+
             // NOTE: Compute the EIP-712 order struct hash in place. As suggested
             // in the EIP proposal, noting that the order struct has 12 fields, and
             // prefixing the type hash `(1 + 12) * 32 = 416` bytes to hash.
@@ -79,7 +83,7 @@ contract Inbox is IERC1271 {
             bytes memory message = abi.encodePacked("\x19\x01", inboxDomainSeparator, structHash);
 
             // We use assembly for the keccak256 hashing due to inefficient impl warning by foundry https://getfoundry.sh/forge/linting/#asm-keccak256
-            assembly {
+            assembly ("memory-safe") {
                 inboxOrderDigest := keccak256(add(message, 32), 66)
                 // The difference between the inbox and settlement order digests is only the domainSeparator word.
                 // So we can get both hashes pretty efficiently through assembly by replacing it
