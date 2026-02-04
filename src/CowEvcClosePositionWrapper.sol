@@ -7,6 +7,7 @@ import {ICowSettlement, CowWrapper} from "./CowWrapper.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {SafeERC20, IERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
+import {InboxFactory} from "./InboxFactory.sol";
 import {Inbox} from "./Inbox.sol";
 
 /// @title CowEvcClosePositionWrapper
@@ -20,7 +21,7 @@ import {Inbox} from "./Inbox.sol";
 /// swap should be the account returned by `getInbox(address)`, where `address` is the subaccount. Following this, the account will repay the loan after the settlement returns.
 /// If the position will be fully closed, the CoW order should be of type GPv2Order.KIND_BUY to prevent excess repay asset from being sent to the contract, leaving excess dust in the user.
 /// Leave a small buffer for interest accumulation, and the dust will be returned to the owner's wallet.
-contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
+contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
     using SafeERC20 for IERC20;
 
     address immutable VAULT_RELAYER;
@@ -50,6 +51,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper {
 
     constructor(address _evc, ICowSettlement _settlement)
         CowEvcBaseWrapper(_evc, _settlement, DOMAIN_NAME, DOMAIN_VERSION)
+        InboxFactory(address(_settlement))
     {
         PARAMS_SIZE =
         abi.encode(
