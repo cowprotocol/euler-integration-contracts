@@ -101,6 +101,10 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
         uint256 collateralAmount;
     }
 
+    /// @notice Decode the wrapper data into ClosePositionParams and signature
+    /// @param wrapperData The wrapper data excluding length provided to the `wrappedSettle` call `chainedWrapperData`
+    /// @return params The decoded ClosePositionParams
+    /// @return signature The signature over the EVC permit data
     function _parseClosePositionParams(bytes calldata wrapperData)
         internal
         pure
@@ -109,7 +113,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
         (params, signature) = abi.decode(wrapperData, (ClosePositionParams, bytes));
     }
 
-    /// @notice Helper function to compute the hash that would be approved
+    /// @notice Helper function to compute the hash that would need to be approved via `setPreApprovedHash` for the given `ClosePositionParams`
     /// @param params The ClosePositionParams to hash
     /// @return The hash of the signed calldata for these params
     function getApprovalHash(ClosePositionParams memory params) external view returns (bytes32) {
@@ -131,6 +135,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
         return _encodePermitData(items, memoryLocation(params));
     }
 
+    /// @inheritdoc CowEvcBaseWrapper
     function _encodeBatchItemsBefore(ParamsLocation paramsLocation)
         internal
         view
@@ -153,9 +158,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
         needsPermission = true;
     }
 
-    /// @notice Implementation of CowWrapper._wrap - executes EVC operations to close a position
-    /// @param settleData Data which will be used for the parameters in a call to `CowSettlement.settle`
-    /// @param wrapperData Additional data containing ClosePositionParams
+    /// @inheritdoc CowWrapper
     function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
         internal
         override
@@ -173,6 +176,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
         );
     }
 
+    /// @inheritdoc CowEvcBaseWrapper
     function _evcInternalSettle(
         bytes calldata settleData,
         bytes calldata wrapperData,
@@ -228,12 +232,14 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
         );
     }
 
+    /// @notice Helper to convert memory struct (used by CowEvcBaseWrapper) to ParamsLocation
     function memoryLocation(ClosePositionParams memory params) internal pure returns (ParamsLocation location) {
         assembly ("memory-safe") {
             location := params
         }
     }
 
+    /// @notice Helper to convert ParamsLocation (used by CowEvcBaseWrapper) back to memory struct
     function paramsFromMemory(ParamsLocation location) internal pure returns (ClosePositionParams memory params) {
         assembly {
             params := location
