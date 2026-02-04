@@ -97,37 +97,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         vm.stopPrank();
     }
 
-    /// @notice Setup approvals for a specific user to close their position
-    function _setupClosePositionApprovalsFor(
-        address owner,
-        address account,
-        IEVault collateralVault,
-        IERC20 repaymentAsset
-    ) internal {
-        vm.startPrank(owner);
-
-        // Approve vault shares from subaccount
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
-        items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: account,
-            targetContract: address(collateralVault),
-            value: 0,
-            data: abi.encodeCall(IERC20.approve, (address(closePositionWrapper), type(uint256).max))
-        });
-        EVC.batch(items);
-
-        // Approve transfer of any remaining vault shares from the wrapper back to the subaccount
-        collateralVault.approve(address(closePositionWrapper), type(uint256).max);
-
-        // Approve vault shares for settlement
-        collateralVault.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
-
-        // Approve wrapper to spend repayment asset
-        repaymentAsset.approve(address(closePositionWrapper), type(uint256).max);
-
-        vm.stopPrank();
-    }
-
     /// @notice Create permit signature for any user
     function _createPermitSignatureFor(
         CowEvcClosePositionWrapper.ClosePositionParams memory params,
@@ -232,9 +201,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             userPrivateKey: privateKey
         });
 
-        // Setup approvals
-        _setupClosePositionApprovalsFor(user, account, EUSDS, WETH);
-
         // Create permit signature
         bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
 
@@ -316,9 +282,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             buyAmount: buyAmount,
             userPrivateKey: privateKey
         });
-
-        // Setup approvals
-        _setupClosePositionApprovalsFor(user, account, EUSDS, WETH);
 
         // Create permit signature
         bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
@@ -482,9 +445,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             userPrivateKey: privateKey2 // Use wrong private key to create invalid signature
         });
 
-        // Setup approvals
-        _setupClosePositionApprovalsFor(user, account, EUSDS, WETH);
-
         // Create INVALID permit signature by signing with wrong private key (user2's key instead of user's)
         ecdsa.setPrivateKey(privateKey2); // Wrong private key!
         bytes memory invalidPermitSignature = ecdsa.signPermit(
@@ -568,11 +528,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             0.01 ether,
             "User3 should have some EWETH collateral before closing"
         );
-
-        // Setup approvals for all users
-        _setupClosePositionApprovalsFor(user, account, EUSDS, WETH);
-        _setupClosePositionApprovalsFor(user2, account2, EUSDS, WETH);
-        _setupClosePositionApprovalsFor(user3, account3, EWETH, USDS);
 
         // Create params for all users
         CowEvcClosePositionWrapper.ClosePositionParams memory params1 = CowEvcClosePositionWrapper.ClosePositionParams({
