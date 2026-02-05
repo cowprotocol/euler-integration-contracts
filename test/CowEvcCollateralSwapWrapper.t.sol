@@ -102,6 +102,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     }
 
     /// @notice Setup user approvals for collateral swap on subaccount
+    /// This is only for use on the pre-approved flow, as signatures with permit are used instead with the permit flow.
     function _setupSubaccountApprovals(CowEvcCollateralSwapWrapper.CollateralSwapParams memory params) internal {
         vm.startPrank(params.owner);
 
@@ -173,8 +174,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         r.interactions[1][2] = getDepositInteraction(buyVaultToken, buyUnderlyingAmount);
     }
 
-    /// @notice Test swapping collateral from main account
-    function test_CollateralSwapWrapper_MainAccount() external {
+    function test_CollateralSwapWrapper_Permit_MainAccount() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
         uint256 borrowAmount = 0.5e18; // Borrow 0.5 WETH
@@ -233,11 +233,151 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         assertEq(
             EUSDS.balanceOf(user), usdsBalanceBefore - DEFAULT_SWAP_AMOUNT, "User should have less EUSDS after swap"
         );
-        assertGt(EWBTC.balanceOf(user), wbtcBalanceBefore, "User should have more EWBTC after swap");
+        assertApproxEqAbs(
+            EWBTC.balanceOf(user), wbtcBalanceBefore + DEFAULT_BUY_AMOUNT, 1, "User should have received EWBTC"
+        );
+
+        // Verify the new collateral vault is enabled
+        assertTrue(EVC.isCollateralEnabled(user, address(EWBTC)), "EWBTC vault should be enabled for user");
+    }
+    function test_CollateralSwapWrapper_Permit_Subaccount() external {
+        vm.skip(bytes(forkRpcUrl).length == 0);
+
+        uint256 borrowAmount = 0.5e18; // Borrow 0.5 WETH
+        uint256 collateralAmount = 1000e18;
+
+        // Set up a leveraged position
+        setupLeveragedPositionFor({
+            owner: user,
+            ownerAccount: account,
+            collateralVault: EUSDS,
+            borrowVault: EWETH,
+            collateralAmount: collateralAmount + borrowAmount * 2500e18 / 0.99e18,
+            borrowAmount: borrowAmount
+        });
+
+        // Create params using helper
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, account);
+
+        // Get settlement data
+        SettlementData memory settlement = getCollateralSwapSettlement({
+            owner: user,
+            account: account,
+            sellVaultToken: EUSDS,
+            buyVaultToken: EWBTC,
+            sellAmount: DEFAULT_SWAP_AMOUNT,
+            buyAmount: DEFAULT_BUY_AMOUNT
+        });
+
+        // Approve spending of the EUSDS to send collateral to COW settlement
+        vm.startPrank(user);
+        EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+        vm.stopPrank();
+
+        // Record balances before swap
+        uint256 usdsBalanceBefore = EUSDS.balanceOf(account);
+        uint256 wbtcBalanceBefore = EWBTC.balanceOf(account);
+
+        // Create permit signature and encode data
+        bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
+        bytes memory settleData = abi.encodeCall(
+            ICowSettlement.settle,
+            (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
+        );
+        bytes memory wrapperData = _encodeWrapperData(params, permitSignature);
+
+        // Expect event emission
+        vm.expectEmit(true, true, true, false);
+        emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
+            params.owner, params.account, params.fromVault, params.toVault, params.fromAmount, params.toAmount
+        );
+
+        // Execute wrapped settlement
+        CowWrapper(address(collateralSwapWrapper)).wrappedSettle(settleData, wrapperData);
+
+        // Verify the collateral was swapped successfully
+        assertEq(
+            EUSDS.balanceOf(account), usdsBalanceBefore - DEFAULT_SWAP_AMOUNT, "Subaccount should have less EUSDS after swap"
+        );
+        assertApproxEqAbs(
+            EWBTC.balanceOf(account), wbtcBalanceBefore + DEFAULT_BUY_AMOUNT, 1, "Subaccount should have received EWBTC"
+        );
+        assertEq(EWBTC.balanceOf(user), 0, "User should have no EWBTC after swap");
+
+        // Verify the new collateral vault is enabled
+        assertTrue(EVC.isCollateralEnabled(account, address(EWBTC)), "EWBTC vault should be enabled for subaccount");
     }
 
-    /// @notice Test swapping collateral from subaccount
-    function test_CollateralSwapWrapper_Subaccount() external {
+    function test_CollateralSwapWrapper_PreApprove_MainAccount() external {
+        vm.skip(bytes(forkRpcUrl).length == 0);
+
+        uint256 borrowAmount = 0.5e18; // Borrow 0.5 WETH
+        uint256 collateralAmount = 1000e18;
+
+        // Set up a leveraged position
+        setupLeveragedPositionFor({
+            owner: user,
+            ownerAccount: user,
+            collateralVault: EUSDS,
+            borrowVault: EWETH,
+            collateralAmount: collateralAmount + borrowAmount * 2500e18 / 0.99e18,
+            borrowAmount: borrowAmount
+        });
+
+        // Create params using helper
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, user);
+
+        // Get settlement data
+        SettlementData memory settlement = getCollateralSwapSettlement({
+            owner: user,
+            account: user,
+            sellVaultToken: EUSDS,
+            buyVaultToken: EWBTC,
+            sellAmount: DEFAULT_SWAP_AMOUNT,
+            buyAmount: DEFAULT_BUY_AMOUNT
+        });
+
+        // Setup approvals and pre-approved hash (for main account)
+        vm.startPrank(user);
+        EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+        bytes32 hash = collateralSwapWrapper.getApprovalHash(params);
+        collateralSwapWrapper.setPreApprovedHash(hash, true);
+        EVC.setAccountOperator(params.account, address(collateralSwapWrapper), true);
+        vm.stopPrank();
+
+        // Record balances before swap
+        uint256 usdsBalanceBefore = EUSDS.balanceOf(user);
+        uint256 wbtcBalanceBefore = EWBTC.balanceOf(user);
+
+        // Encode settlement and wrapper data (empty signature for pre-approved hash)
+        bytes memory settleData = abi.encodeCall(
+            ICowSettlement.settle,
+            (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
+        );
+        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
+
+        // Expect event emission
+        vm.expectEmit(true, true, true, false);
+        emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
+            params.owner, params.account, params.fromVault, params.toVault, params.fromAmount, params.toAmount
+        );
+
+        // Execute wrapped settlement
+        CowWrapper(address(collateralSwapWrapper)).wrappedSettle(settleData, wrapperData);
+
+        // Verify the collateral was swapped successfully
+        assertEq(
+            EUSDS.balanceOf(user), usdsBalanceBefore - DEFAULT_SWAP_AMOUNT, "User should have less EUSDS after swap"
+        );
+        assertApproxEqAbs(
+            EWBTC.balanceOf(user), wbtcBalanceBefore + DEFAULT_BUY_AMOUNT, 1, "User should have received EWBTC"
+        );
+
+        // Verify the new collateral vault is enabled
+        assertTrue(EVC.isCollateralEnabled(user, address(EWBTC)), "EWBTC vault should be enabled for user");
+    }
+
+    function test_CollateralSwapWrapper_PreApprove_Subaccount() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
         uint256 borrowAmount = 0.5e18; // Borrow 0.5 WETH
@@ -295,8 +435,13 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             usdsBalanceBefore - DEFAULT_SWAP_AMOUNT,
             "Subaccount should have less EUSDS after swap"
         );
-        assertGt(EWBTC.balanceOf(account), wbtcBalanceBefore, "Subaccount should have more EWBTC after swap");
+        assertApproxEqAbs(
+            EWBTC.balanceOf(account), wbtcBalanceBefore + DEFAULT_BUY_AMOUNT, 1, "Subaccount should have received EWBTC"
+        );
         assertEq(EWBTC.balanceOf(user), 0, "User should have no EWBTC after swap");
+
+        // Verify the new collateral vault is enabled
+        assertTrue(EVC.isCollateralEnabled(account, address(EWBTC)), "EWBTC vault should be enabled for subaccount");
     }
 
     /// @notice Test that invalid signature causes the transaction to revert
