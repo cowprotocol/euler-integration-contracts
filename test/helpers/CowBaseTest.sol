@@ -40,8 +40,8 @@ contract CowBaseTest is Test {
     address user2;
     address user3;
     address account;
-    address account2 = address(uint160(user2) ^ 1);
-    address account3 = address(uint160(user3) ^ 1);
+    address account2;
+    address account3;
     uint256 privateKey;
     uint256 privateKey2;
     uint256 privateKey3;

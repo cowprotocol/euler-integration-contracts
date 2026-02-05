@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 
-import {IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
-import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {IERC20, IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 /// @title MockERC20
 /// @notice Mock ERC20 token for unit testing
