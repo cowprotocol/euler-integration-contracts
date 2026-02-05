@@ -2,9 +2,12 @@
 pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
+import {Create2} from "openzeppelin-contracts/contracts/utils/Create2.sol";
 
 import {CowWrapper, ICowSettlement} from "./CowWrapper.sol";
 import {PreApprovedHashes} from "./PreApprovedHashes.sol";
+
+import {Inbox} from "./Inbox.sol";
 
 /// @title CowEvcBaseWrapper
 /// @notice Shared components for implementing Euler wrappers.
@@ -63,6 +66,9 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
     /// @dev Indicates that neither `_encodeBatchItemsBefore` nor `_encodeBatchItemsAfter` requested permission, meaning the provided permit signature is unused.
     error UnusedPermitSignature();
+
+    /// @dev Indicates that the computed Create2 address does not match the expected address. Mostly exists as a sanity check.
+    error Create2AddressMismatch(address expectedAddress);
 
     /// @dev Used to ensure that the EVC is calling back this contract with the correct data
     bytes32 internal transient expectedEvcInternalSettleCallHash;
@@ -155,6 +161,42 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         expectedEvcInternalSettleCallHash = bytes32(0);
 
         _evcInternalSettle(settleData, wrapperData, remainingWrapperData);
+    }
+
+    /// @notice This function is called by an offchain process as part of constructing the CoW order needed to use this wrapper.
+    /// @dev Read the wrapper documentation to confirm. It may or may not be necessary to set the `recipient` of the CoW order to the address returned
+    /// by this function.
+    function getInbox(address owner, address subaccount) external returns (address) {
+        return address(_getInbox(owner, subaccount));
+    }
+
+    /// @notice Compute the Inbox address for a given owner and subaccount (view-only, does not deploy)
+    /// @param owner The owner address
+    /// @param subaccount The subaccount address
+    /// @return creationAddress The computed Inbox address
+    /// @return creationCode The code needed to create the contract
+    /// @return salt The salt that should be used to create the contract
+    function _getInboxAddress(address owner, address subaccount)
+        internal
+        view
+        returns (address creationAddress, bytes memory creationCode, bytes32 salt)
+    {
+        salt = bytes32(uint256(uint160(subaccount)));
+        creationCode = abi.encodePacked(type(Inbox).creationCode, abi.encode(address(this), owner, SETTLEMENT));
+        creationAddress = Create2.computeAddress(salt, keccak256(creationCode));
+    }
+
+    function _getInbox(address owner, address subaccount) internal returns (Inbox) {
+        (address expectedAddress, bytes memory creationCode, bytes32 salt) = _getInboxAddress(owner, subaccount);
+
+        if (expectedAddress.code.length == 0) {
+            // `require` here is mostly for sanity
+            // NOTE: its technically possible to deploy create2 directly using new Contract{salt: }(), but openzeppelin usage
+            // is good for consistency
+            require(Create2.deploy(0, salt, creationCode) == expectedAddress, Create2AddressMismatch(expectedAddress));
+        }
+
+        return Inbox(expectedAddress);
     }
 
     function _makeInternalSettleCallbackData(
