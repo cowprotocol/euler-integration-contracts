@@ -330,7 +330,7 @@ contract CowEvcBaseWrapperTest is Test {
     }
 
     function test_InvokeEvc_FailsOnConsumedHash() public {
-                MockEvcBaseWrapper.TestParams memory params =
+        MockEvcBaseWrapper.TestParams memory params =
             MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: block.timestamp + 100});
         bytes32 approvalHash = wrapper.getApprovalHash(params);
         vm.prank(OWNER);

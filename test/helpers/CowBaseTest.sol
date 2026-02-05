@@ -192,7 +192,7 @@ contract CowBaseTest is Test {
         });
     }
 
-    function setupCowOrder(
+    function setupAndPreSignCowOrder(
         address[] memory tokens,
         uint256 sellTokenIndex,
         uint256 buyTokenIndex,
@@ -249,7 +249,7 @@ contract CowBaseTest is Test {
     /// @dev Creates an order where the Inbox contract signs on behalf of the user.
     /// This is used for the CowEvcClosePositionWrapper
     /// Note: to reduce params, inboxForUser is assumed to be same as receiver
-    function setupCowOrderEip1271(
+    function setupAndPreSignCowOrderEip1271(
         address[] memory tokens,
         uint256 sellTokenIndex,
         uint256 buyTokenIndex,

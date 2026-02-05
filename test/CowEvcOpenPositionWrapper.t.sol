@@ -116,10 +116,12 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
     /// @notice Create settlement data for opening a leveraged position
     /// @dev Sells borrowed WETH to buy USDS which gets deposited into the vault
-    function getOpenPositionSettlement(address owner, address receiver, uint256 sellAmount, uint256 buyAmount)
-        public
-        returns (SettlementData memory r)
-    {
+    function prepareAndSignOpenPositionSettlement(
+        address owner,
+        address receiver,
+        uint256 sellAmount,
+        uint256 buyAmount
+    ) public returns (SettlementData memory r) {
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
         // Create trade and extract order data
@@ -128,7 +130,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         (r.tokens, r.clearingPrices) = getTokensAndPrices();
 
         r.trades = new ICowSettlement.Trade[](1);
-        (r.trades[0], r.orderData, r.orderUid) = setupCowOrder({
+        (r.trades[0], r.orderData, r.orderUid) = setupAndPreSignCowOrder({
             tokens: r.tokens,
             sellTokenIndex: 1, // WETH
             buyTokenIndex: 2, // eUSDS
@@ -161,7 +163,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement = getOpenPositionSettlement({
+        SettlementData memory settlement = prepareAndSignOpenPositionSettlement({
             owner: user, receiver: account, sellAmount: DEFAULT_BORROW_AMOUNT, buyAmount: MIN_BUY_SHARES_AMOUNT
         });
 
@@ -170,7 +172,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         USDS.approve(address(EUSDS), type(uint256).max);
 
         // User signs order
-        // Does not need to run here because its done in `setupCowOrder`
+        // Does not need to run here because its done in `setupAndPreSignCowOrder`
 
         // Create permit signature
         bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
@@ -223,7 +225,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement = getOpenPositionSettlement({
+        SettlementData memory settlement = prepareAndSignOpenPositionSettlement({
             owner: user, receiver: account, sellAmount: DEFAULT_BORROW_AMOUNT, buyAmount: MIN_BUY_SHARES_AMOUNT
         });
 
@@ -303,7 +305,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement = getOpenPositionSettlement({
+        SettlementData memory settlement = prepareAndSignOpenPositionSettlement({
             owner: user, receiver: account, sellAmount: DEFAULT_BORROW_AMOUNT, buyAmount: DEFAULT_BUY_AMOUNT
         });
 
@@ -338,7 +340,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     /// @notice Test that the wrapper can handle being called three times in the same chain
     /// @dev Two users open positions in the same direction (short ETH), one user opens opposite (long ETH)
     /// The ETH shorters needs a minimum of 10000 USDS worth of eUSDS, and the longers 2 WETH worth of eWETH output from the order buyAmount.
-    /// We receive input tokens totalling 3 + 1 WETH from the shorters, and 5000 USDS from the longer, so to get the output, the swap converts 2 WETH into 5000 USDS (= assumed conversion rate of 2500 USD/ETH), 
+    /// We receive input tokens totalling 3 + 1 WETH from the shorters, and 5000 USDS from the longer, so to get the output, the swap converts 2 WETH into 5000 USDS (= assumed conversion rate of 2500 USD/ETH),
     /// the result is that the orders can be satisfied by only swapping the difference in input tokens.
     function test_OpenPositionWrapper_ThreeUsers_TwoSameOneOpposite() external {
         // Setup User1: Has USDS, will borrow WETH and swap WETH→USDS (long USDS). Around 1 ETH
@@ -453,7 +455,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         ICowSettlement.Trade[] memory trades = new ICowSettlement.Trade[](3);
 
         // Trade 1: User1 sells WETH for eUSDS
-        (trades[0],,) = setupCowOrder({
+        (trades[0],,) = setupAndPreSignCowOrder({
             tokens: tokens,
             sellTokenIndex: 1,
             buyTokenIndex: 2,
@@ -466,7 +468,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         });
 
         // Trade 2: User2 sells WETH for eUSDS (same direction as User1)
-        (trades[1],,) = setupCowOrder({
+        (trades[1],,) = setupAndPreSignCowOrder({
             tokens: tokens,
             sellTokenIndex: 1,
             buyTokenIndex: 2,
@@ -479,7 +481,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         });
 
         // Trade 3: User3 sells USDS for eWETH (opposite direction)
-        (trades[2],,) = setupCowOrder({
+        (trades[2],,) = setupAndPreSignCowOrder({
             tokens: tokens,
             sellTokenIndex: 0,
             buyTokenIndex: 3,
