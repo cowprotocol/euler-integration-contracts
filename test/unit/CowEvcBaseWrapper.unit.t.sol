@@ -14,7 +14,7 @@ import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
 contract ReferenceEIP712 is EIP712 {
     constructor(string memory name, string memory version) EIP712(name, version) {}
 
-    function domainSeparator() external returns (bytes32) {
+    function domainSeparator() external view returns (bytes32) {
         return _domainSeparatorV4();
     }
 }
@@ -110,6 +110,10 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
     function setNeedsPermission(bool flag) external {
         needsPermission = flag;
     }
+
+    function setExpectedEvcInternalSettleCall(bytes memory call) external {
+        expectedEvcInternalSettleCallHash = keccak256(call);
+    }
 }
 
 contract CowEvcBaseWrapperTest is Test {
@@ -144,6 +148,23 @@ contract CowEvcBaseWrapperTest is Test {
         wrapper = new MockEvcBaseWrapper(address(mockEvc), address(mockSettlement), 2);
     }
 
+    /// @notice Create empty settle data
+    function _getEmptySettleData() internal pure returns (bytes memory) {
+        return abi.encodeCall(
+            ICowSettlement.settle,
+            (
+                new address[](0),
+                new uint256[](0),
+                new ICowSettlement.Trade[](0),
+                [
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
+                ]
+            )
+        );
+    }
+
     function test_Constructor() public {
         // Test that constructor validates EVC address has code
         vm.expectRevert("EVC address is invalid");
@@ -159,13 +180,46 @@ contract CowEvcBaseWrapperTest is Test {
         // Test that DOMAIN_SEPARATOR is computed correctly according to EIP-712
         // Create a reference EIP712 contract with same name/version and verify it matches
         bytes32 wrapperDomainSeparator = wrapper.DOMAIN_SEPARATOR();
-        ReferenceEIP712 refEIP712 = new ReferenceEIP712(wrapper.CONTRACT_NAME(), wrapper.CONTRACT_VERSION());
-        vm.etch(address(wrapper), address(refEIP712).code);
+        ReferenceEIP712 refEip712 = new ReferenceEIP712(wrapper.CONTRACT_NAME(), wrapper.CONTRACT_VERSION());
+        vm.etch(address(wrapper), address(refEip712).code);
         assertEq(
             wrapperDomainSeparator,
             ReferenceEIP712(address(wrapper)).domainSeparator(),
             "DOMAIN_SEPARATOR not computed correctly"
         );
+    }
+
+    function test_EvcInternalSettle_RequiresCorrectCalldata() public {
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory remainingWrapperData = "";
+
+        mockSettlement.setSuccessfulSettle(true);
+
+        // Set incorrect onBehalfOfAccount (not address(wrapper))
+        mockEvc.setOnBehalfOf(address(0x9999));
+
+        // set incorrect expected call
+        wrapper.setExpectedEvcInternalSettleCall(
+            abi.encodeCall(wrapper.evcInternalSettle, (new bytes(0), new bytes(0), remainingWrapperData))
+        );
+
+        vm.prank(address(mockEvc));
+        vm.expectRevert(CowEvcBaseWrapper.InvalidCallback.selector);
+        wrapper.evcInternalSettle(settleData, hex"", remainingWrapperData);
+    }
+
+    function test_EvcInternalSettle_CanBeCalledByEVC() public {
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory remainingWrapperData = "";
+
+        mockSettlement.setSuccessfulSettle(true);
+
+        wrapper.setExpectedEvcInternalSettleCall(
+            abi.encodeCall(wrapper.evcInternalSettle, (settleData, hex"", remainingWrapperData))
+        );
+
+        vm.prank(address(mockEvc));
+        wrapper.evcInternalSettle(settleData, hex"", remainingWrapperData);
     }
 
     function test_UnusedPermitSignature() public {

@@ -236,43 +236,6 @@ contract CowEvcOpenPositionWrapperUnitTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                    EVC INTERNAL SETTLE TESTS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_EvcInternalSettle_RequiresCorrectCalldata() public {
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory remainingWrapperData = "";
-
-        mockSettlement.setSuccessfulSettle(true);
-
-        // Set incorrect onBehalfOfAccount (not address(wrapper))
-        mockEvc.setOnBehalfOf(address(0x9999));
-
-        // set incorrect expected call
-        wrapper.setExpectedEvcInternalSettleCall(
-            abi.encodeCall(wrapper.evcInternalSettle, (new bytes(0), new bytes(0), remainingWrapperData))
-        );
-
-        vm.prank(address(mockEvc));
-        vm.expectRevert(CowEvcBaseWrapper.InvalidCallback.selector);
-        wrapper.evcInternalSettle(settleData, hex"", remainingWrapperData);
-    }
-
-    function test_EvcInternalSettle_CanBeCalledByEVC() public {
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory remainingWrapperData = "";
-
-        mockSettlement.setSuccessfulSettle(true);
-
-        wrapper.setExpectedEvcInternalSettleCall(
-            abi.encodeCall(wrapper.evcInternalSettle, (settleData, hex"", remainingWrapperData))
-        );
-
-        vm.prank(address(mockEvc));
-        wrapper.evcInternalSettle(settleData, hex"", remainingWrapperData);
-    }
-
-    /*//////////////////////////////////////////////////////////////
                     WRAPPED SETTLE TESTS
     //////////////////////////////////////////////////////////////*/
 
