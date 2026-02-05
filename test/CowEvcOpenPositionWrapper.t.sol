@@ -443,7 +443,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         // Create settlement with all three trades
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
-        // Setup tokens array: WETH, eUSDS, USDS, eWETH
+        // Setup tokens array: USDS, WETH, eUSDS, eWETH
         (address[] memory tokens, uint256[] memory clearingPrices) = getTokensAndPrices();
 
         // Create trades and extract orders
