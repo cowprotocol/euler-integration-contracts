@@ -19,11 +19,14 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
         uint256 number;
     }
 
+    string public constant CONTRACT_NAME = "MockEvcBaseWrapper";
+    string public constant CONTRACT_VERSION = "1";
+
     bool public needsPermission;
 
     constructor(address evc, address cow)
-        CowEvcBaseWrapper(evc, ICowSettlement(cow), keccak256("CowEvcBaseWrapperTest"), keccak256("1"))
-        EIP712("CowEvcBaseWrapperTest", "1")
+        CowEvcBaseWrapper(evc, ICowSettlement(cow), keccak256(bytes(CONTRACT_NAME)), keccak256(bytes(CONTRACT_VERSION)))
+        EIP712(CONTRACT_NAME, CONTRACT_VERSION)
     {
         PARAMS_SIZE = abi.encode(TestParams({owner: address(0), account: address(0), number: 0})).length;
         MAX_BATCH_OPERATIONS = 2;
@@ -149,7 +152,7 @@ contract CowEvcBaseWrapperTest is Test {
             keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
         bytes32 expectedDomainSeparator = keccak256(
             abi.encode(
-                domainTypeHash, keccak256("CowEvcBaseWrapperTest"), keccak256("1"), block.chainid, address(wrapper)
+                domainTypeHash, keccak256(bytes(wrapper.CONTRACT_NAME())), keccak256(bytes(wrapper.CONTRACT_VERSION())), block.chainid, address(wrapper)
             )
         );
         assertEq(wrapper.DOMAIN_SEPARATOR(), expectedDomainSeparator, "DOMAIN_SEPARATOR not computed correctly");
