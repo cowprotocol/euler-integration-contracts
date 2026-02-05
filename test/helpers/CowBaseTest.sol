@@ -317,6 +317,9 @@ contract CowBaseTest is Test {
         return abi.encodePacked(inboxForUser, r, s, v);
     }
 
+    /// @notice Helper to get common tokens and prices for tests. Simplifies many test flows by using shared indexes
+    /// for the tokens and their prices
+    /// (Note: in the future we could possibly put the actual indexes into constants to improve clarity)
     function getTokensAndPrices() public view returns (address[] memory tokens, uint256[] memory clearingPrices) {
         tokens = new address[](4);
         tokens[0] = address(USDS);
