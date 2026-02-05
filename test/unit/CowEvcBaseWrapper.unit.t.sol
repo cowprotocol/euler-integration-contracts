@@ -152,7 +152,11 @@ contract CowEvcBaseWrapperTest is Test {
             keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
         bytes32 expectedDomainSeparator = keccak256(
             abi.encode(
-                domainTypeHash, keccak256(bytes(wrapper.CONTRACT_NAME())), keccak256(bytes(wrapper.CONTRACT_VERSION())), block.chainid, address(wrapper)
+                domainTypeHash,
+                keccak256(bytes(wrapper.CONTRACT_NAME())),
+                keccak256(bytes(wrapper.CONTRACT_VERSION())),
+                block.chainid,
+                address(wrapper)
             )
         );
         assertEq(wrapper.DOMAIN_SEPARATOR(), expectedDomainSeparator, "DOMAIN_SEPARATOR not computed correctly");
