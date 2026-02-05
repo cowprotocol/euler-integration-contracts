@@ -8,7 +8,6 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 contract MockEVC {
     mapping(address => mapping(address => bool)) public operators;
     mapping(address => uint256) public nonces;
-    bool public shouldSucceed = true;
     address public onBehalfOf;
     uint256 public operatorMask = 0;
 
@@ -60,8 +59,6 @@ contract MockEVC {
     function disableCollateral(address, address) external pure {}
 
     function batch(IEVC.BatchItem[] calldata items) external returns (IEVC.BatchItemResult[] memory) {
-        require(shouldSucceed, "MockEVC: batch failed");
-
         // Execute each item
         for (uint256 i = 0; i < items.length; i++) {
             // Set onBehalfOf to the item's onBehalfOfAccount for the duration of the call
@@ -81,10 +78,6 @@ contract MockEVC {
         }
 
         return new IEVC.BatchItemResult[](0);
-    }
-
-    function setSuccessfulBatch(bool success) external {
-        shouldSucceed = success;
     }
 
     function permit(address, address, uint256, uint256, uint256, uint256, bytes memory, bytes memory) external view {}

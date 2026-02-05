@@ -310,9 +310,9 @@ contract CowEvcBaseWrapperTest is Test {
         wrapper.setPreApprovedHash(approvalHash, true);
 
         // Configure EVC to fail on batch call
-        mockEvc.setSuccessfulBatch(false);
 
         vm.expectRevert("MockEVC: batch failed");
+        vm.mockCallRevert(address(mockEvc), abi.encodeWithSelector(IEVC.batch.selector), "MockEVC: batch failed");
         wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
     }
 
