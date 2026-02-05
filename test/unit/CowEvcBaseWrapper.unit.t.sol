@@ -11,6 +11,14 @@ import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.
 import {CowEvcBaseWrapper, ICowSettlement, IEVC} from "../../src/CowEvcBaseWrapper.sol";
 import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
 
+contract ReferenceEIP712 is EIP712 {
+    constructor(string memory name, string memory version) EIP712(name, version) {}
+
+    function domainSeparator() external returns (bytes32) {
+        return _domainSeparatorV4();
+    }
+}
+
 contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
     struct TestParams {
         address owner;
@@ -149,18 +157,15 @@ contract CowEvcBaseWrapperTest is Test {
         assertEq(wrapper.NONCE_NAMESPACE(), expectedNonceNamespace, "NONCE_NAMESPACE not set correctly");
 
         // Test that DOMAIN_SEPARATOR is computed correctly according to EIP-712
-        bytes32 domainTypeHash =
-            keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
-        bytes32 expectedDomainSeparator = keccak256(
-            abi.encode(
-                domainTypeHash,
-                keccak256(bytes(wrapper.CONTRACT_NAME())),
-                keccak256(bytes(wrapper.CONTRACT_VERSION())),
-                block.chainid,
-                address(wrapper)
-            )
+        // Create a reference EIP712 contract with same name/version and verify it matches
+        bytes32 wrapperDomainSeparator = wrapper.DOMAIN_SEPARATOR();
+        ReferenceEIP712 refEIP712 = new ReferenceEIP712(wrapper.CONTRACT_NAME(), wrapper.CONTRACT_VERSION());
+        vm.etch(address(wrapper), address(refEIP712).code);
+        assertEq(
+            wrapperDomainSeparator,
+            ReferenceEIP712(address(wrapper)).domainSeparator(),
+            "DOMAIN_SEPARATOR not computed correctly"
         );
-        assertEq(wrapper.DOMAIN_SEPARATOR(), expectedDomainSeparator, "DOMAIN_SEPARATOR not computed correctly");
     }
 
     function test_UnusedPermitSignature() public {
