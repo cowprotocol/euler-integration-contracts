@@ -8,6 +8,7 @@ import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
 
 import {CowEvcBaseWrapper, ICowSettlement, CowWrapper, IEVC} from "../../src/CowEvcBaseWrapper.sol";
+import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
 
 contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
     struct TestParams {
@@ -325,6 +326,20 @@ contract CowEvcBaseWrapperTest is Test {
 
         // Ensure that the settlement is called
         vm.expectCall(address(mockSettlement), 0, MOCK_SETTLEMENT_CALL);
+        wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
+    }
+
+    function test_InvokeEvc_FailsOnConsumedHash() public {
+                MockEvcBaseWrapper.TestParams memory params =
+            MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: block.timestamp + 100});
+        bytes32 approvalHash = wrapper.getApprovalHash(params);
+        vm.prank(OWNER);
+        wrapper.setPreApprovedHash(approvalHash, true);
+
+        wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
+
+        // Try to invoke the same wrapper data again - should fail because hash is consumed
+        vm.expectRevert(abi.encodeWithSelector(PreApprovedHashes.AlreadyConsumed.selector, OWNER, approvalHash));
         wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
     }
 }
