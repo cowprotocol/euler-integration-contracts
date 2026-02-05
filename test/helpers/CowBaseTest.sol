@@ -262,33 +262,6 @@ contract CowBaseTest is Test {
         clearingPrices[3] = IERC4626(EWETH).convertToAssets(clearingPrices[1]); // eWETH price
     }
 
-    /// @notice Helper to set up a leveraged position for any user
-    /// @dev More flexible version that accepts owner, account, and vault parameters
-    /// The proceeds of the `borrow` are *NOT* deposited in the account for convienience of setup.
-    /// So make sure that `collateralAmount` is margin + borrowValue if that is something you care about.
-    function setupLeveragedPositionFor(
-        address owner,
-        address ownerAccount,
-        IEVault collateralVault,
-        IEVault borrowVault,
-        uint256 collateralAmount,
-        uint256 borrowAmount
-    ) internal {
-        IERC20 collateralAsset = IERC20(collateralVault.asset());
-
-        deal(address(collateralAsset), owner, collateralAmount);
-
-        vm.startPrank(owner);
-        collateralAsset.approve(address(collateralVault), type(uint256).max);
-        EVC.enableCollateral(ownerAccount, address(collateralVault));
-        EVC.enableController(ownerAccount, address(borrowVault));
-        collateralVault.deposit(collateralAmount, ownerAccount);
-        vm.stopPrank();
-
-        vm.prank(ownerAccount);
-        borrowVault.borrow(borrowAmount, address(1));
-    }
-
     /// @notice Encode wrapper data with length prefix
     /// @dev Takes already abi.encoded params and signature
     function encodeWrapperData(bytes memory paramsAndSignature) internal pure returns (bytes memory) {

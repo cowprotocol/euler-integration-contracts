@@ -10,6 +10,8 @@ import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.
 import {CowEvcBaseWrapper, ICowSettlement, CowWrapper, IEVC} from "../../src/CowEvcBaseWrapper.sol";
 import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
 
+import "forge-std/console.sol";
+
 contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
     struct TestParams {
         address owner;
@@ -181,16 +183,27 @@ contract CowEvcBaseWrapperTest is Test {
     // edge case: in the extremely unlikely case that the `wrappedSettle` function somehow is able to be
     // parsed/recognized without reverting on, we do this test just to ensure
     // callback cannot be the EVC.
-    function test_EVC_CannotBeCalledWithWrappedSettle() public pure {
-        // batch is the only function that is able to execute operatoins on behalf of the caller contract without reverting https://evc.wtf/docs/contracts/technical-reference/contract.EthereumVaultConnector#batch
-        require(
-            CowWrapper.wrappedSettle.selector != IEVC.batch.selector,
-            "EVC.batch and ICowWrapper.wrappedSettle match selectors"
-        );
-        require(
-            CowWrapper.wrappedSettle.selector != IEVC.call.selector,
-            "EVC.call and ICowWrapper.wrappedSettle match selectors"
-        );
+    function test_EVC_NoSelectorCollision() public {
+        string[] memory inputs = new string[](5);
+        inputs[0] = "forge";
+        inputs[1] = "selectors";
+        inputs[2] = "collision";
+        inputs[3] = "IEVC";
+        inputs[4] = "CowEvcBaseWrapper";
+        try vm.ffi(inputs) returns (bytes memory result) {
+            assertEq(
+                result,
+                "No colliding method selectors between the two contracts.",
+                "EVC internal settle selector collision"
+            );
+        } catch (bytes memory err) {
+            // We only want to silently ignore this if its because FFI is disabled
+            vm.skip(
+                keccak256(abi.encodeWithSignature("CheatcodeError(string)", "vm.ffi: FFI is disabled; add the `--ffi` flag to allow tests to call external commands")) == 
+                keccak256(err)
+            );
+            revert(string(err));
+        }
     }
 
     function test_WrappedSettle_SubaccountMustBeControlledByOwner() public {
