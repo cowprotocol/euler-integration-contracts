@@ -81,4 +81,8 @@ contract MockEVC {
     }
 
     function permit(address, address, uint256, uint256, uint256, uint256, bytes memory, bytes memory) external view {}
+
+    fallback() external {
+        revert("Mock EVC does not implement the called function");
+    }
 }
