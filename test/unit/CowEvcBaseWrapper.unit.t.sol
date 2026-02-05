@@ -299,10 +299,9 @@ contract CowEvcBaseWrapperTest is Test {
         vm.prank(sameAddress);
         wrapper.setPreApprovedHash(approvalHash, true);
 
-        // When owner == account, the owner bit check resolves to the subaccount bit check
-        // So with mask = 1, one call is made (for the subaccount which is also the owner)
         // The separate owner call is skipped due to "owner != account" check
-        mockEvc.setOperatorMask(1);
+        // We set all flags to active to make sure that this isn't what causes the check to be skipped.
+        mockEvc.setOperatorMask(type(uint256).max);
         vm.expectCall(
             address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (sameAddress, address(wrapper), false)), 1
         );
