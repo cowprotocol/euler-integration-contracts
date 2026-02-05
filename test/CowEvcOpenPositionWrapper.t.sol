@@ -336,7 +336,10 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     }
 
     /// @notice Test that the wrapper can handle being called three times in the same chain
-    /// @dev Two users open positions in the same direction (long USDS), one user opens opposite (long WETH)
+    /// @dev Two users open positions in the same direction (short ETH), one user opens opposite (long ETH)
+    /// The ETH shorters needs a minimum of 10000 USDS worth of eUSDS, and the longers 2 WETH worth of eWETH output from the order buyAmount.
+    /// We receive input tokens totalling 3 + 1 WETH from the shorters, and 5000 USDS from the longer, so to get the output, the swap converts 2 WETH into 5000 USDS (= assumed conversion rate of 2500 USD/ETH), 
+    /// the result is that the orders can be satisfied by only swapping the difference in input tokens.
     function test_OpenPositionWrapper_ThreeUsers_TwoSameOneOpposite() external {
         // Setup User1: Has USDS, will borrow WETH and swap WETH→USDS (long USDS). Around 1 ETH
         deal(address(USDS), user, 2000 ether);
