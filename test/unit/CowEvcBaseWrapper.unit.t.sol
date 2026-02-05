@@ -167,9 +167,7 @@ contract CowEvcBaseWrapperTest is Test {
         wrapper.invokeEvc("", abi.encode(params, signature), new bytes(0), params, signature);
     }
 
-    function test_EIP712Compliance() public view {
-        MockEvcBaseWrapper.TestParams memory params =
-            MockEvcBaseWrapper.TestParams({owner: address(0x123), account: address(0x123), number: 0x456});
+    function test_EIP712Compliance(MockEvcBaseWrapper.TestParams memory params) public view {
 
         // Compute using OpenZeppelin's EIP712
         bytes32 expectedDigest = wrapper.getExpectedEip712Hash(params);
