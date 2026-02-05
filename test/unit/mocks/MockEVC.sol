@@ -62,13 +62,12 @@ contract MockEVC {
         // Execute each item
         for (uint256 i = 0; i < items.length; i++) {
             // Set onBehalfOf to the item's onBehalfOfAccount for the duration of the call
-            address previousOnBehalfOf = onBehalfOf;
             onBehalfOf = items[i].onBehalfOfAccount;
 
             (bool success, bytes memory reason) = items[i].targetContract.call(items[i].data);
 
-            // Restore previous onBehalfOf
-            onBehalfOf = previousOnBehalfOf;
+            // reset onBehalfOf
+            onBehalfOf = address(0);
 
             if (!success) {
                 assembly ("memory-safe") {
