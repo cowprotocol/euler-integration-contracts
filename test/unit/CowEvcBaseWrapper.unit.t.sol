@@ -7,10 +7,8 @@ import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
 
-import {CowEvcBaseWrapper, ICowSettlement, CowWrapper, IEVC} from "../../src/CowEvcBaseWrapper.sol";
+import {CowEvcBaseWrapper, ICowSettlement, IEVC} from "../../src/CowEvcBaseWrapper.sol";
 import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
-
-import "forge-std/console.sol";
 
 contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
     struct TestParams {
@@ -194,6 +192,7 @@ contract CowEvcBaseWrapperTest is Test {
         inputs[2] = "collision";
         inputs[3] = "IEVC";
         inputs[4] = "CowEvcBaseWrapper";
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
         try vm.ffi(inputs) returns (bytes memory result) {
             assertEq(
                 result,
