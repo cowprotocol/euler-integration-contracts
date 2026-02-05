@@ -58,9 +58,6 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that the EVC called `evcInternalSettle` in an invalid way
     error InvalidCallback();
 
-    /// @dev Indicates that the constructed EVC operations are exceeding the maximum length allowed. Generally this is a sanity check
-    error ItemsOutOfBounds(uint256 itemIndex, uint256 maxItemIndex);
-
     /// @dev Indicates that neither `_encodeBatchItemsBefore` nor `_encodeBatchItemsAfter` requested permission, meaning the provided permit signature is unused.
     error UnusedPermitSignature();
 
@@ -225,7 +222,9 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         }
 
         // shorten the length of the generated array to its actual length
-        require(itemIndex <= MAX_BATCH_OPERATIONS, ItemsOutOfBounds(itemIndex, MAX_BATCH_OPERATIONS));
+        // We assume as an a invariant that the code above will not generate a `itemIndex` greater than `MAX_BATCH_OPERATIONS` at this point
+        // because we always add an item to the items array when we increment `itemIndex`, and if the itemIndex goes out of bounds,
+        // solidity will revert
         assembly ("memory-safe") {
             mstore(items, itemIndex)
         }

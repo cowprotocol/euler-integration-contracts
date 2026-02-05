@@ -2,6 +2,7 @@
 pragma solidity ^0.8;
 
 import {Test} from "forge-std/Test.sol";
+import {stdError} from "forge-std/StdError.sol";
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 
 import {MockEVC} from "./mocks/MockEVC.sol";
@@ -21,17 +22,19 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
     string public constant CONTRACT_VERSION = "1";
 
     bool public needsPermission;
+    uint256 public batchItemsBeforeCount;
 
-    constructor(address evc, address cow)
+    constructor(address evc, address cow, uint256 maxBatchOps)
         CowEvcBaseWrapper(evc, ICowSettlement(cow), keccak256(bytes(CONTRACT_NAME)), keccak256(bytes(CONTRACT_VERSION)))
         EIP712(CONTRACT_NAME, CONTRACT_VERSION)
     {
         PARAMS_SIZE = abi.encode(TestParams({owner: address(0), account: address(0), number: 0})).length;
-        MAX_BATCH_OPERATIONS = 2;
         PARAMS_TYPE_HASH = keccak256("TestParams(address owner,address account,uint256 number)");
 
         // by default set needs permission so we dont get unused permission error
         needsPermission = true;
+        batchItemsBeforeCount = 0;
+        MAX_BATCH_OPERATIONS = maxBatchOps;
     }
 
     function _encodeBatchItemsBefore(ParamsLocation)
@@ -130,13 +133,13 @@ contract CowEvcBaseWrapperTest is Test {
         mockSettlement = new MockCowSettlement(address(mockAuth));
         mockEvc = new MockEVC();
 
-        wrapper = new MockEvcBaseWrapper(address(mockEvc), address(mockSettlement));
+        wrapper = new MockEvcBaseWrapper(address(mockEvc), address(mockSettlement), 2);
     }
 
     function test_Constructor() public {
         // Test that constructor validates EVC address has code
         vm.expectRevert("EVC address is invalid");
-        new MockEvcBaseWrapper(address(0x1234), address(mockSettlement));
+        new MockEvcBaseWrapper(address(0x1234), address(mockSettlement), 2);
 
         // Test that constructor sets EVC variable correctly
         assertEq(address(wrapper.EVC()), address(mockEvc), "EVC variable not set correctly");
@@ -360,5 +363,24 @@ contract CowEvcBaseWrapperTest is Test {
         // Try to invoke the same wrapper data again - should fail because hash is consumed
         vm.expectRevert(abi.encodeWithSelector(PreApprovedHashes.AlreadyConsumed.selector, OWNER, approvalHash));
         wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
+    }
+
+    function test_InvokeEvc_RevertsWhenMaxBatchOperationsSetTooLow() public {
+        // Create a wrapper with MAX_BATCH_OPERATIONS set too low
+        MockEvcBaseWrapper tightWrapper = new MockEvcBaseWrapper(address(mockEvc), address(mockSettlement), 0);
+
+        tightWrapper.setNeedsPermission(true);
+
+        MockEvcBaseWrapper.TestParams memory params =
+            MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: block.timestamp + 100});
+        bytes32 approvalHash = tightWrapper.getApprovalHash(params);
+        vm.prank(OWNER);
+        tightWrapper.setPreApprovedHash(approvalHash, true);
+
+        // This should revert due to out-of-bounds array access when itemIndex exceeds MAX_BATCH_OPERATIONS
+        vm.expectRevert(stdError.indexOOBError);
+        tightWrapper.invokeEvc(
+            MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0)
+        );
     }
 }
