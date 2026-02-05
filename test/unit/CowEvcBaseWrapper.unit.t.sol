@@ -168,7 +168,6 @@ contract CowEvcBaseWrapperTest is Test {
     }
 
     function test_EIP712Compliance(MockEvcBaseWrapper.TestParams memory params) public view {
-
         // Compute using OpenZeppelin's EIP712
         bytes32 expectedDigest = wrapper.getExpectedEip712Hash(params);
 
@@ -197,8 +196,12 @@ contract CowEvcBaseWrapperTest is Test {
         } catch (bytes memory err) {
             // We only want to silently ignore this if its because FFI is disabled
             vm.skip(
-                keccak256(abi.encodeWithSignature("CheatcodeError(string)", "vm.ffi: FFI is disabled; add the `--ffi` flag to allow tests to call external commands")) == 
-                keccak256(err)
+                keccak256(
+                    abi.encodeWithSignature(
+                        "CheatcodeError(string)",
+                        "vm.ffi: FFI is disabled; add the `--ffi` flag to allow tests to call external commands"
+                    )
+                ) == keccak256(err)
             );
             revert(string(err));
         }
@@ -242,7 +245,7 @@ contract CowEvcBaseWrapperTest is Test {
         wrapper.setPreApprovedHash(approvalHash, true);
 
         mockEvc.setOperatorMask(1);
-        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (OWNER, address(wrapper), false)));
+        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (OWNER, address(wrapper), false)), 1);
         wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
     }
 
@@ -256,7 +259,7 @@ contract CowEvcBaseWrapperTest is Test {
 
         /// forge-lint: disable-next-line(incorrect-shift)
         mockEvc.setOperatorMask(1 << bitPosition);
-        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (ACCOUNT, address(wrapper), false)));
+        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (ACCOUNT, address(wrapper), false)), 1);
         wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
     }
 
@@ -270,8 +273,8 @@ contract CowEvcBaseWrapperTest is Test {
 
         /// forge-lint: disable-next-line(incorrect-shift)
         mockEvc.setOperatorMask(1 | (1 << bitPosition));
-        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (ACCOUNT, address(wrapper), false)));
-        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (OWNER, address(wrapper), false)));
+        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (ACCOUNT, address(wrapper), false)), 1);
+        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (OWNER, address(wrapper), false)), 1);
         wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
     }
 
