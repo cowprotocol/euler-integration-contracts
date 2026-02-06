@@ -118,6 +118,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     /// @dev Sells borrowed WETH to buy USDS which gets deposited into the vault
     function prepareOpenPositionSettlement(address owner, address receiver, uint256 sellAmount, uint256 buyAmount)
         public
+        view
         returns (SettlementData memory r)
     {
         uint32 validTo = uint32(block.timestamp + 1 hours);
