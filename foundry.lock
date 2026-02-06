@@ -2,7 +2,7 @@
   "lib/cow": {
     "branch": {
       "name": "feat/wrapper",
-      "rev": "1e8127f476f8fef7758cf25033a0010d325dba8d"
+      "rev": "277be444ca1fce84ec55053f41ccbd9dc5672ffe"
     }
   },
   "lib/euler-vault-kit": {

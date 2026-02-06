@@ -11,3 +11,6 @@
 [submodule "lib/evc"]
 	path = lib/evc
 	url = https://github.com/euler-xyz/ethereum-vault-connector
+[submodule "lib/openzeppelin-contracts"]
+	path = lib/openzeppelin-contracts
+	url = https://github.com/openzeppelin/openzeppelin-contracts
