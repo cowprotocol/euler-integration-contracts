@@ -206,7 +206,7 @@ contract CowBaseTest is Test {
         address owner,
         address receiver,
         bool isBuy
-    ) public returns (ICowSettlement.Trade memory trade, GPv2Order.Data memory order, bytes memory orderId) {
+    ) public view returns (ICowSettlement.Trade memory trade, GPv2Order.Data memory order, bytes memory orderId) {
         // Set flags for (pre-sign, FoK sell order)
         // See
         // https://github.com/cowprotocol/contracts/blob/08f8627d8427c8842ae5d29ed8b44519f7674879/src/contracts/libraries/GPv2Trade.sol#L89-L94
