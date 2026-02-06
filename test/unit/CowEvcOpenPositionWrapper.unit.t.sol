@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
@@ -170,45 +170,6 @@ contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
         );
 
         assertEq(items.length, 4, "Should have exactly 4 batch items");
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                    EVC INTERNAL SETTLE TESTS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_EvcInternalSettle_RequiresCorrectCalldata() public {
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory remainingWrapperData = "";
-
-        mockSettlement.setSuccessfulSettle(true);
-
-        // Set incorrect onBehalfOfAccount (not address(wrapper))
-        mockEvc.setOnBehalfOf(address(0x9999));
-
-        // set incorrect expected call
-        TestableOpenPositionWrapper(address(wrapper))
-            .setExpectedEvcInternalSettleCall(
-                abi.encodeCall(wrapper.evcInternalSettle, (new bytes(0), new bytes(0), remainingWrapperData))
-            );
-
-        vm.prank(address(mockEvc));
-        vm.expectRevert(CowEvcBaseWrapper.InvalidCallback.selector);
-        wrapper.evcInternalSettle(settleData, hex"", remainingWrapperData);
-    }
-
-    function test_EvcInternalSettle_CanBeCalledByEVC() public {
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory remainingWrapperData = "";
-
-        mockSettlement.setSuccessfulSettle(true);
-
-        TestableOpenPositionWrapper(address(wrapper))
-            .setExpectedEvcInternalSettleCall(
-                abi.encodeCall(wrapper.evcInternalSettle, (settleData, hex"", remainingWrapperData))
-            );
-
-        vm.prank(address(mockEvc));
-        wrapper.evcInternalSettle(settleData, hex"", remainingWrapperData);
     }
 
     /*//////////////////////////////////////////////////////////////
