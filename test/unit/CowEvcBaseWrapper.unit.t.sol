@@ -1,13 +1,23 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 
 import {Test} from "forge-std/Test.sol";
+import {stdError} from "forge-std/StdError.sol";
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
 
 import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
 
-import {CowEvcBaseWrapper, ICowSettlement, CowWrapper, IEVC} from "../../src/CowEvcBaseWrapper.sol";
+import {CowEvcBaseWrapper, ICowSettlement, IEVC} from "../../src/CowEvcBaseWrapper.sol";
+import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
+
+contract ReferenceEIP712 is EIP712 {
+    constructor(string memory name, string memory version) EIP712(name, version) {}
+
+    function domainSeparator() external view returns (bytes32) {
+        return _domainSeparatorV4();
+    }
+}
 
 contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
     struct TestParams {
@@ -16,18 +26,23 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
         uint256 number;
     }
 
-    bool public needsPermission;
+    string public constant CONTRACT_NAME = "MockEvcBaseWrapper";
+    string public constant CONTRACT_VERSION = "1";
 
-    constructor(address evc, address cow)
-        CowEvcBaseWrapper(evc, ICowSettlement(cow), keccak256("CowEvcBaseWrapperTest"), keccak256("1"))
-        EIP712("CowEvcBaseWrapperTest", "1")
+    bool public needsPermission;
+    uint256 public batchItemsBeforeCount;
+
+    constructor(address evc, address cow, uint256 maxBatchOps)
+        CowEvcBaseWrapper(evc, ICowSettlement(cow), keccak256(bytes(CONTRACT_NAME)), keccak256(bytes(CONTRACT_VERSION)))
+        EIP712(CONTRACT_NAME, CONTRACT_VERSION)
     {
         PARAMS_SIZE = abi.encode(TestParams({owner: address(0), account: address(0), number: 0})).length;
-        MAX_BATCH_OPERATIONS = 2;
         PARAMS_TYPE_HASH = keccak256("TestParams(address owner,address account,uint256 number)");
 
         // by default set needs permission so we dont get unused permission error
         needsPermission = true;
+        batchItemsBeforeCount = 0;
+        MAX_BATCH_OPERATIONS = maxBatchOps;
     }
 
     function _encodeBatchItemsBefore(ParamsLocation)
@@ -95,6 +110,10 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
     function setNeedsPermission(bool flag) external {
         needsPermission = flag;
     }
+
+    function setExpectedEvcInternalSettleCall(bytes memory call) external {
+        expectedEvcInternalSettleCallHash = keccak256(call);
+    }
 }
 
 contract CowEvcBaseWrapperTest is Test {
@@ -126,13 +145,30 @@ contract CowEvcBaseWrapperTest is Test {
         mockSettlement = new MockCowSettlement(address(mockAuth));
         mockEvc = new MockEVC();
 
-        wrapper = new MockEvcBaseWrapper(address(mockEvc), address(mockSettlement));
+        wrapper = new MockEvcBaseWrapper(address(mockEvc), address(mockSettlement), 2);
+    }
+
+    /// @notice Create empty settle data
+    function _getEmptySettleData() internal pure returns (bytes memory) {
+        return abi.encodeCall(
+            ICowSettlement.settle,
+            (
+                new address[](0),
+                new uint256[](0),
+                new ICowSettlement.Trade[](0),
+                [
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0),
+                    new ICowSettlement.Interaction[](0)
+                ]
+            )
+        );
     }
 
     function test_Constructor() public {
         // Test that constructor validates EVC address has code
         vm.expectRevert("EVC address is invalid");
-        new MockEvcBaseWrapper(address(0x1234), address(mockSettlement));
+        new MockEvcBaseWrapper(address(0x1234), address(mockSettlement), 2);
 
         // Test that constructor sets EVC variable correctly
         assertEq(address(wrapper.EVC()), address(mockEvc), "EVC variable not set correctly");
@@ -142,14 +178,48 @@ contract CowEvcBaseWrapperTest is Test {
         assertEq(wrapper.NONCE_NAMESPACE(), expectedNonceNamespace, "NONCE_NAMESPACE not set correctly");
 
         // Test that DOMAIN_SEPARATOR is computed correctly according to EIP-712
-        bytes32 domainTypeHash =
-            keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
-        bytes32 expectedDomainSeparator = keccak256(
-            abi.encode(
-                domainTypeHash, keccak256("CowEvcBaseWrapperTest"), keccak256("1"), block.chainid, address(wrapper)
-            )
+        // Create a reference EIP712 contract with same name/version and verify it matches
+        bytes32 wrapperDomainSeparator = wrapper.DOMAIN_SEPARATOR();
+        ReferenceEIP712 refEip712 = new ReferenceEIP712(wrapper.CONTRACT_NAME(), wrapper.CONTRACT_VERSION());
+        vm.etch(address(wrapper), address(refEip712).code);
+        assertEq(
+            wrapperDomainSeparator,
+            ReferenceEIP712(address(wrapper)).domainSeparator(),
+            "DOMAIN_SEPARATOR not computed correctly"
         );
-        assertEq(wrapper.DOMAIN_SEPARATOR(), expectedDomainSeparator, "DOMAIN_SEPARATOR not computed correctly");
+    }
+
+    function test_EvcInternalSettle_RequiresCorrectCalldata() public {
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory remainingWrapperData = "";
+
+        mockSettlement.setSuccessfulSettle(true);
+
+        // Set incorrect onBehalfOfAccount (not address(wrapper))
+        mockEvc.setOnBehalfOf(address(0x9999));
+
+        // set incorrect expected call
+        wrapper.setExpectedEvcInternalSettleCall(
+            abi.encodeCall(wrapper.evcInternalSettle, (new bytes(0), new bytes(0), remainingWrapperData))
+        );
+
+        vm.prank(address(mockEvc));
+        vm.expectRevert(CowEvcBaseWrapper.InvalidCallback.selector);
+        wrapper.evcInternalSettle(settleData, hex"", remainingWrapperData);
+    }
+
+    function test_EvcInternalSettle_CanBeCalledByEVC() public {
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory remainingWrapperData = "";
+
+        mockSettlement.setSuccessfulSettle(true);
+
+        wrapper.setExpectedEvcInternalSettleCall(
+            abi.encodeCall(wrapper.evcInternalSettle, (settleData, hex"", remainingWrapperData))
+        );
+
+        vm.prank(address(mockEvc));
+        wrapper.evcInternalSettle(settleData, hex"", remainingWrapperData);
     }
 
     function test_UnusedPermitSignature() public {
@@ -164,10 +234,7 @@ contract CowEvcBaseWrapperTest is Test {
         wrapper.invokeEvc("", abi.encode(params, signature), new bytes(0), params, signature);
     }
 
-    function test_EIP712Compliance() public view {
-        MockEvcBaseWrapper.TestParams memory params =
-            MockEvcBaseWrapper.TestParams({owner: address(0x123), account: address(0x123), number: 0x456});
-
+    function test_EIP712Compliance(MockEvcBaseWrapper.TestParams memory params) public view {
         // Compute using OpenZeppelin's EIP712
         bytes32 expectedDigest = wrapper.getExpectedEip712Hash(params);
 
@@ -180,16 +247,32 @@ contract CowEvcBaseWrapperTest is Test {
     // edge case: in the extremely unlikely case that the `wrappedSettle` function somehow is able to be
     // parsed/recognized without reverting on, we do this test just to ensure
     // callback cannot be the EVC.
-    function test_EVC_CannotBeCalledWithWrappedSettle() public pure {
-        // batch is the only function that is able to execute operatoins on behalf of the caller contract without reverting https://evc.wtf/docs/contracts/technical-reference/contract.EthereumVaultConnector#batch
-        require(
-            CowWrapper.wrappedSettle.selector != IEVC.batch.selector,
-            "EVC.batch and ICowWrapper.wrappedSettle match selectors"
-        );
-        require(
-            CowWrapper.wrappedSettle.selector != IEVC.call.selector,
-            "EVC.call and ICowWrapper.wrappedSettle match selectors"
-        );
+    function test_EVC_NoSelectorCollision() public {
+        string[] memory inputs = new string[](5);
+        inputs[0] = "forge";
+        inputs[1] = "selectors";
+        inputs[2] = "collision";
+        inputs[3] = "IEVC";
+        inputs[4] = "CowEvcBaseWrapper";
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        try vm.ffi(inputs) returns (bytes memory result) {
+            assertEq(
+                result,
+                "No colliding method selectors between the two contracts.",
+                "EVC internal settle selector collision"
+            );
+        } catch (bytes memory err) {
+            // We only want to silently ignore this if its because FFI is disabled
+            vm.skip(
+                keccak256(
+                    abi.encodeWithSignature(
+                        "CheatcodeError(string)",
+                        "vm.ffi: FFI is disabled; add the `--ffi` flag to allow tests to call external commands"
+                    )
+                ) == keccak256(err)
+            );
+            revert(string(err));
+        }
     }
 
     function test_WrappedSettle_SubaccountMustBeControlledByOwner() public {
@@ -230,7 +313,7 @@ contract CowEvcBaseWrapperTest is Test {
         wrapper.setPreApprovedHash(approvalHash, true);
 
         mockEvc.setOperatorMask(1);
-        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (OWNER, address(wrapper), false)));
+        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (OWNER, address(wrapper), false)), 1);
         wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
     }
 
@@ -244,7 +327,7 @@ contract CowEvcBaseWrapperTest is Test {
 
         /// forge-lint: disable-next-line(incorrect-shift)
         mockEvc.setOperatorMask(1 << bitPosition);
-        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (ACCOUNT, address(wrapper), false)));
+        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (ACCOUNT, address(wrapper), false)), 1);
         wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
     }
 
@@ -258,8 +341,8 @@ contract CowEvcBaseWrapperTest is Test {
 
         /// forge-lint: disable-next-line(incorrect-shift)
         mockEvc.setOperatorMask(1 | (1 << bitPosition));
-        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (ACCOUNT, address(wrapper), false)));
-        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (OWNER, address(wrapper), false)));
+        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (ACCOUNT, address(wrapper), false)), 1);
+        vm.expectCall(address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (OWNER, address(wrapper), false)), 1);
         wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
     }
 
@@ -284,10 +367,9 @@ contract CowEvcBaseWrapperTest is Test {
         vm.prank(sameAddress);
         wrapper.setPreApprovedHash(approvalHash, true);
 
-        // When owner == account, the owner bit check resolves to the subaccount bit check
-        // So with mask = 1, one call is made (for the subaccount which is also the owner)
         // The separate owner call is skipped due to "owner != account" check
-        mockEvc.setOperatorMask(1);
+        // We set all flags to active to make sure that this isn't what causes the check to be skipped.
+        mockEvc.setOperatorMask(type(uint256).max);
         vm.expectCall(
             address(mockEvc), abi.encodeCall(IEVC.setAccountOperator, (sameAddress, address(wrapper), false)), 1
         );
@@ -310,9 +392,9 @@ contract CowEvcBaseWrapperTest is Test {
         wrapper.setPreApprovedHash(approvalHash, true);
 
         // Configure EVC to fail on batch call
-        mockEvc.setSuccessfulBatch(false);
 
         vm.expectRevert("MockEVC: batch failed");
+        vm.mockCallRevert(address(mockEvc), abi.encodeWithSelector(IEVC.batch.selector), "MockEVC: batch failed");
         wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
     }
 
@@ -326,5 +408,38 @@ contract CowEvcBaseWrapperTest is Test {
         // Ensure that the settlement is called
         vm.expectCall(address(mockSettlement), 0, MOCK_SETTLEMENT_CALL);
         wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
+    }
+
+    function test_InvokeEvc_FailsOnConsumedHash() public {
+        MockEvcBaseWrapper.TestParams memory params =
+            MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: block.timestamp + 100});
+        bytes32 approvalHash = wrapper.getApprovalHash(params);
+        vm.prank(OWNER);
+        wrapper.setPreApprovedHash(approvalHash, true);
+
+        wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
+
+        // Try to invoke the same wrapper data again - should fail because hash is consumed
+        vm.expectRevert(abi.encodeWithSelector(PreApprovedHashes.AlreadyConsumed.selector, OWNER, approvalHash));
+        wrapper.invokeEvc(MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0));
+    }
+
+    function test_InvokeEvc_RevertsWhenMaxBatchOperationsSetTooLow() public {
+        // Create a wrapper with MAX_BATCH_OPERATIONS set too low
+        MockEvcBaseWrapper tightWrapper = new MockEvcBaseWrapper(address(mockEvc), address(mockSettlement), 0);
+
+        tightWrapper.setNeedsPermission(true);
+
+        MockEvcBaseWrapper.TestParams memory params =
+            MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: block.timestamp + 100});
+        bytes32 approvalHash = tightWrapper.getApprovalHash(params);
+        vm.prank(OWNER);
+        tightWrapper.setPreApprovedHash(approvalHash, true);
+
+        // This should revert due to out-of-bounds array access when itemIndex exceeds MAX_BATCH_OPERATIONS
+        vm.expectRevert(stdError.indexOOBError);
+        tightWrapper.invokeEvc(
+            MOCK_SETTLEMENT_CALL, abi.encode(params, new bytes(0)), new bytes(0), params, new bytes(0)
+        );
     }
 }

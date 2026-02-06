@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
@@ -8,7 +8,6 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 contract MockEVC {
     mapping(address => mapping(address => bool)) public operators;
     mapping(address => uint256) public nonces;
-    bool public shouldSucceed = true;
     address public onBehalfOf;
     bool public shouldVerifySignatures = false;
     uint256 public operatorMask = 0;
@@ -65,18 +64,15 @@ contract MockEVC {
     function disableCollateral(address, address) external pure {}
 
     function batch(IEVC.BatchItem[] calldata items) external returns (IEVC.BatchItemResult[] memory) {
-        require(shouldSucceed, "MockEVC: batch failed");
-
         // Execute each item
         for (uint256 i = 0; i < items.length; i++) {
             // Set onBehalfOf to the item's onBehalfOfAccount for the duration of the call
-            address previousOnBehalfOf = onBehalfOf;
             onBehalfOf = items[i].onBehalfOfAccount;
 
             (bool success, bytes memory reason) = items[i].targetContract.call(items[i].data);
 
-            // Restore previous onBehalfOf
-            onBehalfOf = previousOnBehalfOf;
+            // reset onBehalfOf
+            onBehalfOf = address(0);
 
             if (!success) {
                 assembly ("memory-safe") {
@@ -88,13 +84,13 @@ contract MockEVC {
         return new IEVC.BatchItemResult[](0);
     }
 
-    function setSuccessfulBatch(bool success) external {
-        shouldSucceed = success;
-    }
-
     function permit(address, address, uint256, uint256, uint256, uint256, bytes memory, bytes memory) external view {}
 
     function getCurrentOnBehalfOfAccount(address) external view returns (address, bool) {
         return (onBehalfOf, false);
+    }
+
+    fallback() external {
+        revert("Mock EVC does not implement the called function");
     }
 }

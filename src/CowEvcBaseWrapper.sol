@@ -58,9 +58,6 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that the EVC called `evcInternalSettle` in an invalid way
     error InvalidCallback();
 
-    /// @dev Indicates that the constructed EVC operations are exceeding the maximum length allowed. Generally this is a sanity check
-    error ItemsOutOfBounds(uint256 itemIndex, uint256 maxItemIndex);
-
     /// @dev Indicates that neither `_encodeBatchItemsBefore` nor `_encodeBatchItemsAfter` requested permission, meaning the provided permit signature is unused.
     error UnusedPermitSignature();
 
@@ -225,7 +222,9 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         }
 
         // shorten the length of the generated array to its actual length
-        require(itemIndex <= MAX_BATCH_OPERATIONS, ItemsOutOfBounds(itemIndex, MAX_BATCH_OPERATIONS));
+        // We assume as an a invariant that the code above will not generate a `itemIndex` greater than `MAX_BATCH_OPERATIONS` at this point
+        // because we always add an item to the items array when we increment `itemIndex`, and if the itemIndex goes out of bounds,
+        // solidity will revert
         assembly ("memory-safe") {
             mstore(items, itemIndex)
         }
@@ -237,7 +236,8 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         // Execute all items in a single batch
         EVC.batch(items);
 
-        // If we used the pre-approved hash flow, we can now relinquish operator control of the account
+        // The pre approved hash flow needs the user to set this contract as an operator for both the owner address itself and the subaccount.
+        // The EVC treats owner and subaccount operator authorizations separately, so we need to relinquish them separately
         if (signature.length == 0) {
             // This function returns both account and subaccount operator authorizations as a bitmask.
             // So we can do one call to find out what accounts are authorized, and then remove them as needed.

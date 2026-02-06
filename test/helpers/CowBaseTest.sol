@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 
 import {GPv2Order} from "cow/libraries/GPv2Order.sol";
@@ -40,8 +40,8 @@ contract CowBaseTest is Test {
     address user2;
     address user3;
     address account;
-    address account2 = address(uint160(user2) ^ 1);
-    address account3 = address(uint160(user3) ^ 1);
+    address account2;
+    address account3;
     uint256 privateKey;
     uint256 privateKey2;
     uint256 privateKey3;
@@ -192,6 +192,10 @@ contract CowBaseTest is Test {
         });
     }
 
+    /**
+     * Constructs a CoW order parameters outside of `trade`. It is still necessary to compute the interactions
+     * and approve the order (generally through pre-sign) separately.
+     */
     function setupCowOrder(
         address[] memory tokens,
         uint256 sellTokenIndex,
@@ -202,7 +206,7 @@ contract CowBaseTest is Test {
         address owner,
         address receiver,
         bool isBuy
-    ) public returns (ICowSettlement.Trade memory trade, GPv2Order.Data memory order, bytes memory orderId) {
+    ) public view returns (ICowSettlement.Trade memory trade, GPv2Order.Data memory order, bytes memory orderId) {
         // Set flags for (pre-sign, FoK sell order)
         // See
         // https://github.com/cowprotocol/contracts/blob/08f8627d8427c8842ae5d29ed8b44519f7674879/src/contracts/libraries/GPv2Trade.sol#L89-L94
@@ -239,10 +243,6 @@ contract CowBaseTest is Test {
         });
 
         orderId = getOrderUid(owner, order);
-
-        // we basically always want to sign the order id
-        vm.prank(owner);
-        COW_SETTLEMENT.setPreSignature(orderId, true);
     }
 
     /// @notice Setup CoW order with EIP-1271 signature using Inbox as the order owner
@@ -332,6 +332,9 @@ contract CowBaseTest is Test {
         return abi.encodePacked(inboxForUser, r, s, v, rawOrderData);
     }
 
+    /// @notice Helper to get common tokens and prices for tests. Simplifies many test flows by using shared indexes
+    /// for the tokens and their prices
+    /// (Note: in the future we could possibly put the actual indexes into constants to improve clarity)
     function getTokensAndPrices() public view returns (address[] memory tokens, uint256[] memory clearingPrices) {
         tokens = new address[](4);
         tokens[0] = address(USDS);

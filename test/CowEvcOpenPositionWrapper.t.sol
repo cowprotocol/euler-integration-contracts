@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 
 import {GPv2Order} from "cow/libraries/GPv2Order.sol";
@@ -116,10 +116,12 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
     /// @notice Create settlement data for opening a leveraged position
     /// @dev Sells borrowed WETH to buy USDS which gets deposited into the vault
-    function getOpenPositionSettlement(address owner, address receiver, uint256 sellAmount, uint256 buyAmount)
-        public
-        returns (SettlementData memory r)
-    {
+    function prepareAndSignOpenPositionSettlement(
+        address owner,
+        address receiver,
+        uint256 sellAmount,
+        uint256 buyAmount
+    ) public returns (SettlementData memory r) {
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
         // Create trade and extract order data
@@ -152,7 +154,9 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         // Second interaction: The converted tokens get transferred to the euler vault (a "deposit")
         r.interactions[1][1] = getDepositInteraction(EUSDS, buyAmount);
 
-        // By the way, it is technically possible to deposit without having to do a skim. But I find the parameters a bit more convenient, and an extra approval isnt required because we initiate the transfer.
+        // we need to approve the pre-signature
+        vm.prank(owner);
+        COW_SETTLEMENT.setPreSignature(r.orderUid, true);
     }
 
     /// @notice Test opening a leveraged position using the new wrapper
@@ -161,18 +165,20 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement = getOpenPositionSettlement({
+        SettlementData memory settlement = prepareAndSignOpenPositionSettlement({
             owner: user, receiver: account, sellAmount: DEFAULT_BORROW_AMOUNT, buyAmount: MIN_BUY_SHARES_AMOUNT
         });
 
         // Setup user approvals
-        vm.prank(user);
+        vm.startPrank(user);
         USDS.approve(address(EUSDS), type(uint256).max);
 
         // User signs order
-        // Does not need to run here because its done in `setupCowOrder`
+        // We use a pre-signature here for convenience rather than EIP-712
+        COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
+        vm.stopPrank();
 
-        // Create permit signature
+        // Create permit signature for EVC
         bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
 
         // Verify that no position is open
@@ -223,7 +229,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement = getOpenPositionSettlement({
+        SettlementData memory settlement = prepareAndSignOpenPositionSettlement({
             owner: user, receiver: account, sellAmount: DEFAULT_BORROW_AMOUNT, buyAmount: MIN_BUY_SHARES_AMOUNT
         });
 
@@ -303,7 +309,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement = getOpenPositionSettlement({
+        SettlementData memory settlement = prepareAndSignOpenPositionSettlement({
             owner: user, receiver: account, sellAmount: DEFAULT_BORROW_AMOUNT, buyAmount: DEFAULT_BUY_AMOUNT
         });
 
@@ -336,7 +342,10 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     }
 
     /// @notice Test that the wrapper can handle being called three times in the same chain
-    /// @dev Two users open positions in the same direction (long USDS), one user opens opposite (long WETH)
+    /// @dev Two users open positions in the same direction (short ETH), one user opens opposite (long ETH)
+    /// The ETH shorters needs a minimum of 10000 USDS worth of eUSDS, and the longers 2 WETH worth of eWETH output from the order buyAmount.
+    /// We receive input tokens totalling 3 + 1 WETH from the shorters, and 5000 USDS from the longer, so to get the output, the swap converts 2 WETH into 5000 USDS (= assumed conversion rate of 2500 USD/ETH),
+    /// the result is that the orders can be satisfied by only swapping the difference in input tokens.
     function test_OpenPositionWrapper_ThreeUsers_TwoSameOneOpposite() external {
         // Setup User1: Has USDS, will borrow WETH and swap WETH→USDS (long USDS). Around 1 ETH
         deal(address(USDS), user, 2000 ether);
@@ -406,7 +415,80 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             borrowAmount: 5000 ether
         });
 
-        // Create permit signatures for all users
+        // Create settlement with all three trades
+        uint32 validTo = uint32(block.timestamp + 1 hours);
+
+        // Setup tokens array: USDS, WETH, eUSDS, eWETH
+        (address[] memory tokens, uint256[] memory clearingPrices) = getTokensAndPrices();
+
+        // Create trades and extract orders
+        ICowSettlement.Trade[] memory trades = new ICowSettlement.Trade[](3);
+        bytes[] memory orderIds = new bytes[](3);
+
+        // Trade 1: User1 sells WETH for eUSDS
+        (trades[0],, orderIds[0]) = setupCowOrder({
+            tokens: tokens,
+            sellTokenIndex: 1,
+            buyTokenIndex: 2,
+            sellAmount: params1.borrowAmount,
+            buyAmount: 0,
+            validTo: validTo,
+            owner: user,
+            receiver: account,
+            isBuy: false
+        });
+
+        // Trade 2: User2 sells WETH for eUSDS (same direction as User1)
+        (trades[1],, orderIds[1]) = setupCowOrder({
+            tokens: tokens,
+            sellTokenIndex: 1,
+            buyTokenIndex: 2,
+            sellAmount: params2.borrowAmount,
+            buyAmount: 0,
+            validTo: validTo,
+            owner: user2,
+            receiver: account2,
+            isBuy: false
+        });
+
+        // Trade 3: User3 sells USDS for eWETH (opposite direction)
+        (trades[2],, orderIds[2]) = setupCowOrder({
+            tokens: tokens,
+            sellTokenIndex: 0,
+            buyTokenIndex: 3,
+            sellAmount: params3.borrowAmount,
+            buyAmount: 0,
+            validTo: validTo,
+            owner: user3,
+            receiver: account3,
+            isBuy: false
+        });
+
+        // Setup interactions to handle the swaps and deposits
+        ICowSettlement.Interaction[][3] memory interactions;
+        interactions[0] = new ICowSettlement.Interaction[](0);
+        interactions[1] = new ICowSettlement.Interaction[](3);
+        interactions[2] = new ICowSettlement.Interaction[](0);
+
+        // Trade 1 & 2: coincidence of wants: WETH → USDS for the difference in all the users trades (2 WETH total difference)
+        interactions[1][0] = getSwapInteraction(WETH, USDS, 2 ether);
+        // Deposit USDS to eUSDS vault for both user1 and user2
+        interactions[1][1] = getDepositInteraction(EUSDS, 10000 ether);
+        // Deposit WETH to eWETH vault
+        interactions[1][2] = getDepositInteraction(EWETH, 2 ether);
+
+        // Encode settlement data
+        bytes memory settleData = abi.encodeCall(ICowSettlement.settle, (tokens, clearingPrices, trades, interactions));
+
+        // Use pre-signatures to authorize the cow orders
+        vm.prank(user);
+        COW_SETTLEMENT.setPreSignature(orderIds[0], true);
+        vm.prank(user2);
+        COW_SETTLEMENT.setPreSignature(orderIds[1], true);
+        vm.prank(user3);
+        COW_SETTLEMENT.setPreSignature(orderIds[2], true);
+
+        // Create EVC permit signatures for all users
         ecdsa.setPrivateKey(privateKey);
         bytes memory permitSignature1 = ecdsa.signPermit(
             params1.owner,
@@ -439,70 +521,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             0,
             openPositionWrapper.encodePermitData(params3)
         );
-
-        // Create settlement with all three trades
-        uint32 validTo = uint32(block.timestamp + 1 hours);
-
-        // Setup tokens array: WETH, eUSDS, USDS, eWETH
-        (address[] memory tokens, uint256[] memory clearingPrices) = getTokensAndPrices();
-
-        // Create trades and extract orders
-        ICowSettlement.Trade[] memory trades = new ICowSettlement.Trade[](3);
-
-        // Trade 1: User1 sells WETH for eUSDS
-        (trades[0],,) = setupCowOrder({
-            tokens: tokens,
-            sellTokenIndex: 1,
-            buyTokenIndex: 2,
-            sellAmount: params1.borrowAmount,
-            buyAmount: 0,
-            validTo: validTo,
-            owner: user,
-            receiver: account,
-            isBuy: false
-        });
-
-        // Trade 2: User2 sells WETH for eUSDS (same direction as User1)
-        (trades[1],,) = setupCowOrder({
-            tokens: tokens,
-            sellTokenIndex: 1,
-            buyTokenIndex: 2,
-            sellAmount: params2.borrowAmount,
-            buyAmount: 0,
-            validTo: validTo,
-            owner: user2,
-            receiver: account2,
-            isBuy: false
-        });
-
-        // Trade 3: User3 sells USDS for eWETH (opposite direction)
-        (trades[2],,) = setupCowOrder({
-            tokens: tokens,
-            sellTokenIndex: 0,
-            buyTokenIndex: 3,
-            sellAmount: params3.borrowAmount,
-            buyAmount: 0,
-            validTo: validTo,
-            owner: user3,
-            receiver: account3,
-            isBuy: false
-        });
-
-        // Setup interactions to handle the swaps and deposits
-        ICowSettlement.Interaction[][3] memory interactions;
-        interactions[0] = new ICowSettlement.Interaction[](0);
-        interactions[1] = new ICowSettlement.Interaction[](3);
-        interactions[2] = new ICowSettlement.Interaction[](0);
-
-        // Trade 1 & 2: coincidence of wants: WETH → USDS for the difference in all the users trades (2 WETH total difference)
-        interactions[1][0] = getSwapInteraction(WETH, USDS, 2 ether);
-        // Deposit USDS to eUSDS vault for both user1 and user2
-        interactions[1][1] = getDepositInteraction(EUSDS, 10000 ether);
-        // Deposit WETH to eWETH vault
-        interactions[1][2] = getDepositInteraction(EWETH, 2 ether);
-
-        // Encode settlement data
-        bytes memory settleData = abi.encodeCall(ICowSettlement.settle, (tokens, clearingPrices, trades, interactions));
 
         // Chain wrapper data: wrapper(user1) → wrapper(user2) → wrapper(user3) → settlement
         // Format: [2-byte len][wrapper1 data][next wrapper address][2-byte len][wrapper2 data][next wrapper address][2-byte len][wrapper3 data]
