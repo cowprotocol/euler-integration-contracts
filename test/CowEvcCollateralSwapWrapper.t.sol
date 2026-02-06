@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 
-import {GPv2Order} from "cow/libraries/GPv2Order.sol";
-
 import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcBaseWrapper} from "../src/CowEvcBaseWrapper.sol";
