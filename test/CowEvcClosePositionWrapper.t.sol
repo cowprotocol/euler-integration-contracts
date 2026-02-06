@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 
 import {GPv2Order} from "cow/libraries/GPv2Order.sol";
@@ -117,7 +117,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
     /// @notice Create settlement data for closing a leveraged position with EIP-1271 signature
     /// @dev Sells vault shares to buy repayment token (WETH), using Inbox EIP-1271 signature
-    function getClosePositionSettlementWithInbox(
+    function prepareAndSignClosePositionSettlementWithInbox(
         address owner,
         address account,
         IEVault sellVaultToken,
@@ -191,7 +191,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data using EIP-1271
-        SettlementData memory settlement = getClosePositionSettlementWithInbox({
+        SettlementData memory settlement = prepareAndSignClosePositionSettlementWithInbox({
             owner: user,
             account: account,
             sellVaultToken: EUSDS,
@@ -273,7 +273,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         params.collateralAmount = sellAmount;
 
         // Get settlement data using EIP-1271
-        SettlementData memory settlement = getClosePositionSettlementWithInbox({
+        SettlementData memory settlement = prepareAndSignClosePositionSettlementWithInbox({
             owner: user,
             account: account,
             sellVaultToken: EUSDS,
@@ -349,7 +349,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement = getClosePositionSettlementWithInbox({
+        SettlementData memory settlement = prepareAndSignClosePositionSettlementWithInbox({
             owner: user,
             account: account,
             sellVaultToken: EUSDS,
@@ -435,7 +435,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data using EIP-1271
-        SettlementData memory settlement = getClosePositionSettlementWithInbox({
+        SettlementData memory settlement = prepareAndSignClosePositionSettlementWithInbox({
             owner: user,
             account: account,
             sellVaultToken: EUSDS,
