@@ -15,8 +15,6 @@ import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
 ///      2. Transfering collateral from EVC subaccount to main account (if using subaccount)
 ///      3. Executing the settlement contract to swap collateral (new collateral is deposited directly into user's account)
 contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
-    error InvalidSettlement(address fromVault, address toVault, uint256 fromVaultPrice, uint256 toVaultPrice);
-
     /// @dev The EIP-712 domain name used for computing the domain separator.
     bytes32 constant DOMAIN_NAME = keccak256("CowEvcCollateralSwapWrapper");
 
