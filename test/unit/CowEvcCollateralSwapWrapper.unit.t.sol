@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8;
 
-import {UnitTestBase} from "./UnitTestBase.sol";
 import {IEVC} from "evc/EthereumVaultConnector.sol";
+import {UnitTestBase} from "./UnitTestBase.sol";
 import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 import {CowEvcCollateralSwapWrapper} from "../../src/CowEvcCollateralSwapWrapper.sol";
-import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
-import {ICowSettlement, CowWrapper} from "../../src/CowWrapper.sol";
-import {MockEVC} from "./mocks/MockEVC.sol";
-import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
+import {ICowSettlement} from "../../src/CowWrapper.sol";
 import {MockERC20, MockVault} from "./mocks/MockERC20AndVaults.sol";
 
 // this is required because foundry doesn't have a cheatcode for override any transient storage.

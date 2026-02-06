@@ -3,9 +3,7 @@ pragma solidity ^0.8;
 
 import {GPv2Order} from "cow/libraries/GPv2Order.sol";
 
-import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
-import {Errors as EVaultErrors} from "euler-vault-kit/src/EVault/shared/Errors.sol";
 
 import {CowEvcBaseWrapper} from "../src/CowEvcBaseWrapper.sol";
 import {CowEvcCollateralSwapWrapper} from "../src/CowEvcCollateralSwapWrapper.sol";
@@ -128,7 +126,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         IEVault buyVaultToken,
         uint256 sellAmount,
         uint256 buyAmount
-    ) public returns (SettlementData memory r) {
+    ) public view returns (SettlementData memory r) {
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
         // Get tokens and prices
@@ -240,6 +238,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Verify the new collateral vault is enabled
         assertTrue(EVC.isCollateralEnabled(user, address(EWBTC)), "EWBTC vault should be enabled for user");
     }
+
     function test_CollateralSwapWrapper_Permit_Subaccount() external {
         vm.skip(bytes(forkRpcUrl).length == 0);
 
@@ -297,7 +296,9 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // Verify the collateral was swapped successfully
         assertEq(
-            EUSDS.balanceOf(account), usdsBalanceBefore - DEFAULT_SWAP_AMOUNT, "Subaccount should have less EUSDS after swap"
+            EUSDS.balanceOf(account),
+            usdsBalanceBefore - DEFAULT_SWAP_AMOUNT,
+            "Subaccount should have less EUSDS after swap"
         );
         assertApproxEqAbs(
             EWBTC.balanceOf(account), wbtcBalanceBefore + DEFAULT_BUY_AMOUNT, 1, "Subaccount should have received EWBTC"

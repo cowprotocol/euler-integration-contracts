@@ -4,8 +4,7 @@ pragma solidity ^0.8;
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {CowEvcClosePositionWrapper} from "../../src/CowEvcClosePositionWrapper.sol";
 import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
-import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
-import {ICowSettlement, CowWrapper} from "../../src/CowWrapper.sol";
+import {ICowSettlement} from "../../src/CowWrapper.sol";
 import {MockERC20, MockVault, MockBorrowVault} from "./mocks/MockERC20AndVaults.sol";
 import {UnitTestBase} from "./UnitTestBase.sol";
 

@@ -5,7 +5,6 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 
 import {CowWrapper, ICowSettlement} from "./CowWrapper.sol";
 import {IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
-import {SafeERC20Lib} from "euler-vault-kit/src/EVault/shared/lib/SafeERC20Lib.sol";
 import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
 
 /// @title CowEvcCollateralSwapWrapper
