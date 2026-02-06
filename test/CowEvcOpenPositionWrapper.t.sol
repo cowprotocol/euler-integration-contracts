@@ -116,12 +116,10 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
     /// @notice Create settlement data for opening a leveraged position
     /// @dev Sells borrowed WETH to buy USDS which gets deposited into the vault
-    function prepareAndSignOpenPositionSettlement(
-        address owner,
-        address receiver,
-        uint256 sellAmount,
-        uint256 buyAmount
-    ) public returns (SettlementData memory r) {
+    function prepareOpenPositionSettlement(address owner, address receiver, uint256 sellAmount, uint256 buyAmount)
+        public
+        returns (SettlementData memory r)
+    {
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
         // Create trade and extract order data
@@ -153,10 +151,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         r.interactions[1][0] = getSwapInteraction(WETH, IERC20(EUSDS.asset()), sellAmount);
         // Second interaction: The converted tokens get transferred to the euler vault (a "deposit")
         r.interactions[1][1] = getDepositInteraction(EUSDS, buyAmount);
-
-        // we need to approve the pre-signature
-        vm.prank(owner);
-        COW_SETTLEMENT.setPreSignature(r.orderUid, true);
     }
 
     /// @notice Test opening a leveraged position using the new wrapper
@@ -165,7 +159,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement = prepareAndSignOpenPositionSettlement({
+        SettlementData memory settlement = prepareOpenPositionSettlement({
             owner: user, receiver: account, sellAmount: DEFAULT_BORROW_AMOUNT, buyAmount: MIN_BUY_SHARES_AMOUNT
         });
 
@@ -229,13 +223,16 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement = prepareAndSignOpenPositionSettlement({
+        SettlementData memory settlement = prepareOpenPositionSettlement({
             owner: user, receiver: account, sellAmount: DEFAULT_BORROW_AMOUNT, buyAmount: MIN_BUY_SHARES_AMOUNT
         });
 
         // Setup user approvals and pre-approve hash
         bytes32 hash = openPositionWrapper.getApprovalHash(params);
         _setupUserPreApprovedFlow(account, hash);
+
+        vm.prank(user);
+        COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
 
         // Verify that the operator is authorized before executing
         assertTrue(
@@ -309,7 +306,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement = prepareAndSignOpenPositionSettlement({
+        SettlementData memory settlement = prepareOpenPositionSettlement({
             owner: user, receiver: account, sellAmount: DEFAULT_BORROW_AMOUNT, buyAmount: DEFAULT_BUY_AMOUNT
         });
 

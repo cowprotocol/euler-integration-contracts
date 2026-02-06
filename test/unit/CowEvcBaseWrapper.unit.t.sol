@@ -30,7 +30,6 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
     string public constant CONTRACT_VERSION = "1";
 
     bool public needsPermission;
-    uint256 public batchItemsBeforeCount;
 
     constructor(address evc, address cow, uint256 maxBatchOps)
         CowEvcBaseWrapper(evc, ICowSettlement(cow), keccak256(bytes(CONTRACT_NAME)), keccak256(bytes(CONTRACT_VERSION)))
@@ -41,7 +40,6 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
 
         // by default set needs permission so we dont get unused permission error
         needsPermission = true;
-        batchItemsBeforeCount = 0;
         MAX_BATCH_OPERATIONS = maxBatchOps;
     }
 
@@ -271,7 +269,12 @@ contract CowEvcBaseWrapperTest is Test {
                     )
                 ) == keccak256(err)
             );
-            revert(string(err));
+
+            assembly {
+                // bubble up error. length is at the beginning of the pointer, and the
+                // revert contents 32 bytes after.
+                revert(add(err, 32), mload(err))
+            }
         }
     }
 
