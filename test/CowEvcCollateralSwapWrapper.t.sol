@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 
 import {GPv2Order} from "cow/libraries/GPv2Order.sol";
@@ -110,14 +110,14 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
     /// @notice Create settlement data for swapping collateral between vaults
     /// @dev Sells vault shares from one vault to buy shares in another
-    function getCollateralSwapSettlement(
+    function prepareAndSignCollateralSwapSettlement(
         address owner,
         address account,
         IEVault sellVaultToken,
         IEVault buyVaultToken,
         uint256 sellAmount,
         uint256 buyAmount
-    ) public view returns (SettlementData memory r) {
+    ) public returns (SettlementData memory r) {
         uint32 validTo = uint32(block.timestamp + 1 hours);
 
         // Get tokens and prices
@@ -161,6 +161,10 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Deposit to buy vault (transfer underlying to vault)
         uint256 buyUnderlyingAmount = sellAmount * r.clearingPrices[0] / milkSwap.prices(buyVaultToken.asset());
         r.interactions[1][2] = getDepositInteraction(buyVaultToken, buyUnderlyingAmount);
+
+        // we need to approve the pre-signature
+        vm.prank(owner);
+        COW_SETTLEMENT.setPreSignature(r.orderUid, true);
     }
 
     function test_CollateralSwapWrapper_Permit_MainAccount() external {
@@ -183,7 +187,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, user);
 
         // Get settlement data
-        SettlementData memory settlement = getCollateralSwapSettlement({
+        SettlementData memory settlement = prepareAndSignCollateralSwapSettlement({
             owner: user,
             account: user,
             sellVaultToken: EUSDS,
@@ -195,7 +199,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Approve spending of the EUSDS to send collateral to COW settlement
         vm.startPrank(user);
         EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
-        COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
         vm.stopPrank();
 
         // Record balances before swap
@@ -251,7 +254,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data
-        SettlementData memory settlement = getCollateralSwapSettlement({
+        SettlementData memory settlement = prepareAndSignCollateralSwapSettlement({
             owner: user,
             account: account,
             sellVaultToken: EUSDS,
@@ -263,7 +266,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Approve spending of the EUSDS to send collateral to COW settlement
         vm.startPrank(user);
         EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
-        COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
         vm.stopPrank();
 
         // Record balances before swap
@@ -322,7 +324,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, user);
 
         // Get settlement data
-        SettlementData memory settlement = getCollateralSwapSettlement({
+        SettlementData memory settlement = prepareAndSignCollateralSwapSettlement({
             owner: user,
             account: user,
             sellVaultToken: EUSDS,
@@ -392,7 +394,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, account);
 
         // Get settlement data - receiver is the subaccount
-        SettlementData memory settlement = getCollateralSwapSettlement({
+        SettlementData memory settlement = prepareAndSignCollateralSwapSettlement({
             owner: user,
             account: account,
             sellVaultToken: EUSDS,
@@ -403,10 +405,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // Setup subaccount approvals and pre-approved hash
         _setupSubaccountAuthorizations(params);
-
-        // CoW Pre-signature needs to be set as well
-        vm.prank(user);
-        COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
 
         // Record balances before swap
         uint256 usdsBalanceBefore = EUSDS.balanceOf(account);

@@ -113,6 +113,7 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         return _encodePermitData(items, memoryLocation(params));
     }
 
+    /// @inheritdoc CowEvcBaseWrapper
     function _encodeBatchItemsBefore(ParamsLocation paramsLocation)
         internal
         view
@@ -144,9 +145,7 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         needsPermission = true;
     }
 
-    /// @notice Implementation of CowWrapper._wrap - executes EVC operations to swap collateral
-    /// @param settleData Data which will be used for the parameters in a call to `CowSettlement.settle`
-    /// @param wrapperData Additional data containing CollateralSwapParams
+    /// @inheritdoc CowWrapper
     function _wrap(bytes calldata settleData, bytes calldata wrapperData, bytes calldata remainingWrapperData)
         internal
         override
@@ -169,6 +168,7 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         );
     }
 
+    /// @inheritdoc CowEvcBaseWrapper
     function _evcInternalSettle(bytes calldata settleData, bytes calldata, bytes calldata remainingWrapperData)
         internal
         override
