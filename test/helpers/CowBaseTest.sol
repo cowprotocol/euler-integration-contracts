@@ -192,7 +192,11 @@ contract CowBaseTest is Test {
         });
     }
 
-    function setupAndPreSignCowOrder(
+    /**
+     * Constructs a CoW order parameters outside of `trade`. It is still necessary to compute the interactions
+     * and approve the order (generally through pre-sign) separately.
+     */
+    function setupCowOrder(
         address[] memory tokens,
         uint256 sellTokenIndex,
         uint256 buyTokenIndex,
@@ -239,10 +243,6 @@ contract CowBaseTest is Test {
         });
 
         orderId = getOrderUid(owner, order);
-
-        // we basically always want to sign the order id
-        vm.prank(owner);
-        COW_SETTLEMENT.setPreSignature(orderId, true);
     }
 
     /// @notice Helper to get common tokens and prices for tests. Simplifies many test flows by using shared indexes
