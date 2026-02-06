@@ -221,16 +221,22 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         if (isPermitFlow) {
             // Permit flow: create signature
-            vm.startPrank(owner);
-            EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
-            vm.stopPrank();
 
             bytes memory permitSignature = _createPermitSignatureFor(params, userPrivateKey);
             wrapperData = _encodeWrapperData(params, permitSignature);
+
+            vm.startPrank(owner);
+            // The vault relayer contract also needs to be approved so spend funds
+            EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+
+            // normally a EIP-712 signature would be created for the CoW order here, but
+            // to simplify tests, we use a pre approved hash
+            COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
+            vm.stopPrank();
         } else {
             // PreApprove flow: setup authorizations
             if (owner == account) {
-                // Main account: inline setup
+                // Main account: inline setup (less calls are needed)
                 vm.startPrank(owner);
                 EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
                 bytes32 hash = collateralSwapWrapper.getApprovalHash(params);
@@ -238,15 +244,15 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 EVC.setAccountOperator(params.account, address(collateralSwapWrapper), true);
                 vm.stopPrank();
             } else {
-                // Subaccount: use helper
+                // Subaccount: use helper shared by other tests
                 _setupSubaccountAuthorizations(params);
             }
+
+            vm.prank(owner);
+            COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
+
             wrapperData = _encodeWrapperData(params, new bytes(0));
         }
-
-        // Authorize the CoW order
-        vm.prank(owner);
-        COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
 
         // Encode settlement data
         bytes memory settleData = abi.encodeCall(
@@ -255,7 +261,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         );
 
         // Expect event emission
-        vm.expectEmit(true, true, true, false);
+        vm.expectEmit();
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
             params.owner, params.account, params.fromVault, params.toVault, params.fromAmount, params.toAmount
         );
