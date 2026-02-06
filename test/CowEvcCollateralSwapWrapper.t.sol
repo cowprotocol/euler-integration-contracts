@@ -46,15 +46,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         WBTC.approve(vaultRelayer, type(uint256).max);
     }
 
-    struct SettlementData {
-        bytes orderUid;
-        GPv2Order.Data orderData;
-        address[] tokens;
-        uint256[] clearingPrices;
-        ICowSettlement.Trade[] trades;
-        ICowSettlement.Interaction[][3] interactions;
-    }
-
     /// @notice Create default CollateralSwapParams for testing
     function _createDefaultParams(address owner, address account)
         internal

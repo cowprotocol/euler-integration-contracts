@@ -48,15 +48,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         deal(address(USDS), user, 10000e18);
     }
 
-    struct SettlementData {
-        bytes orderUid;
-        GPv2Order.Data orderData;
-        address[] tokens;
-        uint256[] clearingPrices;
-        ICowSettlement.Trade[] trades;
-        ICowSettlement.Interaction[][3] interactions;
-    }
-
     /// @notice Create default ClosePositionParams for testing
     function _createDefaultParams(address owner, address account)
         internal
