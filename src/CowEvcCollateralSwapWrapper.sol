@@ -62,19 +62,22 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
     /// NOTE: If you need to create an order with identical properties to another, ensure that the hash of this structure is unique for this user.
     /// when in doubt, the `deadline` can be incremented to create a new unique order params object
     struct CollateralSwapParams {
-        /// @dev The ethereum address that has permission to operate upon the account
+        /// @dev The ethereum address that has permission to operate upon the account. In the case that the funds are in a subaccount (i.e. account != owner), collateral will
+        /// be atomically transferred into this address prior to the CoW settlement.
+        /// The CoW order should be signed or pre-approved from this address.
         address owner;
 
-        /// @dev The subaccount to swap collateral from. Learn more about Euler subaccounts https://evc.wtf/docs/concepts/internals/sub-accounts
+        /// @dev The subaccount from which the old collateral originates, and where the new collateral will be sent. Learn more about Euler subaccounts https://evc.wtf/docs/concepts/internals/sub-accounts
+        /// The CoW order `receiver` should be set to this value.
         address account;
 
         /// @dev A date by which this operation must be completed
         uint256 deadline;
 
-        /// @dev The source collateral vault (what we're swapping from)
+        /// @dev The source collateral vault (what we're swapping from). Same as `sellToken` in the CoW order
         address fromVault;
 
-        /// @dev The destination collateral vault (what we're swapping to)
+        /// @dev The destination collateral vault (what we're swapping to). Same as `buyToken` in the CoW order
         address toVault;
 
         /// @dev The amount of fromVault traded in. Same as `sellAmount` in the CoW order
