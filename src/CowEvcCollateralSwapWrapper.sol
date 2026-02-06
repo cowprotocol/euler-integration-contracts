@@ -59,7 +59,8 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
 
     /// @notice The information necessary to swap collateral between vaults
     /// @dev This structure is used, combined with domain separator, to indicate a pre-approved hash.
-    /// the `deadline` is used for deduplication checking, so be careful to ensure this value is unique.
+    /// NOTE: If you need to create an order with identical properties to another, ensure that the hash of this structure is unique for this user.
+    /// when in doubt, the `deadline` can be incremented to create a new unique order params object
     struct CollateralSwapParams {
         /// @dev The ethereum address that has permission to operate upon the account
         address owner;
