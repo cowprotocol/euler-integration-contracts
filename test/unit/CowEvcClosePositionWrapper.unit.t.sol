@@ -29,9 +29,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
     uint256 constant DEFAULT_REPAY_AMOUNT = 1000e18;
     bytes32 constant KIND_BUY = keccak256("buy");
 
-    event PreApprovedHash(address indexed owner, bytes32 indexed hash, bool approved);
-    event PreApprovedHashConsumed(address indexed owner, bytes32 indexed hash);
-
     /// @notice Get default ClosePositionParams for testing
     function _getDefaultParams() internal view returns (CowEvcClosePositionWrapper.ClosePositionParams memory) {
         return CowEvcClosePositionWrapper.ClosePositionParams({
