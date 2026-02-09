@@ -27,7 +27,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
     MockBorrowVault public mockBorrowVault;
 
     uint256 constant DEFAULT_REPAY_AMOUNT = 1000e18;
-    bytes32 constant KIND_BUY = hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc";
+    bytes32 constant KIND_BUY = keccak256("buy");
 
     event PreApprovedHash(address indexed owner, bytes32 indexed hash, bool approved);
     event PreApprovedHashConsumed(address indexed owner, bytes32 indexed hash);

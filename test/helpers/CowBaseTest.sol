@@ -262,11 +262,13 @@ contract CowBaseTest is Test {
         bool isBuy,
         uint256 signerPrivateKey
     ) public view returns (ICowSettlement.Trade memory trade, GPv2Order.Data memory order, bytes memory orderId) {
-        // Use EIP-1271 signature type (1 << 6)
-        uint256 flags = (1 << 6) | (isBuy ? 1 : 0); // EIP-1271 signature type
+        uint256 flags = isBuy ? 1 : 0;
         if (signerPrivateKey == 0) {
-            // pre-signature type (3 << 5) (overlaps EIP-1271)
-            flags = flags | (3 << 5); // pre-sign
+            // pre-signature type
+            flags = flags | (3 << 5);
+        } else {
+            // EIP-1271 signature type
+            flags = flags | (1 << 6);
         }
 
         order = GPv2Order.Data({
@@ -351,7 +353,7 @@ contract CowBaseTest is Test {
 
     /// @notice Helper to set up a leveraged position for any user
     /// @dev More flexible version that accepts owner, account, and vault parameters
-    /// The proceeds of the `borrow` are *NOT* deposited in the account for convienience of setup.
+    /// The proceeds of the `borrow` are thrown away and *NOT* deposited in the account.
     /// So make sure that `collateralAmount` is margin + borrowValue if that is something you care about.
     function setupLeveragedPositionFor(
         address owner,
