@@ -83,30 +83,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         mockEvc.setOnBehalfOf(address(wrapper));
     }
 
-    /// @notice Create settle data with tokens and prices
-    function _getSettleDataWithTokens() internal view returns (bytes memory) {
-        address[] memory tokens = new address[](2);
-        tokens[0] = mockBorrowVault.asset();
-        tokens[1] = address(mockCollateralVault);
-        uint256[] memory prices = new uint256[](2);
-        prices[0] = 1e18;
-        prices[1] = 1e18;
-
-        return abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                tokens,
-                prices,
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
-    }
-
     /*//////////////////////////////////////////////////////////////
                         CONSTRUCTOR TESTS
     //////////////////////////////////////////////////////////////*/
@@ -423,7 +399,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
 
         bytes32 hash = _setupPreApprovedHash(params);
 
-        bytes memory settleData = _getSettleDataWithTokens();
+        bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
 
         // put funds in the inbox so it doesn't revert
