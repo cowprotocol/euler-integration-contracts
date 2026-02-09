@@ -74,4 +74,15 @@ abstract contract UnitTestBase is Test {
         assertEq(address(wrapper.AUTHENTICATOR()), address(mockAuth), "AUTHENTICATOR not set correctly");
         assertEq(wrapper.NONCE_NAMESPACE(), uint256(uint160(address(wrapper))), "NONCE_NAMESPACE incorrect");
     }
+
+    /*//////////////////////////////////////////////////////////////
+                    PARSE WRAPPER DATA TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Test that validateWrapperData reverts on badly formatted input
+    function test_ValidateWrapperData_ValidateWrapperDataMalformed() external {
+        bytes memory malformedData = hex"deadbeef";
+        vm.expectRevert(new bytes(0));
+        wrapper.validateWrapperData(malformedData);
+    }
 }

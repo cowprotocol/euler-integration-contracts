@@ -414,10 +414,10 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         vm.stopPrank();
 
         vm.prank(ACCOUNT);
-        mockCollateralVault.approve(address(wrapper), 2000e18);
+        require(mockCollateralVault.approve(address(wrapper), 2000e18));
 
         vm.prank(OWNER);
-        mockCollateralVault.approve(address(wrapper), 2000e18);
+        require(mockCollateralVault.approve(address(wrapper), 2000e18));
 
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
