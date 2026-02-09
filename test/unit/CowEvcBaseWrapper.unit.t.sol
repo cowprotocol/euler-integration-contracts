@@ -193,9 +193,6 @@ contract CowEvcBaseWrapperTest is Test {
 
         mockSettlement.setSuccessfulSettle(true);
 
-        // Set incorrect onBehalfOfAccount (not address(wrapper))
-        mockEvc.setOnBehalfOf(address(0x9999));
-
         // set incorrect expected call
         wrapper.setExpectedEvcInternalSettleCall(
             abi.encodeCall(wrapper.evcInternalSettle, (new bytes(0), new bytes(0), remainingWrapperData))

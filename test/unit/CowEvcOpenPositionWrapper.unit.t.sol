@@ -64,9 +64,6 @@ contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
         wrapper = CowEvcBaseWrapper(
             new TestableOpenPositionWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)))
         );
-
-        // Set the correct onBehalfOfAccount for evcInternalSettle calls
-        mockEvc.setOnBehalfOf(address(wrapper));
     }
 
     /*//////////////////////////////////////////////////////////////

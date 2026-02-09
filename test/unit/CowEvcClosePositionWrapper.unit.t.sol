@@ -73,9 +73,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         wrapper = CowEvcBaseWrapper(
             new TestableClosePositionWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)))
         );
-
-        // Set the correct onBehalfOfAccount for evcInternalSettle calls
-        mockEvc.setOnBehalfOf(address(wrapper));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -171,9 +168,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         bytes memory remainingWrapperData = "";
 
         mockSettlement.setSuccessfulSettle(true);
-
-        // Set incorrect onBehalfOfAccount (not address(wrapper))
-        mockEvc.setOnBehalfOf(address(0x9999));
 
         // the wrapper data is omitted in the expected call
         TestableClosePositionWrapper(address(wrapper))
