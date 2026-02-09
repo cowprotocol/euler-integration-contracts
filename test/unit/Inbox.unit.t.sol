@@ -93,12 +93,22 @@ contract InboxUnitTest is Test {
         assertEq(inbox.SETTLEMENT(), address(mockSettlement), "SETTLEMENT not set");
     }
 
-    function test_InboxFactory_ViewFunctionReturnsCorrectValues() public view {
-        (address computedAddress, bytes32 domainSeparator) =
-            inboxFactory.getInboxAddressAndDomainSeparator(BENEFICIARY, address(this));
+    function test_InboxFactory_GetInboxCreationCode() public view {
+        assertEq(inboxFactory.getInboxCreationCode(), type(Inbox).creationCode, "Creation code does not match");
+    }
 
-        assertEq(computedAddress, address(inbox), "Computed address mismatch");
-        assertEq(domainSeparator, inbox.INBOX_DOMAIN_SEPARATOR(), "Domain separator mismatch");
+    function testFuzz_InboxFactory_ViewFunctionReturnsCorrectValues(address beneficiary, address account) public {
+        (address computedAddress, bytes32 domainSeparator, bytes memory creationCode, bytes32 salt) =
+            inboxFactory.getInboxAddressAndDomainSeparator(beneficiary, account);
+
+        address createdInbox = inboxFactory.getInbox(beneficiary, account);
+
+        require(createdInbox.code.length > 0, "Inbox not deployed to expected address");
+
+        assertEq(computedAddress, createdInbox, "Creation address doesnt match");
+        assertEq(domainSeparator, Inbox(createdInbox).INBOX_DOMAIN_SEPARATOR(), "Domain separator mismatch");
+        assertEq(creationCode, abi.encodePacked(type(Inbox).creationCode, abi.encode(inboxFactory, beneficiary, mockSettlement)), "Creation code is not as expected");
+        assertEq(salt, bytes32(uint256(uint160(account))), "Salt is not as expected");
     }
 
     // ============== getInbox Tests ==============
