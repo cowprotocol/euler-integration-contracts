@@ -30,18 +30,26 @@ contract InboxFactory {
         return address(_getInbox(owner, subaccount));
     }
 
+    /// @notice Get the creation code used for the deployed Inboxes. Does not include any constructor params that may need to be appended. Useful for computing the deployed Inbox address wihout needing to make an on-chain call
+    /// @return creationCode The creation code that will be used.
+    function getInboxCreationCode() external pure returns (bytes memory creationCode) {
+        return type(Inbox).creationCode;
+    }
+
     /// @notice Get the address where an Inbox would be deployed without deploying it, and the domain separator needed to sign a message to it
     /// @dev This is a view-only function that only returns the address and domain separator
     /// @param owner The owner address
     /// @param subaccount The subaccount address
     /// @return creationAddress The computed Inbox address
     /// @return domainSeparator The domain separator for the Inbox contract
+    /// @return creationCode The `creationCode` parameter used for `CREATE2`
+    /// @return salt The `salt` parameter used for `CREATE2`
     function getInboxAddressAndDomainSeparator(address owner, address subaccount)
         external
         view
-        returns (address creationAddress, bytes32 domainSeparator)
+        returns (address creationAddress, bytes32 domainSeparator, bytes memory creationCode, bytes32 salt)
     {
-        (creationAddress,,) = _getInboxAddress(owner, subaccount);
+        (creationAddress, creationCode, salt) = _getInboxAddress(owner, subaccount);
         domainSeparator = keccak256(
             abi.encode(
                 InboxConstants.DOMAIN_TYPE_HASH, keccak256("Inbox"), keccak256("1"), block.chainid, creationAddress

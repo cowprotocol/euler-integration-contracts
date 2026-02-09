@@ -98,20 +98,20 @@ contract CowBaseTest is Test {
 
         // Set the approval for MilkSwap in the settlement as a convenience
         vm.startPrank(address(COW_SETTLEMENT));
-        WETH.approve(address(milkSwap), type(uint256).max);
-        USDS.approve(address(milkSwap), type(uint256).max);
-        WBTC.approve(address(milkSwap), type(uint256).max);
+        require(WETH.approve(address(milkSwap), type(uint256).max));
+        require(USDS.approve(address(milkSwap), type(uint256).max));
+        require(WBTC.approve(address(milkSwap), type(uint256).max));
 
-        USDS.approve(address(EUSDS), type(uint256).max);
-        WETH.approve(address(EWETH), type(uint256).max);
-        WBTC.approve(address(EWBTC), type(uint256).max);
+        require(USDS.approve(address(EUSDS), type(uint256).max));
+        require(WETH.approve(address(EWETH), type(uint256).max));
+        require(WBTC.approve(address(EWBTC), type(uint256).max));
 
         vm.stopPrank();
 
         // User has approved WETH for COW Protocol
         address vaultRelayer = COW_SETTLEMENT.vaultRelayer();
         vm.prank(user);
-        WETH.approve(vaultRelayer, type(uint256).max);
+        require(WETH.approve(vaultRelayer, type(uint256).max));
 
         // Setup labels
         //vm.label(solver, "solver");
@@ -271,11 +271,13 @@ contract CowBaseTest is Test {
         bool isBuy,
         uint256 signerPrivateKey
     ) public view returns (ICowSettlement.Trade memory trade, GPv2Order.Data memory order, bytes memory orderId) {
-        // Use EIP-1271 signature type (1 << 6)
-        uint256 flags = (1 << 6) | (isBuy ? 1 : 0); // EIP-1271 signature type
+        uint256 flags = isBuy ? 1 : 0;
         if (signerPrivateKey == 0) {
-            // pre-signature type (3 << 5) (overlaps EIP-1271)
-            flags = flags | (3 << 5); // pre-sign
+            // pre-signature type
+            flags = flags | (3 << 5);
+        } else {
+            // EIP-1271 signature type
+            flags = flags | (1 << 6);
         }
 
         order = GPv2Order.Data({
@@ -360,7 +362,7 @@ contract CowBaseTest is Test {
 
     /// @notice Helper to set up a leveraged position for any user
     /// @dev More flexible version that accepts owner, account, and vault parameters
-    /// The proceeds of the `borrow` are *NOT* deposited in the account for convienience of setup.
+    /// The proceeds of the `borrow` are thrown away and *NOT* deposited in the account.
     /// So make sure that `collateralAmount` is margin + borrowValue if that is something you care about.
     function setupLeveragedPositionFor(
         address owner,
@@ -375,14 +377,16 @@ contract CowBaseTest is Test {
         deal(address(collateralAsset), owner, collateralAmount);
 
         vm.startPrank(owner);
-        collateralAsset.approve(address(collateralVault), type(uint256).max);
+        require(collateralAsset.approve(address(collateralVault), type(uint256).max));
         EVC.enableCollateral(ownerAccount, address(collateralVault));
         EVC.enableController(ownerAccount, address(borrowVault));
         collateralVault.deposit(collateralAmount, ownerAccount);
         vm.stopPrank();
 
         vm.prank(ownerAccount);
-        borrowVault.borrow(borrowAmount, address(1));
+        // for testing purposes, we don't want to swap back the tokens leveraged or anything like that, so
+        // we mint them to a throwaway address to ensure they don't impact the test
+        borrowVault.borrow(borrowAmount, makeAddr("trash"));
     }
 
     /// @notice Encode wrapper data with length prefix

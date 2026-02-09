@@ -7,8 +7,8 @@ import {IERC1271} from "openzeppelin-contracts/contracts/interfaces/IERC1271.sol
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ICowSettlement} from "./CowWrapper.sol";
 
+/// @dev Collection of EIP-712 type hashes. These hashes match those used by the CoW settlement contract.
 library InboxConstants {
-    /// @dev EIP-712 type hashes. These hashes match those used by the CoW settlement contract.
     bytes32 internal constant DOMAIN_TYPE_HASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes32 internal constant ORDER_TYPE_HASH = keccak256(

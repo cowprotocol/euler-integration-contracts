@@ -61,7 +61,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     /// in order to simplify order creation.
     function _setupUserPreApprovedFlow(address account, bytes32 hash) internal {
         vm.startPrank(user);
-        USDS.approve(address(EUSDS), type(uint256).max);
+        require(USDS.approve(address(EUSDS), type(uint256).max));
         EVC.setAccountOperator(user, address(openPositionWrapper), true);
         EVC.setAccountOperator(account, address(openPositionWrapper), true);
         openPositionWrapper.setPreApprovedHash(hash, true);
@@ -155,7 +155,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Setup user approvals
         vm.startPrank(user);
-        USDS.approve(address(EUSDS), type(uint256).max);
+        require(USDS.approve(address(EUSDS), type(uint256).max));
 
         // User signs order
         // We use a pre-signature here for convenience rather than EIP-712
@@ -302,7 +302,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Setup user approvals
         vm.prank(user);
-        USDS.approve(address(EUSDS), type(uint256).max);
+        require(USDS.approve(address(EUSDS), type(uint256).max));
 
         // Create INVALID permit signature by signing with wrong private key (user2's key instead of user's)
         ecdsa.setPrivateKey(privateKey2); // Wrong private key!
@@ -339,9 +339,9 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Approve USDS spending by eUSDS for user1
         vm.startPrank(user);
-        USDS.approve(address(EUSDS), type(uint256).max);
+        require(USDS.approve(address(EUSDS), type(uint256).max));
         // Approve WETH for COW Protocol for user1
-        WETH.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+        require(WETH.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max));
 
         vm.stopPrank();
 
@@ -351,10 +351,10 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Approve USDS spending by eUSDS for user2
         vm.startPrank(user2);
-        USDS.approve(address(EUSDS), type(uint256).max);
+        require(USDS.approve(address(EUSDS), type(uint256).max));
 
         // Approve WETH for COW Protocol for user2
-        WETH.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+        require(WETH.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max));
 
         vm.stopPrank();
 
@@ -364,9 +364,9 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Approve WETH spending by eWETH for user2
         vm.startPrank(user3);
-        WETH.approve(address(EWETH), type(uint256).max);
+        require(WETH.approve(address(EWETH), type(uint256).max));
         // Approve USDS for COW Protocol for user3
-        USDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+        require(USDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max));
 
         vm.stopPrank();
 

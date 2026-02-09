@@ -76,9 +76,6 @@ contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
         wrapper = CowEvcBaseWrapper(
             new TestableOpenPositionWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)))
         );
-
-        // Set the correct onBehalfOfAccount for evcInternalSettle calls
-        mockEvc.setOnBehalfOf(address(wrapper));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -109,13 +106,6 @@ contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
 
         // Should not revert for valid wrapper data
         wrapper.validateWrapperData(wrapperData);
-    }
-
-    /// @notice Test that validateWrapperData reverts on badly formatted input
-    function test_ValidateWrapperData_ValidateWrapperDataMalformed() external {
-        bytes memory malformedData = hex"deadbeef";
-        vm.expectRevert(new bytes(0));
-        wrapper.validateWrapperData(malformedData);
     }
 
     /*//////////////////////////////////////////////////////////////

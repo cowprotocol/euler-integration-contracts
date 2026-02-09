@@ -26,10 +26,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
     MockBorrowVault public mockBorrowVault;
 
     uint256 constant DEFAULT_REPAY_AMOUNT = 1000e18;
-    bytes32 constant KIND_BUY = hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc";
-
-    event PreApprovedHash(address indexed owner, bytes32 indexed hash, bool approved);
-    event PreApprovedHashConsumed(address indexed owner, bytes32 indexed hash);
+    bytes32 constant KIND_BUY = keccak256("buy");
 
     /// @notice Get default ClosePositionParams for testing
     function _getDefaultParams() internal view returns (CowEvcClosePositionWrapper.ClosePositionParams memory) {
@@ -70,8 +67,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         bytes32 hash = CowEvcClosePositionWrapper(address(wrapper)).getApprovalHash(params);
         vm.prank(OWNER);
         wrapper.setPreApprovedHash(hash, true);
-        mockEvc.setOperator(OWNER, address(wrapper), true);
-        mockEvc.setOperator(ACCOUNT, address(wrapper), true);
         return hash;
     }
 
@@ -91,35 +86,8 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
             new TestableClosePositionWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)))
         );
 
-        // Set the correct onBehalfOfAccount for evcInternalSettle calls
-        mockEvc.setOnBehalfOf(address(wrapper));
-
-        // Supply tokens for inbox to prevent a revert we don't want in certain tests
+        // Supply tokens for inbox since we don't simulate the actual swapping of the tokens
         deal(address(mockDebtAsset), CowEvcClosePositionWrapper(address(wrapper)).getInbox(OWNER, ACCOUNT), 1);
-    }
-
-    /// @notice Create settle data with tokens and prices
-    function _getSettleDataWithTokens() internal view returns (bytes memory) {
-        address[] memory tokens = new address[](2);
-        tokens[0] = mockBorrowVault.asset();
-        tokens[1] = address(mockCollateralVault);
-        uint256[] memory prices = new uint256[](2);
-        prices[0] = 1e18;
-        prices[1] = 1e18;
-
-        return abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                tokens,
-                prices,
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -215,9 +183,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         bytes memory remainingWrapperData = "";
 
         mockSettlement.setSuccessfulSettle(true);
-
-        // Set incorrect onBehalfOfAccount (not address(wrapper))
-        mockEvc.setOnBehalfOf(address(0x9999));
 
         // the wrapper data is omitted in the expected call
         TestableClosePositionWrapper(address(wrapper))
