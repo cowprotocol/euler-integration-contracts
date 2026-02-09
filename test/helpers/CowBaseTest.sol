@@ -262,11 +262,13 @@ contract CowBaseTest is Test {
         bool isBuy,
         uint256 signerPrivateKey
     ) public view returns (ICowSettlement.Trade memory trade, GPv2Order.Data memory order, bytes memory orderId) {
-        // Use EIP-1271 signature type (1 << 6)
-        uint256 flags = (1 << 6) | (isBuy ? 1 : 0); // EIP-1271 signature type
+        uint256 flags = isBuy ? 1 : 0;
         if (signerPrivateKey == 0) {
-            // pre-signature type (3 << 5) (overlaps EIP-1271)
-            flags = flags | (3 << 5); // pre-sign
+            // pre-signature type
+            flags = flags | (3 << 5);
+        } else {
+            // EIP-1271 signature type
+            flags = flags | (1 << 6);
         }
 
         order = GPv2Order.Data({
