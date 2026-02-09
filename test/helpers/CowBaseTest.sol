@@ -353,7 +353,7 @@ contract CowBaseTest is Test {
 
     /// @notice Helper to set up a leveraged position for any user
     /// @dev More flexible version that accepts owner, account, and vault parameters
-    /// The proceeds of the `borrow` are *NOT* deposited in the account for convienience of setup.
+    /// The proceeds of the `borrow` are thrown away and *NOT* deposited in the account.
     /// So make sure that `collateralAmount` is margin + borrowValue if that is something you care about.
     function setupLeveragedPositionFor(
         address owner,
