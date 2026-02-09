@@ -41,7 +41,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // User has approved WBTC for COW Protocol
         address vaultRelayer = COW_SETTLEMENT.vaultRelayer();
         vm.prank(user);
-        WBTC.approve(vaultRelayer, type(uint256).max);
+        require(WBTC.approve(vaultRelayer, type(uint256).max));
     }
 
     /// @notice Create default CollateralSwapParams for testing
@@ -94,7 +94,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         vm.startPrank(params.owner);
 
         // Approve vault shares from main account for settlement
-        IEVault(params.fromVault).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+        require(IEVault(params.fromVault).approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max));
 
         // Set wrapper as operator for the subaccount
         EVC.setAccountOperator(params.account, address(collateralSwapWrapper), true);
@@ -227,7 +227,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
             vm.startPrank(owner);
             // The vault relayer contract also needs to be approved so spend funds
-            EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+            require(EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max));
 
             // normally a EIP-712 signature would be created for the CoW order here, but
             // to simplify tests, we use a pre approved hash
@@ -238,7 +238,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             if (owner == account) {
                 // Main account: inline setup (less calls are needed)
                 vm.startPrank(owner);
-                EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+                require(EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max));
                 bytes32 hash = collateralSwapWrapper.getApprovalHash(params);
                 collateralSwapWrapper.setPreApprovedHash(hash, true);
                 EVC.setAccountOperator(params.account, address(collateralSwapWrapper), true);
@@ -362,7 +362,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // Approve vault shares for settlement
         vm.prank(user);
-        EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+        require(EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max));
 
         // Create INVALID permit signature by signing with wrong private key (user2's key instead of user's)
         ecdsa.setPrivateKey(privateKey2); // Wrong private key!

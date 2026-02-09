@@ -35,7 +35,7 @@ abstract contract UnitTestBase is Test {
         mockAuth.setSolver(SOLVER, true);
 
         // Set the correct onBehalfOfAccount for evcInternalSettle calls
-        mockEvc.setOnBehalfOf(ACCOUNT);
+        //mockEvc.setOnBehalfOf(ACCOUNT);
 
         vm.label(OWNER, "OWNER");
         vm.label(ACCOUNT, "ACCOUNT");
@@ -124,7 +124,6 @@ abstract contract UnitTestBase is Test {
 
     function test_WrappedSettle_RevertsIfHashNotPreApproved() public {
         // Set operator permissions (required for EVC batch operations)
-        mockEvc.setOperator(OWNER, address(wrapper), true);
 
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = _encodeDefaultWrapperData(new bytes(0)); // Empty signature triggers pre-approved hash flow

@@ -29,17 +29,12 @@ contract MockEVC {
         );
     }
 
-    function setOperator(address account, address operator, bool authorized) external {
-        operators[account][operator] = authorized;
-    }
-
     function setOperatorMask(uint256 mask) external {
         operatorMask = mask;
     }
 
-    function setOnBehalfOf(address shouldBeOnBehalfOf) external {
-        onBehalfOf = shouldBeOnBehalfOf;
-    }
+    // NOTE: evc `setOperator` is not technically used by our tests/contracts.
+    // Only `setAccountOperator`, `setOperatorMask`, and `getOperator` are used.
 
     function setAccountOperator(address account, address operator, bool authorized) external {
         operators[account][operator] = authorized;

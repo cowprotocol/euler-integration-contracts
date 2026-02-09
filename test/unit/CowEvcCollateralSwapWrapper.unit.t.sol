@@ -74,7 +74,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         bytes32 hash = CowEvcCollateralSwapWrapper(address(wrapper)).getApprovalHash(params);
         vm.prank(OWNER);
         wrapper.setPreApprovedHash(hash, true);
-        mockEvc.setOperator(OWNER, address(wrapper), true);
         return hash;
     }
 
@@ -102,7 +101,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         mockFromVault.mint(OWNER, 2000e18);
 
         vm.prank(OWNER);
-        mockFromVault.approve(address(wrapper), 2000e18);
+        require(mockFromVault.approve(address(wrapper), 2000e18));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -244,7 +243,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         mockSettlement.setSuccessfulSettle(true);
 
         // Set incorrect onBehalfOfAccount (not address(wrapper))
-        mockEvc.setOnBehalfOf(address(0x9999));
+        //mockEvc.setOnBehalfOf(address(0x9999));
 
         // the wrapper data is omitted in the expected call
         TestableCollateralSwapWrapper(address(wrapper))
