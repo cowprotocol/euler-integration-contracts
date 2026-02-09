@@ -9,7 +9,6 @@ contract MockEVC {
     mapping(address => mapping(address => bool)) public operators;
     mapping(address => uint256) public nonces;
     address public onBehalfOf;
-    bool public shouldVerifySignatures = false;
     uint256 public operatorMask = 0;
 
     error InvalidSignature();
@@ -27,10 +26,6 @@ contract MockEVC {
         DOMAIN_SEPARATOR = keccak256(
             abi.encode(DOMAIN_TYPE_HASH, keccak256("Ethereum Vault Connector"), block.chainid, address(this))
         );
-    }
-
-    function setOperator(address account, address operator, bool authorized) external {
-        operators[account][operator] = authorized;
     }
 
     function setOperatorMask(uint256 mask) external {
@@ -85,10 +80,6 @@ contract MockEVC {
     }
 
     function permit(address, address, uint256, uint256, uint256, uint256, bytes memory, bytes memory) external view {}
-
-    function getCurrentOnBehalfOfAccount(address) external view returns (address, bool) {
-        return (onBehalfOf, false);
-    }
 
     fallback() external {
         revert("Mock EVC does not implement the called function");

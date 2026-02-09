@@ -416,10 +416,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         // Calculate hash but DO NOT pre-approve it
         bytes32 hash = CowEvcClosePositionWrapper(address(wrapper)).getApprovalHash(params);
 
-        // Set operator permissions (required for EVC batch operations)
-        mockEvc.setOperator(OWNER, address(wrapper), true);
-        mockEvc.setOperator(ACCOUNT, address(wrapper), true);
-
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0)); // Empty signature triggers pre-approved hash flow
 
