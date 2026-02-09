@@ -49,7 +49,7 @@ contract InboxFactory {
         view
         returns (address creationAddress, bytes32 domainSeparator, bytes memory creationCode, bytes32 salt)
     {
-        (creationAddress,creationCode, salt) = _getInboxAddress(owner, subaccount);
+        (creationAddress, creationCode, salt) = _getInboxAddress(owner, subaccount);
         domainSeparator = keccak256(
             abi.encode(
                 InboxConstants.DOMAIN_TYPE_HASH, keccak256("Inbox"), keccak256("1"), block.chainid, creationAddress
