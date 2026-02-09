@@ -79,7 +79,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Set operators
         EVC.setAccountOperator(account, address(closePositionWrapper), true);
-        EVC.setAccountOperator(user, address(closePositionWrapper), true);
 
         // Pre-approve hash
         closePositionWrapper.setPreApprovedHash(hash, true);
@@ -370,7 +369,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Verify that the operator is authorized before executing
         assertTrue(
-            EVC.isAccountOperatorAuthorized(user, address(closePositionWrapper)),
+            EVC.isAccountOperatorAuthorized(account, address(closePositionWrapper)),
             "Wrapper should be an authorized operator for the account before settle"
         );
 
