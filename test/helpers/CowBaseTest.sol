@@ -89,20 +89,20 @@ contract CowBaseTest is Test {
 
         // Set the approval for MilkSwap in the settlement as a convenience
         vm.startPrank(address(COW_SETTLEMENT));
-        WETH.approve(address(milkSwap), type(uint256).max);
-        USDS.approve(address(milkSwap), type(uint256).max);
-        WBTC.approve(address(milkSwap), type(uint256).max);
+        require(WETH.approve(address(milkSwap), type(uint256).max));
+        require(USDS.approve(address(milkSwap), type(uint256).max));
+        require(WBTC.approve(address(milkSwap), type(uint256).max));
 
-        USDS.approve(address(EUSDS), type(uint256).max);
-        WETH.approve(address(EWETH), type(uint256).max);
-        WBTC.approve(address(EWBTC), type(uint256).max);
+        require(USDS.approve(address(EUSDS), type(uint256).max));
+        require(WETH.approve(address(EWETH), type(uint256).max));
+        require(WBTC.approve(address(EWBTC), type(uint256).max));
 
         vm.stopPrank();
 
         // User has approved WETH for COW Protocol
         address vaultRelayer = COW_SETTLEMENT.vaultRelayer();
         vm.prank(user);
-        WETH.approve(vaultRelayer, type(uint256).max);
+        require(WETH.approve(vaultRelayer, type(uint256).max));
 
         // Setup labels
         //vm.label(solver, "solver");
@@ -366,7 +366,7 @@ contract CowBaseTest is Test {
         deal(address(collateralAsset), owner, collateralAmount);
 
         vm.startPrank(owner);
-        collateralAsset.approve(address(collateralVault), type(uint256).max);
+        require(collateralAsset.approve(address(collateralVault), type(uint256).max));
         EVC.enableCollateral(ownerAccount, address(collateralVault));
         EVC.enableController(ownerAccount, address(borrowVault));
         collateralVault.deposit(collateralAmount, ownerAccount);

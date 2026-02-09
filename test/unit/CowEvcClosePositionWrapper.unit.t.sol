@@ -351,14 +351,14 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
 
         // Owner must approve wrapper to spend repayment assets
         vm.prank(OWNER);
-        MockERC20(mockBorrowVault.asset()).approve(address(wrapper), 1000e18);
+        require(MockERC20(mockBorrowVault.asset()).approve(address(wrapper), 1000e18));
 
         // These tokens need to be spendable by the wrapper
         vm.prank(ACCOUNT);
-        mockCollateralVault.approve(address(wrapper), 2000e18);
+        require(mockCollateralVault.approve(address(wrapper), 2000e18));
 
         vm.prank(OWNER);
-        mockCollateralVault.approve(address(wrapper), 2000e18);
+        require(mockCollateralVault.approve(address(wrapper), 2000e18));
 
         CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
             owner: OWNER,
@@ -410,7 +410,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         MockERC20(mockBorrowVault.asset()).mint(OWNER, DEFAULT_REPAY_AMOUNT);
 
         vm.startPrank(OWNER);
-        MockERC20(mockBorrowVault.asset()).approve(address(wrapper), DEFAULT_REPAY_AMOUNT);
+        require(MockERC20(mockBorrowVault.asset()).approve(address(wrapper), DEFAULT_REPAY_AMOUNT));
         vm.stopPrank();
 
         vm.prank(ACCOUNT);
