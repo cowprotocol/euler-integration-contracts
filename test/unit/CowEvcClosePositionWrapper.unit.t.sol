@@ -62,8 +62,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         bytes32 hash = CowEvcClosePositionWrapper(address(wrapper)).getApprovalHash(params);
         vm.prank(OWNER);
         wrapper.setPreApprovedHash(hash, true);
-        mockEvc.setOperator(OWNER, address(wrapper), true);
-        mockEvc.setOperator(ACCOUNT, address(wrapper), true);
         return hash;
     }
 
