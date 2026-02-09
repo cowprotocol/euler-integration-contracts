@@ -373,7 +373,9 @@ contract CowBaseTest is Test {
         vm.stopPrank();
 
         vm.prank(ownerAccount);
-        borrowVault.borrow(borrowAmount, address(1));
+        // for testing purposes, we don't want to swap back the tokens leveraged or anything like that, so 
+        // we mint them to a throwaway address to ensure they don't impact the test
+        borrowVault.borrow(borrowAmount, makeAddr("trash"));
     }
 
     /// @notice Encode wrapper data with length prefix
