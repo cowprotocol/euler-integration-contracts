@@ -326,8 +326,7 @@ contract InboxUnitTest is Test {
 
     function test_IsValidSignature_RevertsOnOrderDigestMismatch() public {
         bytes32 wrongDigest = keccak256("wrong");
-        (, bytes memory signatureData) = _createValidSignature();
-        (bytes32 rightDigest,) = _getOrderDigests(_createMockOrderData());
+        (bytes32 rightDigest, bytes memory signatureData) = _createValidSignature();
 
         vm.expectRevert(abi.encodeWithSelector(Inbox.OrderHashMismatch.selector, rightDigest, wrongDigest));
         inbox.isValidSignature(wrongDigest, signatureData);
