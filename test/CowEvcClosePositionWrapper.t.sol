@@ -83,16 +83,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Pre-approve hash
         closePositionWrapper.setPreApprovedHash(hash, true);
 
-        // Approve vault shares from subaccount
-        IEVC.BatchItem[] memory items = new IEVC.BatchItem[](1);
-        items[0] = IEVC.BatchItem({
-            onBehalfOfAccount: account,
-            targetContract: address(EUSDS),
-            value: 0,
-            data: abi.encodeCall(IERC20.approve, (address(closePositionWrapper), type(uint256).max))
-        });
-        EVC.batch(items);
-
         vm.stopPrank();
     }
 
