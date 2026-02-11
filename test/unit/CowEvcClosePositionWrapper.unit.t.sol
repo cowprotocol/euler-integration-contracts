@@ -247,28 +247,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         // Give  some collateral vault tokens (what it would received previously from transferring from the user in the EVC.permit)
         mockCollateralVault.mint(inbox, 5000e18);
 
-        // Create settle data with tokens and prices
-        address[] memory tokens = new address[](2);
-        tokens[0] = address(mockCollateralVault);
-        tokens[1] = address(mockDebtAsset);
-
-        uint256[] memory prices = new uint256[](2);
-        prices[0] = 1e18; // 1:2 price for simplicity
-        prices[1] = 2e18;
-
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (
-                tokens,
-                prices,
-                new ICowSettlement.Trade[](0),
-                [
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0),
-                    new ICowSettlement.Interaction[](0)
-                ]
-            )
-        );
+        bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         bytes memory remainingWrapperData = "";
 
