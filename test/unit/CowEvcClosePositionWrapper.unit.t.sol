@@ -132,7 +132,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
                     ENCODE PERMIT DATA TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_GetSignedCalldata_PartialRepay() public {
+    function test_EncodePermitData_EncodesAsExpected() public {
         mockBorrowVault.setDebt(ACCOUNT, DEFAULT_REPAY_AMOUNT);
 
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
