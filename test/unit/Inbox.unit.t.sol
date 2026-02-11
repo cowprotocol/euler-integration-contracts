@@ -29,7 +29,7 @@ contract InboxUnitTest is Test {
         "Order(address sellToken,address buyToken,address receiver,uint256 sellAmount,uint256 buyAmount,uint32 validTo,bytes32 appData,uint256 feeAmount,string kind,bool partiallyFillable,string sellTokenBalance,string buyTokenBalance)"
     );
 
-    // Mock order data structure (416 bytes total)
+    // This struct represents the order data that is signed by a user of CoW Protocol
     struct MockOrder {
         address sellToken;
         address buyToken;
