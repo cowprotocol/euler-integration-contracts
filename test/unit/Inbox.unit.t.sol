@@ -203,8 +203,7 @@ contract InboxUnitTest is Test {
         mockToken.mint(address(inbox), 100e18);
 
         vm.startPrank(address(inboxFactory));
-        vm.expectRevert();
-        // should be insufficient balance
+        vm.expectRevert("ERC20Mock: insufficient balance");
         inbox.callTransfer(address(mockToken), RECIPIENT, 500e18);
         vm.stopPrank();
     }
