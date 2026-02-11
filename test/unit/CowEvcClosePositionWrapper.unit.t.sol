@@ -331,20 +331,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
     }
 
     function test_WrappedSettle_WithPreApprovedHash() public {
-        mockBorrowVault.setDebt(ACCOUNT, DEFAULT_REPAY_AMOUNT);
-        mockCollateralVault.mint(ACCOUNT, 2000e18);
-        MockERC20(mockBorrowVault.asset()).mint(OWNER, DEFAULT_REPAY_AMOUNT);
-
-        vm.startPrank(OWNER);
-        require(MockERC20(mockBorrowVault.asset()).approve(address(wrapper), DEFAULT_REPAY_AMOUNT));
-        vm.stopPrank();
-
-        vm.prank(ACCOUNT);
-        require(mockCollateralVault.approve(address(wrapper), 2000e18));
-
-        vm.prank(OWNER);
-        require(mockCollateralVault.approve(address(wrapper), 2000e18));
-
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
         bytes32 hash = _setupPreApprovedHash(params);
