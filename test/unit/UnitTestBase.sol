@@ -34,9 +34,6 @@ abstract contract UnitTestBase is Test {
         // Set solver as authenticated
         mockAuth.setSolver(SOLVER, true);
 
-        // Set the correct onBehalfOfAccount for evcInternalSettle calls
-        //mockEvc.setOnBehalfOf(ACCOUNT);
-
         vm.label(OWNER, "OWNER");
         vm.label(ACCOUNT, "ACCOUNT");
     }
