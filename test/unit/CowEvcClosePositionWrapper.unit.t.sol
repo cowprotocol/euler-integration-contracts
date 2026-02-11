@@ -286,24 +286,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
     }
 
     function test_WrappedSettle_WithPermitSignature() public {
-        mockBorrowVault.setDebt(ACCOUNT, 1000e18);
-
-        mockCollateralVault.mint(ACCOUNT, 2000e18);
-
-        // Mint repayment assets to OWNER (not wrapper) since helperRepay pulls from owner
-        MockERC20(mockBorrowVault.asset()).mint(OWNER, 1000e18);
-
-        // Owner must approve wrapper to spend repayment assets
-        vm.prank(OWNER);
-        require(MockERC20(mockBorrowVault.asset()).approve(address(wrapper), 1000e18));
-
-        // These tokens need to be spendable by the wrapper
-        vm.prank(ACCOUNT);
-        require(mockCollateralVault.approve(address(wrapper), 2000e18));
-
-        vm.prank(OWNER);
-        require(mockCollateralVault.approve(address(wrapper), 2000e18));
-
         CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
             owner: OWNER,
             account: ACCOUNT,
