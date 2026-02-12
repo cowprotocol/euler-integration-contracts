@@ -132,32 +132,28 @@ contract InboxUnitTest is Test {
     // ============== callApprove Tests ==============
 
     function test_CallApprove_ByOperator() public {
-        vm.startPrank(address(inboxFactory));
+        vm.prank(address(inboxFactory));
         inbox.callApprove(address(mockToken), RECIPIENT, 1000e18);
-        vm.stopPrank();
 
         assertEq(mockToken.allowance(address(inbox), RECIPIENT), 1000e18, "Approval not set");
     }
 
     function test_CallApprove_ByBeneficiary() public {
-        vm.startPrank(BENEFICIARY);
+        vm.prank(BENEFICIARY);
         inbox.callApprove(address(mockToken), RECIPIENT, 1000e18);
-        vm.stopPrank();
 
         assertEq(mockToken.allowance(address(inbox), RECIPIENT), 1000e18, "Approval not set");
     }
 
     function test_CallApprove_RevertsIfCalledByUnauthorized() public {
-        vm.startPrank(OTHER_USER);
         vm.expectRevert(abi.encodeWithSelector(Inbox.Unauthorized.selector, OTHER_USER));
+        vm.prank(OTHER_USER);
         inbox.callApprove(address(mockToken), RECIPIENT, 1000e18);
-        vm.stopPrank();
     }
 
     function test_CallApprove_AllowsZeroAmount() public {
-        vm.startPrank(address(inboxFactory));
+        vm.prank(address(inboxFactory));
         inbox.callApprove(address(mockToken), RECIPIENT, 0);
-        vm.stopPrank();
 
         assertEq(mockToken.allowance(address(inbox), RECIPIENT), 0, "Zero approval not set");
     }
@@ -177,9 +173,8 @@ contract InboxUnitTest is Test {
         // Setup: give inbox some tokens
         mockToken.mint(address(inbox), 1000e18);
 
-        vm.startPrank(address(inboxFactory));
+        vm.prank(address(inboxFactory));
         inbox.callTransfer(address(mockToken), RECIPIENT, 500e18);
-        vm.stopPrank();
 
         assertEq(mockToken.balanceOf(RECIPIENT), 500e18, "Tokens not transferred");
         assertEq(mockToken.balanceOf(address(inbox)), 500e18, "Inbox balance not decreased");
@@ -188,9 +183,8 @@ contract InboxUnitTest is Test {
     function test_CallTransfer_ByBeneficiary() public {
         mockToken.mint(address(inbox), 1000e18);
 
-        vm.startPrank(BENEFICIARY);
+        vm.prank(BENEFICIARY);
         inbox.callTransfer(address(mockToken), RECIPIENT, 500e18);
-        vm.stopPrank();
 
         assertEq(mockToken.balanceOf(RECIPIENT), 500e18, "Tokens not transferred");
     }
@@ -198,19 +192,17 @@ contract InboxUnitTest is Test {
     function test_CallTransfer_RevertsIfCalledByUnauthorized() public {
         mockToken.mint(address(inbox), 1000e18);
 
-        vm.startPrank(OTHER_USER);
         vm.expectRevert(abi.encodeWithSelector(Inbox.Unauthorized.selector, OTHER_USER));
+        vm.prank(OTHER_USER);
         inbox.callTransfer(address(mockToken), RECIPIENT, 500e18);
-        vm.stopPrank();
     }
 
     function test_CallTransfer_PassesThroughRevert() public {
         mockToken.mint(address(inbox), 100e18);
 
-        vm.startPrank(address(inboxFactory));
         vm.expectRevert("ERC20Mock: insufficient balance");
+        vm.prank(address(inboxFactory));
         inbox.callTransfer(address(mockToken), RECIPIENT, 500e18);
-        vm.stopPrank();
     }
 
     // ============== callVaultRepay Tests ==============
@@ -219,31 +211,28 @@ contract InboxUnitTest is Test {
         mockToken.mint(address(inbox), 1000e18);
         mockVault.setDebt(BENEFICIARY, 500e18);
 
-        vm.startPrank(address(inboxFactory));
         vm.expectCall(
             address(mockToken), abi.encodeWithSelector(MockERC20.approve.selector, address(mockVault), 500e18)
         );
         vm.expectCall(address(mockVault), abi.encodeWithSelector(MockBorrowVault.repay.selector, 500e18, BENEFICIARY));
+        vm.prank(address(inboxFactory));
         inbox.callVaultRepay(address(mockVault), address(mockToken), 500e18, BENEFICIARY);
-        vm.stopPrank();
     }
 
     function test_CallVaultRepay_ByBeneficiary() public {
         mockToken.mint(address(inbox), 1000e18);
         mockVault.setDebt(BENEFICIARY, 500e18);
 
-        vm.startPrank(BENEFICIARY);
+        vm.prank(BENEFICIARY);
         inbox.callVaultRepay(address(mockVault), address(mockToken), 500e18, BENEFICIARY);
-        vm.stopPrank();
     }
 
     function test_CallVaultRepay_RevertsIfCalledByUnauthorized() public {
         mockToken.mint(address(inbox), 1000e18);
 
-        vm.startPrank(OTHER_USER);
         vm.expectRevert(abi.encodeWithSelector(Inbox.Unauthorized.selector, OTHER_USER));
+        vm.prank(OTHER_USER);
         inbox.callVaultRepay(address(mockVault), address(mockToken), 500e18, BENEFICIARY);
-        vm.stopPrank();
     }
 
     // ============== setPreSignature Tests ==============
@@ -251,9 +240,8 @@ contract InboxUnitTest is Test {
     function test_SetPreSignature_ByBeneficiary() public {
         bytes memory orderUid = abi.encodePacked(bytes32(0), address(0), uint32(0));
 
-        vm.startPrank(BENEFICIARY);
+        vm.prank(BENEFICIARY);
         inbox.setPreSignature(orderUid, true);
-        vm.stopPrank();
 
         assertTrue(mockSettlement.preSignatures(orderUid), "Pre-signature not set");
     }
@@ -272,19 +260,17 @@ contract InboxUnitTest is Test {
     function test_SetPreSignature_RevertsIfCalledByOperator() public {
         bytes memory orderUid = abi.encodePacked(bytes32(0), address(0), uint32(0));
 
-        vm.startPrank(address(inboxFactory));
         vm.expectRevert(abi.encodeWithSelector(Inbox.Unauthorized.selector, inboxFactory));
+        vm.prank(address(inboxFactory));
         inbox.setPreSignature(orderUid, true);
-        vm.stopPrank();
     }
 
     function test_SetPreSignature_RevertsIfCalledByUnauthorized() public {
         bytes memory orderUid = abi.encodePacked(bytes32(0), address(0), uint32(0));
 
-        vm.startPrank(OTHER_USER);
         vm.expectRevert(abi.encodeWithSelector(Inbox.Unauthorized.selector, OTHER_USER));
+        vm.prank(OTHER_USER);
         inbox.setPreSignature(orderUid, true);
-        vm.stopPrank();
     }
 
     // ============== isValidSignature Tests ==============
