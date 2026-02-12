@@ -51,6 +51,12 @@ contract InboxUnitTest is Test {
 
         inboxFactory = new InboxFactory(address(mockSettlement));
         inbox = Inbox(inboxFactory.getInbox(BENEFICIARY, ACCOUNT));
+
+        // Give inbox some tokens
+        mockToken.mint(address(inbox), 1000e18);
+
+        // Set some debt that would need to be repaid
+        mockVault.setDebt(BENEFICIARY, 500e18);
     }
 
     // ============== InboxConstants Tests ==============
@@ -170,9 +176,6 @@ contract InboxUnitTest is Test {
     // ============== callTransfer Tests ==============
 
     function test_CallTransfer_ByOperator() public {
-        // Setup: give inbox some tokens
-        mockToken.mint(address(inbox), 1000e18);
-
         vm.prank(address(inboxFactory));
         inbox.callTransfer(address(mockToken), RECIPIENT, 500e18);
 
@@ -181,8 +184,6 @@ contract InboxUnitTest is Test {
     }
 
     function test_CallTransfer_ByBeneficiary() public {
-        mockToken.mint(address(inbox), 1000e18);
-
         vm.prank(BENEFICIARY);
         inbox.callTransfer(address(mockToken), RECIPIENT, 500e18);
 
@@ -190,27 +191,20 @@ contract InboxUnitTest is Test {
     }
 
     function test_CallTransfer_RevertsIfCalledByUnauthorized() public {
-        mockToken.mint(address(inbox), 1000e18);
-
         vm.expectRevert(abi.encodeWithSelector(Inbox.Unauthorized.selector, OTHER_USER));
         vm.prank(OTHER_USER);
         inbox.callTransfer(address(mockToken), RECIPIENT, 500e18);
     }
 
     function test_CallTransfer_PassesThroughRevert() public {
-        mockToken.mint(address(inbox), 100e18);
-
-        vm.expectRevert("ERC20Mock: insufficient balance");
         vm.prank(address(inboxFactory));
-        inbox.callTransfer(address(mockToken), RECIPIENT, 500e18);
+        vm.expectRevert("ERC20Mock: insufficient balance");
+        inbox.callTransfer(address(mockToken), RECIPIENT, 1500e18);
     }
 
     // ============== callVaultRepay Tests ==============
 
     function test_CallVaultRepay_ByOperator() public {
-        mockToken.mint(address(inbox), 1000e18);
-        mockVault.setDebt(BENEFICIARY, 500e18);
-
         vm.expectCall(
             address(mockToken), abi.encodeWithSelector(MockERC20.approve.selector, address(mockVault), 500e18)
         );
@@ -220,16 +214,11 @@ contract InboxUnitTest is Test {
     }
 
     function test_CallVaultRepay_ByBeneficiary() public {
-        mockToken.mint(address(inbox), 1000e18);
-        mockVault.setDebt(BENEFICIARY, 500e18);
-
         vm.prank(BENEFICIARY);
         inbox.callVaultRepay(address(mockVault), address(mockToken), 500e18, BENEFICIARY);
     }
 
     function test_CallVaultRepay_RevertsIfCalledByUnauthorized() public {
-        mockToken.mint(address(inbox), 1000e18);
-
         vm.expectRevert(abi.encodeWithSelector(Inbox.Unauthorized.selector, OTHER_USER));
         vm.prank(OTHER_USER);
         inbox.callVaultRepay(address(mockVault), address(mockToken), 500e18, BENEFICIARY);
