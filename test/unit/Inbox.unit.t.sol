@@ -3,7 +3,7 @@ pragma solidity ^0.8;
 
 import {Test} from "forge-std/Test.sol";
 
-import {Inbox, InboxConstants} from "../../src/Inbox.sol";
+import {Inbox, InboxLibrary} from "../../src/Inbox.sol";
 import {InboxFactory} from "../../src/InboxFactory.sol";
 import {MockCowSettlement, MockCowAuthentication} from "./mocks/MockCowProtocol.sol";
 import {MockERC20, MockBorrowVault} from "./mocks/MockERC20AndVaults.sol";
@@ -54,25 +54,25 @@ contract InboxUnitTest is Test {
 
     // ============== InboxConstants Tests ==============
 
-    function test_InboxConstants_DomainTypeHashMatchesCoWSettlement() public pure {
+    function test_InboxLibrary_DomainTypeHashMatchesCoWSettlement() public pure {
         // This constant must match the EIP-712 domain separator type hash used by CoW Protocol
-        // Verification: https://etherscan.io/address/0x9008D19f58AAbD9eD0D60971565AA8510560ab41#code
-        // Take the constant of the same name in `GPv2Signing` and copy its value `chisel` REPL to get the below hash
+        // Verification look at the code here: https://etherscan.io/address/0x9008D19f58AAbD9eD0D60971565AA8510560ab41#code
+        // Take the constant of the same name in `GPv2Signing.sol` and copy its value `chisel` REPL to get the below hash
         bytes32 expectedDomainTypeHash = 0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f;
         assertEq(
-            InboxConstants.DOMAIN_TYPE_HASH,
+            InboxLibrary.DOMAIN_TYPE_HASH,
             expectedDomainTypeHash,
             "DOMAIN_TYPE_HASH does not match CoW Protocol settlement contract"
         );
     }
 
-    function test_InboxConstants_OrderTypeHashMatchesCoWSettlement() public pure {
+    function test_InboxLibrary_OrderTypeHashMatchesCoWSettlement() public pure {
         // This constant must match the EIP-712 domain separator type hash used by CoW Protocol
         // Verification: https://etherscan.io/address/0x9008D19f58AAbD9eD0D60971565AA8510560ab41#code
         // Take the constant from `GPv2Order` `TYPE_HASH`.
         bytes32 expectedOrderTypeHash = 0xd5a25ba2e97094ad7d83dc28a6572da797d6b3e7fc6663bd93efb789fc17e489;
         assertEq(
-            InboxConstants.ORDER_TYPE_HASH,
+            InboxLibrary.ORDER_TYPE_HASH,
             expectedOrderTypeHash,
             "ORDER_TYPE_HASH does not match CoW Protocol settlement contract"
         );
@@ -389,7 +389,7 @@ contract InboxUnitTest is Test {
     }
 
     function _getOrderStructHash(bytes memory orderData) internal pure returns (bytes32 structHash) {
-        bytes32 typeHash = InboxConstants.ORDER_TYPE_HASH;
+        bytes32 typeHash = InboxLibrary.ORDER_TYPE_HASH;
 
         // Compute struct hash with order data prepended with type hash
         assembly {

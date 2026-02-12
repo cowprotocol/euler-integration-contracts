@@ -2,7 +2,7 @@
 pragma solidity ^0.8;
 
 import {Create2} from "openzeppelin-contracts/contracts/utils/Create2.sol";
-import {Inbox, InboxConstants} from "./Inbox.sol";
+import {Inbox, InboxLibrary} from "./Inbox.sol";
 
 /// @title InboxFactory
 /// @notice Mixin contract for managing Inbox contract creation and address computation
@@ -48,11 +48,7 @@ contract InboxFactory {
         returns (address creationAddress, bytes32 domainSeparator)
     {
         (creationAddress,,) = _getInboxAddress(owner, subaccount);
-        domainSeparator = keccak256(
-            abi.encode(
-                InboxConstants.DOMAIN_TYPE_HASH, keccak256("Inbox"), keccak256("1"), block.chainid, creationAddress
-            )
-        );
+        domainSeparator = InboxLibrary.computeDomainSeparator(creationAddress);
     }
 
     /// @notice Compute the Inbox address for a given owner and subaccount (view-only, does not deploy)
