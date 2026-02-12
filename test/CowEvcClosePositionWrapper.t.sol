@@ -221,7 +221,12 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Verify the position was closed successfully
         assertEq(IEVault(EWETH).debtOf(account), 0, "User should have no debt after closing");
-        assertApproxEqRel(EUSDS.balanceOf(account), collateralBeforeAccount - DEFAULT_SELL_AMOUNT, 0.01 ether, "User should have used approximately 2500 EUSDS to repay after closing");
+        assertApproxEqRel(
+            EUSDS.balanceOf(account),
+            collateralBeforeAccount - DEFAULT_SELL_AMOUNT,
+            0.01 ether,
+            "User should have used approximately 2500 EUSDS to repay after closing"
+        );
         assertEq(EUSDS.balanceOf(user), collateralBefore, "User main account balance should not have changed");
     }
 
@@ -338,6 +343,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Record balances before closing
         uint256 debtBefore = EWETH.debtOf(account);
+        uint256 collateralBefore = EUSDS.balanceOf(user);
+        uint256 collateralBeforeAccount = EUSDS.balanceOf(account);
+        assertEq(debtBefore, borrowAmount, "User should start with debt");
 
         // Encode settlement and wrapper data (empty signature since pre-approved)
         bytes memory settleData = abi.encodeCall(
@@ -364,8 +372,14 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         CowWrapper(address(closePositionWrapper)).wrappedSettle(settleData, wrapperData);
 
         // Verify the position was closed successfully
-        assertEq(EWETH.debtOf(account), 0, "User should have no debt after closing");
-        assertEq(debtBefore, borrowAmount, "User should have started with debt");
+        assertEq(IEVault(EWETH).debtOf(account), 0, "User should have no debt after closing");
+        assertApproxEqRel(
+            EUSDS.balanceOf(account),
+            collateralBeforeAccount - DEFAULT_SELL_AMOUNT,
+            0.01 ether,
+            "User should have used approximately 2500 EUSDS to repay after closing"
+        );
+        assertEq(EUSDS.balanceOf(user), collateralBefore, "User main account balance should not have changed");
 
         // Verify that the operator has been revoked for the account after the operation
         assertFalse(
@@ -373,10 +387,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             "Wrapper should no longer be an operator for the account"
         );
 
-        assertFalse(
-            closePositionWrapper.isHashPreApproved(user, hash),
-            "Pre-approved hash should be cleared after use"
-        );
+        assertFalse(closePositionWrapper.isHashPreApproved(user, hash), "Pre-approved hash should be cleared after use");
     }
 
     /// @notice Test that invalid signature causes the transaction to revert with EIP-1271

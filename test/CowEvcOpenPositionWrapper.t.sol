@@ -301,10 +301,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             "Wrapper should no longer be an authorized operator for the owner after settle"
         );
 
-        assertFalse(
-            openPositionWrapper.isHashPreApproved(user, hash),
-            "Pre-approved hash should be cleared after use"
-        );
+        assertFalse(openPositionWrapper.isHashPreApproved(user, hash), "Pre-approved hash should be cleared after use");
     }
 
     /// @notice Test that invalid signature causes the transaction to revert
