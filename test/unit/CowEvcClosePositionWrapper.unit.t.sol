@@ -8,6 +8,7 @@ import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
 import {MockERC20, MockVault, MockBorrowVault} from "./mocks/MockERC20AndVaults.sol";
 import {UnitTestBase} from "./UnitTestBase.sol";
+import {IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 // this is required because foundry doesn't have a cheatcode for override any transient storage.
 contract TestableClosePositionWrapper is CowEvcClosePositionWrapper {
@@ -143,6 +144,14 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         assertEq(
             paramsHash, CowEvcClosePositionWrapper(address(wrapper)).getApprovalHash(params), "Params hash should match"
         );
+
+        assertEq(items[0].targetContract, params.collateralVault, "First item should target EVC");
+        assertEq(
+            items[0].data,
+            abi.encodeCall(IERC20.transfer, (CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account), params.collateralAmount)),
+            "Should enable collateral"
+        );
+
         assertEq(items.length, 1, "Should have 1 batch item for partial repay");
     }
 
