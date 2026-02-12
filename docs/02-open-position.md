@@ -34,6 +34,52 @@ User wants to go 5x short on ETH:
 ### Growing Existing Position
 User can execute another open position operation to increase leverage on an existing position.
 
+## Transaction Flow
+
+### Step-by-Step Execution
+
+1. **Solver validates authorization**: Checks if caller is authenticated solver
+2. **Wrapper validates user authorization**: Verifies permit signature or pre-approved hash
+3. **[EVC batch](https://evc.wtf/docs/concepts/internals/batch) assembly**: Wrapper constructs EVC batch items:
+   - Optional: EVC.permit() if using permit flow
+   - Optional: Enable collateral vault (if first time with this vault)
+   - Optional: Enable borrow vault (if first time with this vault)
+   - Optional: Approve token transfer if collateralAmount > 0
+   - Deposit collateral (if collateralAmount > 0)
+   - Borrow the required amount
+   - **Settlement callback**: Call settlement to execute CoW swap
+4. **Settlement execution**: The solver will perform swaps that functionally:
+   - Swaps the borrow asset into the collateral asset
+   - Converts the collateral asset into vault tokens using `vault.deposit()`
+5. **[EVC account health check](https://evc.wtf/docs/concepts/internals/account-status-checks/)**: Verifies user account is properly collateralized
+6. **Batch completion**: If all steps succeed, position is opened
+
+### Memory Layout
+
+Collateral and borrowed asset flows:
+
+```
+User's Collateral Asset      User's Borrowed Asset
+        |                             |
+        v                             v
+   Collateral Vault            Borrow Vault
+        |                             |
+        |                    (Wrapper Borrows)
+        |                             |
+        |                             v
+        |                      Settlement Contract
+        |                             |
+        |               (CoW Swap: Borrowed -> Collateral)
+        |                             |
+        +<-----------+----------------+
+                     |
+                     v
+              Collateral Vault (now both initial collateral and borrowed asset)
+                     |
+                     v
+              EVC Subaccount (user's account)
+```
+
 ## Parameters
 
 ### OpenPositionParams Structure
@@ -80,94 +126,90 @@ struct OpenPositionParams {
 
 ### Option 1: [EVC Permit](https://evc.wtf/docs/concepts/internals/permit/) (Off-Chain Signature)
 
+This flow requires **two separate signatures** and **one on-chain approval**:
+
+1. **Collateral Asset Approval**: Approves the collateral vault to spend the collateral asset (only if `collateralAmount > 0`)
+2. **EVC Permit Signature**: Authorizes the wrapper to operate on the owner's behalf
+3. **CoW Order Signature**: Authorizes the CoW order itself
+
 ```solidity
-// User generates approval hash
-bytes32 hash = openPositionWrapper.getApprovalHash(params);
+// Step 1: Approve collateral asset (only if depositing new margin)
+// This must be done on-chain before the settlement
+if (params.collateralAmount > 0) {
+    IERC20 collateralAsset = IERC20(IEVault(params.collateralVault).asset());
+    collateralAsset.approve(params.collateralVault, type(uint256).max);
+}
 
-// User signs permit for EVC (off-chain)
-// This requires 2 signatures total:
-// 1. EVC permit signature
-// 2. CoW order signature
-// Plus potentially 1 on-chain approval if first-time margin deposit
+// Step 2: Create the EVC permit signature
+bytes memory permitData = openPositionWrapper.encodePermitData(params);
 
-bytes memory permitSignature = /* sign EVC permit with wrapper params */;
+// Sign the EVC permit (off-chain) with owner's private key
+// This authorizes the wrapper to execute the open position operation
+// More information: https://evc.wtf/docs/concepts/internals/permit/
+bytes memory permitSignature = signEIP712(EVC.domainSeparator(), {
+    owner: params.owner,
+    spender: address(openPositionWrapper),
+    value: uint256(uint160(address(openPositionWrapper))),
+    nonce: 0, // Use current nonce
+    deadline: params.deadline,
+    nonceNamespace: 0,
+    data: permitData
+});
 
-// When submitting to solver:
-// Include permitSignature in wrapper data
-bytes wrapperData = abi.encode(params, permitSignature);
+// Step 3: Encode wrapper data with the permit signature
+bytes memory wrapperData = abi.encode(params, permitSignature);
+
+// Step 4: Create and authorize the CoW order
+// Include the wrapper call and the above `wrapperData` in the appData
+GPv2Order.Data memory order = /* ... order with sellAmount = borrowAmount ... */;
+
+// Sign the order using EIP-712 with the settlement domain separator
+// This can be done via EIP-712 signature or pre-signature on the settlement contract
+bytes memory orderSignature = signEIP712(cowSettlement.domainSeparator(), order);
 ```
 
-**On-chain transactions if needed**:
-```solidity
-// Only if depositing new margin (collateralAmount > 0)
-IERC20(collateralVault.asset()).approve(collateralVault, type(uint256).max);
-```
+**Note**: The CoW order signature is handled separately and can be either an EIP-712 signature or a pre-signature on the settlement contract.
+
+**Advantages**: Minimal on-chain transactions (only one approval needed if depositing collateral)
+**Disadvantages**: Requires off-chain signature generation, not compatible with smart contract wallets without additional tooling
 
 ### Option 2: Pre-Approved Hash (On-Chain, EIP-7702 Compatible)
 
+This flow works by pre-authorizing all operations prior to execution by the solver instead of using permit signatures. The CoW order should be set to [pre-sign](https://docs.cow.fi/cow-protocol/reference/core/signing-schemes#presign).
+
+This means the approvals needed for the permit flow are the same except the off-chain signatures are replaced by:
+1. **EVC Operator Authorization**: Execute an on-chain transaction from the owner's wallet to the wrapper contract to set the hash of `params` to be authorized
+2. **EVC Operator Authorization for account**: An additional operator approval is needed to grant access to borrow from the specific subaccount.
+3. **CoW Order Signature**: Execute an on-chain transaction from the owner's wallet to the CoW Settlement contract to set the `orderUid` corresponding to the the order as authorized.
+Here is some pseudocode to generate the on-chain approvals for the settlement to execute:
+
 ```solidity
-// User pre-approves the operation (can batch this with other approvals)
+// Step 1: Approve collateral asset (only if depositing new margin)
+if (params.collateralAmount > 0) {
+    IERC20 collateralAsset = IERC20(IEVault(params.collateralVault).asset());
+    collateralAsset.approve(params.collateralVault, type(uint256).max);
+}
+
+// Step 2: Set the wrapper as an account operator for both owner and subaccount
+// This allows the wrapper to act on behalf of both accounts
+EVC.setAccountOperator(params.owner, address(openPositionWrapper), true);
+EVC.setAccountOperator(params.account, address(openPositionWrapper), true);
+
+// Step 3: Pre-approve the wrapper operation hash
 bytes32 hash = openPositionWrapper.getApprovalHash(params);
 openPositionWrapper.setPreApprovedHash(hash, true);
 
-// User pre-approves the CoW order
+// Step 4: Pre-approve the CoW order on the settlement contract
 cowSettlement.setPreSignature(orderUid, true);
 
-// Only if first-time margin deposit
-IERC20(collateralVault.asset()).approve(collateralVault, type(uint256).max);
-
-// Later, wrapper can be called without signature:
-// wrapperData = abi.encode(params, new bytes(0)); // Empty signature
+// Later, settlement can be executed with empty signature in wrapper data
+bytes memory wrapperData = abi.encode(params, new bytes(0)); // Empty signature
 ```
 
-**Advantages**: Can batch multiple operations, no off-chain signature needed
-**Disadvantages**: Requires prior on-chain transactions
+**Important**: The wrapper operator must be set for both the owner and the subaccount to allow the wrapper to perform operations on behalf of both accounts.
 
-## Transaction Flow
-
-### Step-by-Step Execution
-
-1. **Solver validates authorization**: Checks if caller is authenticated solver
-2. **Wrapper validates user authorization**: Verifies permit signature or pre-approved hash
-3. **[EVC batch](https://evc.wtf/docs/concepts/internals/batch) assembly**: Wrapper constructs EVC batch items:
-   - Optional: EVC.permit() if using permit flow
-   - Optional: Enable collateral vault (if first time with this vault)
-   - Optional: Enable borrow vault (if first time with this vault)
-   - Optional: Approve token transfer if collateralAmount > 0
-   - Deposit collateral (if collateralAmount > 0)
-   - Borrow the required amount
-   - **Settlement callback**: Call settlement to execute CoW swap
-4. **Settlement execution**: The solver will perform swaps that functionally:
-   - Swaps the borrow asset into the collateral asset
-   - Converts the collateral asset into vault tokens using `vault.deposit()`
-5. **[EVC account health check](https://evc.wtf/docs/concepts/internals/account-status-checks/)**: Verifies user account is properly collateralized
-6. **Batch completion**: If all steps succeed, position is opened
-
-### Memory Layout
-
-Collateral and borrowed asset flows:
-
-```
-User's Collateral Asset      User's Borrowed Asset
-        |                             |
-        v                             v
-   Collateral Vault            Borrow Vault
-        |                             |
-        |                    (Wrapper Borrows)
-        |                             |
-        |                             v
-        |                      Settlement Contract
-        |                             |
-        |               (CoW Swap: Borrowed -> Collateral)
-        |                             |
-        +<-----------+----------------+
-                     |
-                     v
-              Collateral Vault (now both initial collateral and borrowed asset)
-                     |
-                     v
-              EVC Subaccount (user's account)
-```
+**Advantages**: With [EIP-7702](https://eips.ethereum.org/EIPS/eip-7702) wallets, can batch all approvals into one transaction. Can be gassless with [EIP-4337](https://eips.ethereum.org/EIPS/eip-4337).
+**Disadvantages**: Requires 3-4 on-chain transactions if wallet doesn't support batching
 
 ## Important Considerations
 

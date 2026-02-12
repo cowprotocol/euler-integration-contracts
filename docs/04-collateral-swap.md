@@ -18,6 +18,43 @@ Position holder wants to reduce concentration:
 - Swap 500 eUSDC to ~0.5 eWETH (at 1 ETH = 1000 USDC)
 - Result: 500 eUSDC + 0.5 eWETH collateral + 5 ETH debt
 
+## Transaction Flow
+
+### Step-by-Step Execution
+
+1. **Solver validates authorization**: Checks caller is authenticated solver
+2. **Wrapper validates user authorization**: Verifies permit signature or pre-approved hash
+3. **[EVC batch](https://evc.wtf/docs/concepts/internals/batch) assembly**: Wrapper constructs EVC batch items:
+   - Optional: EVC.permit() if using permit flow
+   - Enable destination vault (toVault) as collateral if not already enabled
+   - Transfer collateral from subaccount to owner (if subaccount different from owner)
+   - **Settlement callback**: Call settlement to execute CoW swap
+4. **Settlement execution**: The solver will perform swaps that functionally:
+   - Swaps old collateral vault tokens into new collateral vault tokens
+   - Sends new collateral to receiver (subaccount)
+5. **Collateral deposit**: New collateral automatically deposited in destination vault
+6. **[EVC account health check](https://evc.wtf/docs/concepts/internals/account-status-checks/)**: Verifies account remains properly collateralized
+7. **Batch completion**: If all steps succeed, collateral swap is complete
+
+### Fund Flow Diagram
+
+```
+Subaccount         Owner EOA       Settlement       Vault Token
+   (Old            (Temp Hold)      (Swap Logic)      (New Token)
+  Token)              |                  |                  |
+    |                 |                  |                  |
+    |-- withdraw -->--|                  |                  |
+    |              (old token)           |                  |
+    |                 |--- sell -------->|                  |
+    |           (old token)              |                  |
+    |                 |                  |--- buy --------->|
+    |                 |             (new token)             |
+    |<----- receive new token ---<-------|                  |
+    |                                                        |
+    |<------------ auto-deposit in toVault -------<---------|
+    |
+```
+
 ## Parameters
 
 ### CollateralSwapParams Structure
@@ -64,77 +101,82 @@ struct CollateralSwapParams {
 
 ### Option 1: [EVC Permit](https://evc.wtf/docs/concepts/internals/permit/) (Off-Chain Signature)
 
+This flow requires **two separate signatures** and **one on-chain approval**:
+
+1. **Vault Relayer Approval**: Approves the CoW vault relayer to transfer the source vault tokens
+2. **EVC Permit Signature**: Authorizes the wrapper to operate on the owner's behalf
+3. **CoW Order Signature**: Authorizes the CoW order itself
+
 ```solidity
-// User generates approval hash
-bytes32 hash = collateralSwapWrapper.getApprovalHash(params);
+// Step 1: Approve the vault relayer to spend source vault tokens
+// This must be done on-chain before the settlement
+IEVault fromVault = IEVault(params.fromVault);
+fromVault.approve(cowSettlement.vaultRelayer(), type(uint256).max);
 
-// User signs permit for EVC (off-chain)
-// This requires 2 signatures total:
-// 1. EVC permit signature
-// 2. CoW order signature
+// Step 2: Create the EVC permit signature
+bytes memory permitData = collateralSwapWrapper.encodePermitData(params);
 
-bytes memory permitSignature = /* sign EVC permit with wrapper params */;
-bytes wrapperData = abi.encode(params, permitSignature);
+// Sign the EVC permit (off-chain) with owner's private key
+// This authorizes the wrapper to execute the collateral swap operation
+// More information: https://evc.wtf/docs/concepts/internals/permit/
+bytes memory permitSignature = signEIP712(EVC.domainSeparator(), {
+    owner: params.owner,
+    spender: address(collateralSwapWrapper),
+    value: uint256(uint160(address(collateralSwapWrapper))),
+    nonce: 0, // Use current nonce
+    deadline: params.deadline,
+    nonceNamespace: 0,
+    data: permitData
+});
+
+// Step 3: Encode wrapper data with the permit signature
+bytes memory wrapperData = abi.encode(params, permitSignature);
+
+// Step 4: Create and authorize the CoW order
+// Include the wrapper call and the above `wrapperData` in the appData
+GPv2Order.Data memory order = /* ... order with sellAmount = fromAmount ... */;
+
+// Sign the order using EIP-712 with the settlement domain separator
+// This can be done via EIP-712 signature or pre-signature on the settlement contract
+bytes memory orderSignature = signEIP712(cowSettlement.domainSeparator(), order);
 ```
 
-**Note**: No on-chain approval transaction needed for swap (collateral is already in subaccount)
+**Note**: The CoW order signature is handled separately and can be either an EIP-712 signature or a pre-signature on the settlement contract.
 
-**Advantages**: Requires no on-chain transactions, one-time authorization per order
-**Disadvantages**: Not compatible with smart contract wallets
+**Advantages**: Minimal on-chain transactions (only one approval needed)
+**Disadvantages**: Requires off-chain signature generation, not compatible with smart contract wallets without additional tooling
 
 ### Option 2: Pre-Approved Hash (On-Chain, EIP-7702 Compatible)
 
+This means the approvals needed for the permit flow are the same except the off-chain signatures are replaced by:
+1. **EVC Operator Authorization for account**: An additional operator approval is needed to grant access to transfer assets out from the specific subaccount.
+2. **CoW Order Signature**: Execute an on-chain transaction from the owner's wallet to the CoW Settlement contract to set the `orderUid` corresponding to the the order as authorized.
+Here is some pseudocode to generate the on-chain approvals for the settlement to execute:
+
 ```solidity
-// User pre-approves the operation
+// Step 1: Approve the vault relayer to spend source vault tokens
+IEVault fromVault = IEVault(params.fromVault);
+fromVault.approve(cowSettlement.vaultRelayer(), type(uint256).max);
+
+// Step 2: Set the wrapper as an account operator for the subaccount
+// This allows the wrapper to act on behalf of the subaccount
+EVC.setAccountOperator(params.account, address(collateralSwapWrapper), true);
+
+// Step 3: Pre-approve the wrapper operation hash
 bytes32 hash = collateralSwapWrapper.getApprovalHash(params);
 collateralSwapWrapper.setPreApprovedHash(hash, true);
 
-// User pre-approves the CoW order
+// Step 4: Pre-approve the CoW order on the settlement contract
 cowSettlement.setPreSignature(orderUid, true);
 
-// Later, wrapper can be called without signature:
-bytes wrapperData = abi.encode(params, new bytes(0)); // Empty signature
+// Later, settlement can be executed with empty signature in wrapper data
+bytes memory wrapperData = abi.encode(params, new bytes(0)); // Empty signature
 ```
+
+**Important**: The wrapper operator must be set for the subaccount to allow the wrapper to perform operations on its behalf.
 
 **Advantages**: With [EIP-7702](https://eips.ethereum.org/EIPS/eip-7702) wallets, can batch all approvals into one transaction. Can be gassless with [EIP-4337](https://eips.ethereum.org/EIPS/eip-4337).
-**Disadvantages**: Requires 2-3 on-chain transactions if wallet doesn't support batching
-
-## Transaction Flow
-
-### Step-by-Step Execution
-
-1. **Solver validates authorization**: Checks caller is authenticated solver
-2. **Wrapper validates user authorization**: Verifies permit signature or pre-approved hash
-3. **[EVC batch](https://evc.wtf/docs/concepts/internals/batch) assembly**: Wrapper constructs EVC batch items:
-   - Optional: EVC.permit() if using permit flow
-   - Enable destination vault (toVault) as collateral if not already enabled
-   - Transfer collateral from subaccount to owner (if subaccount different from owner)
-   - **Settlement callback**: Call settlement to execute CoW swap
-4. **Settlement execution**: The solver will perform swaps that functionally:
-   - Swaps old collateral vault tokens into new collateral vault tokens
-   - Sends new collateral to receiver (subaccount)
-5. **Collateral deposit**: New collateral automatically deposited in destination vault
-6. **[EVC account health check](https://evc.wtf/docs/concepts/internals/account-status-checks/)**: Verifies account remains properly collateralized
-7. **Batch completion**: If all steps succeed, collateral swap is complete
-
-### Fund Flow Diagram
-
-```
-Subaccount         Owner EOA       Settlement       Vault Token
-   (Old            (Temp Hold)      (Swap Logic)      (New Token)
-  Token)              |                  |                  |
-    |                 |                  |                  |
-    |-- withdraw -->--|                  |                  |
-    |              (old token)           |                  |
-    |                 |--- sell -------->|                  |
-    |           (old token)              |                  |
-    |                 |                  |--- buy --------->|
-    |                 |             (new token)             |
-    |<----- receive new token ---<-------|                  |
-    |                                                        |
-    |<------------ auto-deposit in toVault -------<---------|
-    |
-```
+**Disadvantages**: Requires 3-4 on-chain transactions if wallet doesn't support batching
 
 ## Important Considerations
 

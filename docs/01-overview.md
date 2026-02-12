@@ -96,8 +96,8 @@ Users pre-approve operation hashes on-chain:
 
 1. User's browser creates the `params` for the wrapper and the trade they want to execute
 2. If any approvals are required for the trade to succeed, the user needs to sign an on-chain transaction for these (see the specific section for the wrapper being executed),
-2. User's browser receives operation hash by calling the wrapper: `wrapper.getApprovalHash(params)`
-3. User executes on-chain transaction `wrapper.setPreApprovedHash(hash, true)`
+3. User's browser receives operation hash by calling the wrapper: `wrapper.getApprovalHash(params)`
+4. User executes on-chain transaction `wrapper.setPreApprovedHash(hash, true)`
 5. User's browser generates the corresponding CoW order to `params`
 6. User executes on-chain transaction to the CoW settlement contract `settlement.setPreSignature(orderUid, true)`
 7. Later, wrapper validates hash was pre-approved in contract storage

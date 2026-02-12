@@ -36,6 +36,41 @@ User wants to reduce but keep a position:
 
 Reducing a position is also a great way to de-risk, since the resulting collateral ratio is higher.
 
+## Transaction Flow
+
+### Step-by-Step Execution
+
+1. **Solver validates authorization**: Checks caller is authenticated solver
+2. **Wrapper validates user authorization**: Verifies permit signature or pre-approved hash
+3. **Inbox resolution**: Get or create Inbox for the (owner, account) pair
+4. **[EVC batch](https://evc.wtf/docs/concepts/internals/batch) assembly**: Wrapper constructs EVC batch items:
+   - Optional: EVC.permit() if using permit flow
+   - Transfer collateral from subaccount to Inbox (if subaccount different from owner)
+   - **Settlement callback**: Call settlement with Inbox as receiver
+5. **Settlement execution**: The solver will perform swaps that functionally:
+   - Swaps collateral vault tokens into underlying debt asset
+   - Sends debt asset to Inbox for repayment
+6. **Repayment execution**: Wrapper instructs Inbox to repay debt
+7. **Asset return**: Excess funds returned to owner's subaccount
+8. **[EVC account health check](https://evc.wtf/docs/concepts/internals/account-status-checks/)**: Verifies remaining position is healthy (if partial closure)
+9. **Batch completion**: If all steps succeed, position is closed/reduced
+
+### Fund Flow Diagram
+
+```
+User's Subaccount        Settlement         Inbox         Borrow Vault
+   (Collateral)          (Swap Logic)    (Temp Holder)     (Debt Record)
+        |                     |               |                  |
+        |-- withdraw -------->|               |                  |
+        |              (collateral)           |                  |
+        |                     |--- swap ----->|                  |
+        |              (debt asset)           |                  |
+        |                     |               |--- repay debt -->|
+        |                     |               |                  |
+        |<----- return excess ------<--- transfer remainder ----|
+        |
+```
+
 ## Parameters
 
 ### ClosePositionParams Structure
@@ -125,7 +160,7 @@ address inbox = closePositionWrapper.getInboxAddressAndDomainSeparator(owner, ac
 // - Inbox is auto-created on first use
 ```
 
-The Inbox can be used as the EIP-1271 owner/receiver for a CoW order before it is created due to the determinism.
+The Inbox can be used as the [EIP-1271 owner/receiver for a CoW order](https://docs.cow.fi/cow-protocol/reference/core/signing-schemes#erc-1271) before it is created due to the determinism.
 
 ### Why Inbox is Necessary
 
@@ -137,80 +172,88 @@ CoW Protocol settlement requires an authorized fund source. Since EVC subaccount
 
 ## Authorization Flows
 
+Authorization for the close position wrapper is very different from the other wrappers, so be careful to review this section carefully.
+
 ### Option 1: [EVC Permit](https://evc.wtf/docs/concepts/internals/permit/) (Off-Chain Signature)
 
+This flow requires **two separate signatures**:
+
+1. **EVC Permit Signature**: Authorizes the wrapper to operate on the owner's behalf
+2. **CoW Order Signature**: Authorizes the CoW order itself. Since the `Inbox` contract serves as the source for the CoW order, [EIP-1271](https://docs.cow.fi/cow-protocol/reference/core/signing-schemes#erc-1271). Should be used as the signing scheme, and the CoW order `signature` field is of the format `<address of Inbox><EIP-712 signature of CoW order with Inbox domain separator><abi.encode(orderData)>`
+
 ```solidity
-// User generates approval hash
-bytes32 hash = closePositionWrapper.getApprovalHash(params);
+// Step 1: Create the EVC permit signature
+bytes memory permitData = closePositionWrapper.encodePermitData(params);
 
-// User signs permit for EVC (off-chain)
-// This requires 2 signatures total:
-// 1. EVC permit signature
-// 2. CoW order signature (EIP-1271 via Inbox)
+// Sign the EVC permit (off-chain) with owner's private key
+// This authorizes the wrapper to execute the close operation
+// More information: https://evc.wtf/docs/concepts/internals/permit/
+bytes memory permitSignature = signEIP712(EVC.domainSeparator(), {
+    owner: params.owner,
+    spender: address(closePositionWrapper),
+    value: uint256(uint160(address(closePositionWrapper))),
+    nonce: 0, // Use current nonce
+    deadline: params.deadline,
+    nonceNamespace: 0,
+    data: permitData
+});
 
-bytes memory permitSignature = /* sign EVC permit with wrapper params */;
-bytes wrapperData = abi.encode(params, permitSignature);
+// Step 2: Create the CoW order signature
+// Get the Inbox address and domain separator for this operation
+(address inboxAddress, bytes32 inboxDomainSeparator) =
+    closePositionWrapper.getInboxAddressAndDomainSeparator(params.owner, params.account);
+
+// Step 3: Encode wrapper data with the permit signature
+bytes memory wrapperData = abi.encode(params, permitSignature);
+
+// Create CoW order with Inbox as receiver (refer to parameters documentation)
+// Include the wrapper call and the above `wrapperData` in the appData
+GPv2Order.Data memory order = /* ... order with receiver = inboxAddress ... */;
+
+// Sign the order using EIP-712 with the Inbox domain separator
+// The Inbox will validate this signature during settlement
+bytes memory inboxSignature = signEIP712(inboxDomainSeparator, order);
+
+// Send `orderSignature` as the `signature` field to the CoW API
+bytes memory orderSignature = abi.encodePacked(inboxAddress, inboxSignature, abi.encode(order));
 ```
 
-**Note**: No on-chain approval transaction needed for closing (collateral is already in subaccount)
+**Note**: The CoW order signature is handled separately during settlement execution. The wrapper data only contains the EVC permit signature.
 
 **Advantages**: Requires no on-chain transactions, one-time authorization per order
 **Disadvantages**: Not compatible with smart contract wallets without additional tooling
 
 ### Option 2: Pre-Approved Hash (On-Chain, EIP-7702 Compatible)
 
+This flow works by pre-authorizing all operations prior to execution by the solver instead of using permit signatures. The CoW order should be set to [pre-sign](https://docs.cow.fi/cow-protocol/reference/core/signing-schemes#presign).
+
+This means the approvals needed for the permit flow are the same except the off-chain signatures are replaced by:
+1. **EVC Operator Authorization for account**: An additional operator approval is needed to grant access to transfer assets out from the specific subaccount.
+2. **CoW Order Signature**: Execute an on-chain transaction from the owner's wallet **to the Inbox** to set the `orderUid` corresponding to the the order as authorized.
+
+Here is some pseudocode to generate the on-chain approvals for the settlemen to execute:
+
 ```solidity
-// User pre-approves the operation
+// Step 1: Set the wrapper as an account operator (allows wrapper to act on behalf of subaccount)
+EVC.setAccountOperator(params.account, address(closePositionWrapper), true);
+
+// Step 2: Pre-approve the wrapper operation hash
 bytes32 hash = closePositionWrapper.getApprovalHash(params);
 closePositionWrapper.setPreApprovedHash(hash, true);
 
-// User pre-approves the CoW order
-cowSettlement.setPreSignature(orderUid, true);
+// Step 3: Pre-approve the CoW order on the Inbox (NOT on the settlement contract!)
+address inbox = closePositionWrapper.getInbox(params.owner, params.account);
+Inbox(inbox).setPreSignature(orderUid, true);
 
-// Later, wrapper can be called without signature:
-bytes wrapperData = abi.encode(params, new bytes(0)); // Empty signature
+// Later, settlement can be executed with empty signature in wrapper data
+// Use the 
+bytes memory wrapperData = abi.encode(params, new bytes(0)); // Empty signature
 ```
+
+**Important**: The CoW order pre-approval must be set on the **Inbox contract**, not on the CoW Settlement contract. Each (owner, account) pair has its own dedicated Inbox.
 
 **Advantages**: With [EIP-7702](https://eips.ethereum.org/EIPS/eip-7702) wallets, can batch all approvals into one transaction. Can be gassless with [EIP-4337](https://eips.ethereum.org/EIPS/eip-4337).
-**Disadvantages**: Requires 2-3 on-chain transactions if wallet doesn't support batching
-
-**Advantages**: Can batch multiple operations, better for EIP-7702 wallets
-**Disadvantages**: Requires prior on-chain transactions
-
-## Transaction Flow
-
-### Step-by-Step Execution
-
-1. **Solver validates authorization**: Checks caller is authenticated solver
-2. **Wrapper validates user authorization**: Verifies permit signature or pre-approved hash
-3. **Inbox resolution**: Get or create Inbox for the (owner, account) pair
-4. **[EVC batch](https://evc.wtf/docs/concepts/internals/batch) assembly**: Wrapper constructs EVC batch items:
-   - Optional: EVC.permit() if using permit flow
-   - Transfer collateral from subaccount to Inbox (if subaccount different from owner)
-   - **Settlement callback**: Call settlement with Inbox as receiver
-5. **Settlement execution**: The solver will perform swaps that functionally:
-   - Swaps collateral vault tokens into underlying debt asset
-   - Sends debt asset to Inbox for repayment
-6. **Repayment execution**: Wrapper instructs Inbox to repay debt
-7. **Asset return**: Excess funds returned to owner's subaccount
-8. **[EVC account health check](https://evc.wtf/docs/concepts/internals/account-status-checks/)**: Verifies remaining position is healthy (if partial closure)
-9. **Batch completion**: If all steps succeed, position is closed/reduced
-
-### Fund Flow Diagram
-
-```
-User's Subaccount        Settlement         Inbox         Borrow Vault
-   (Collateral)          (Swap Logic)    (Temp Holder)     (Debt Record)
-        |                     |               |                  |
-        |-- withdraw -------->|               |                  |
-        |              (collateral)           |                  |
-        |                     |--- swap ----->|                  |
-        |              (debt asset)           |                  |
-        |                     |               |--- repay debt -->|
-        |                     |               |                  |
-        |<----- return excess ------<--- transfer remainder ----|
-        |
-```
+**Disadvantages**: Requires 3-4 on-chain transactions if wallet doesn't support batching
 
 ## Important Considerations
 
