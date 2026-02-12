@@ -285,7 +285,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Verify partial repayment
         uint256 debtAfter = IEVault(EWETH).debtOf(account);
-        assertApproxEqAbs(debtAfter, borrowAmount - buyAmount, 0.01e18, "Debt should be reduced by repaid amount");
+        assertEq(debtAfter, borrowAmount - buyAmount, "Debt should be reduced by repaid amount");
         assertEq(WETH.balanceOf(user), 0, "User should have used any collateral they received to repay");
     }
 
