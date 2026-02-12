@@ -151,8 +151,10 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             new ICowSettlement.Interaction[](2),
             new ICowSettlement.Interaction[](0)
         ];
-        r.interactions[1][0] = getWithdrawInteraction(EUSDS, buyAmount * r.clearingPrices[1] / 1e18);
-        r.interactions[1][1] = getSwapInteraction(IERC20(EUSDS.asset()), WETH, buyAmount * r.clearingPrices[1] / 1e18);
+        r.interactions[1][0] = getWithdrawInteraction(params.sellVaultToken, buyAmount * r.clearingPrices[1] / 1e18);
+        r.interactions[1][1] = getSwapInteraction(
+            IERC20(params.sellVaultToken.asset()), params.buyToRepayToken, buyAmount * r.clearingPrices[1] / 1e18
+        );
     }
 
     /// @notice Test closing a leveraged position using the wrapper with EIP-1271 signatures
