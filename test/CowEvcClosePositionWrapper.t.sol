@@ -347,8 +347,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             "Wrapper should be an authorized operator for the account before settle"
         );
 
-        // User signs order (already done in setupCowOrder)
-
         // Record balances before closing
         uint256 debtBefore = EWETH.debtOf(account);
 
