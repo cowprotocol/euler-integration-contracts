@@ -48,8 +48,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         pure
         returns (bytes memory)
     {
-        bytes memory wrapperData = abi.encode(params, signature);
-        return abi.encodePacked(uint16(wrapperData.length), wrapperData);
+        return abi.encode(params, signature);
     }
 
     /// @notice Setup pre-approved hash flow
@@ -100,7 +99,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
     function test_ValidateWrapperData_EmptySignature() public view {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
+        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
 
         // Should not revert for valid wrapper data
         wrapper.validateWrapperData(wrapperData);
@@ -170,7 +169,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         params.account = OWNER; // Same account, no transfer needed
 
         bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
+        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
         bytes memory remainingWrapperData = "";
 
         mockSettlement.setSuccessfulSettle(true);
@@ -207,7 +206,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         mockCollateralVault.mint(inbox, 5000e18);
 
         bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
+        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
         bytes memory remainingWrapperData = "";
 
         mockSettlement.setSuccessfulSettle(true);
@@ -256,8 +255,8 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
 
         bytes memory signature = new bytes(65);
         bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = abi.encode(params, signature);
-        wrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
+        bytes memory wrapperData = _encodeWrapperData(params, signature);
+        bytes memory chainedWrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
         // put funds in the inbox so it doesn't revert
         deal(
@@ -267,7 +266,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         );
 
         vm.prank(SOLVER);
-        wrapper.wrappedSettle(settleData, wrapperData);
+        wrapper.wrappedSettle(settleData, chainedWrapperData);
     }
 
     function test_WrappedSettle_WithPreApprovedHash() public {
@@ -277,6 +276,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
 
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
+        bytes memory chainedWrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
         // put funds in the inbox so it doesn't revert
         deal(
@@ -286,7 +286,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         );
 
         vm.prank(SOLVER);
-        wrapper.wrappedSettle(settleData, wrapperData);
+        wrapper.wrappedSettle(settleData, chainedWrapperData);
 
         assertFalse(wrapper.isHashPreApproved(OWNER, hash), "Hash should be consumed");
     }
@@ -299,11 +299,12 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
 
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0)); // Empty signature triggers pre-approved hash flow
+        bytes memory chainedWrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
         // Expect revert with HashNotApproved error
         vm.prank(SOLVER);
         vm.expectRevert(abi.encodeWithSelector(PreApprovedHashes.HashNotApproved.selector, OWNER, hash));
-        wrapper.wrappedSettle(settleData, wrapperData);
+        wrapper.wrappedSettle(settleData, chainedWrapperData);
     }
 
     function test_WrappedSettle_RevertsOnTamperedSignature() public {
@@ -313,12 +314,14 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         bytes memory wrapperData =
             _encodeWrapperData(params, hex"0000000000000000000000000000000000000000000000000000000000000000");
 
+        bytes memory chainedWrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
+
         vm.mockCallRevert(address(mockEvc), 0, abi.encodeWithSelector(IEVC.permit.selector), "permit failure");
 
         // Expect revert with ECDSA error when permit fails
         vm.prank(SOLVER);
         vm.expectRevert("permit failure");
-        wrapper.wrappedSettle(settleData, wrapperData);
+        wrapper.wrappedSettle(settleData, chainedWrapperData);
     }
 
     function test_WrappedSettle_PreApprovedHashRevertsIfDeadlineExceeded() public {
@@ -331,6 +334,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
 
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
+        bytes memory chainedWrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
 
         vm.prank(SOLVER);
         vm.expectRevert(
@@ -338,7 +342,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
                 CowEvcBaseWrapper.OperationDeadlineExceeded.selector, params.deadline, block.timestamp
             )
         );
-        wrapper.wrappedSettle(settleData, wrapperData);
+        wrapper.wrappedSettle(settleData, chainedWrapperData);
     }
 
     /*//////////////////////////////////////////////////////////////
