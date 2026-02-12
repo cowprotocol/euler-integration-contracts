@@ -151,14 +151,14 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             new ICowSettlement.Interaction[](2),
             new ICowSettlement.Interaction[](0)
         ];
-        r.interactions[1][0] = getWithdrawInteraction(params.sellVaultToken, buyAmount * r.clearingPrices[1] / 1e18);
+        r.interactions[1][0] = getWithdrawInteraction(sellVaultToken, buyAmount * r.clearingPrices[1] / 1e18);
         r.interactions[1][1] = getSwapInteraction(
-            IERC20(params.sellVaultToken.asset()), params.buyToRepayToken, buyAmount * r.clearingPrices[1] / 1e18
+            IERC20(sellVaultToken.asset()), buyToRepayToken, buyAmount * r.clearingPrices[1] / 1e18
         );
     }
 
     /// @notice Test closing a leveraged position using the wrapper with EIP-1271 signatures
-    function test_ClosePositionWrapper_SuccessFullRepay() external {
+    function test_ClosePositionWrapper_Permit_SuccessfulRepay() external {
         uint256 borrowAmount = 1e18;
         uint256 collateralAmount = USDS_MARGIN + 2495e18;
 
@@ -237,7 +237,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
     }
 
     /// @notice Test shrinking the position with partial repayment using EIP-1271
-    function test_ClosePositionWrapper_PartialRepay() external {
+    function test_ClosePositionWrapper_Permit_PartialRepay() external {
         uint256 borrowAmount = 2e18;
         uint256 collateralAmount = USDS_MARGIN + 4990e18;
         uint256 sellAmount = 2500e18;
@@ -312,7 +312,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
     }
 
     /// @notice Test closing a position with pre-approved hash (no signature needed)
-    function test_ClosePositionWrapper_WithPreApprovedHash() external {
+    function test_ClosePositionWrapper_PreApprove_SuccessfulRepay() external {
         uint256 borrowAmount = 1e18;
         uint256 collateralAmount = USDS_MARGIN + 2495e18;
 

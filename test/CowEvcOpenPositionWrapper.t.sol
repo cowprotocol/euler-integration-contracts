@@ -155,7 +155,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     }
 
     /// @notice Test opening a leveraged position using the new wrapper
-    function test_OpenPositionWrapper_Success() external {
+    function test_OpenPositionWrapper_Permit_Success() external {
         // Create params using helper
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
@@ -219,7 +219,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     }
 
     /// @notice Test opening a position with pre-approved hash (no signature needed)
-    function test_OpenPositionWrapper_WithPreApprovedHash() external {
+    function test_OpenPositionWrapper_PreApprove_Success() external {
         // Create params using helper
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
