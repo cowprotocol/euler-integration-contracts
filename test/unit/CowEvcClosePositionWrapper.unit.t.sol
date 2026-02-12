@@ -148,7 +148,13 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         assertEq(items[0].targetContract, params.collateralVault, "First item should target EVC");
         assertEq(
             items[0].data,
-            abi.encodeCall(IERC20.transfer, (CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account), params.collateralAmount)),
+            abi.encodeCall(
+                IERC20.transfer,
+                (
+                    CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account),
+                    params.collateralAmount
+                )
+            ),
             "Should enable collateral"
         );
 
