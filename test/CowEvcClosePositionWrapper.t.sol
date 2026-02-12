@@ -373,6 +373,11 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             EVC.isAccountOperatorAuthorized(account, address(closePositionWrapper)),
             "Wrapper should no longer be an operator for the account"
         );
+
+        assertFalse(
+            closePositionWrapper.isHashPreApproved(user, hash),
+            "Pre-approved hash should be cleared after use"
+        );
     }
 
     /// @notice Test that invalid signature causes the transaction to revert with EIP-1271
