@@ -165,36 +165,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
                     EVC INTERNAL SETTLE TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_EvcInternalSettle_OnlyEVC() public {
-        bytes memory settleData = "";
-        bytes memory wrapperData = "";
-        bytes memory remainingWrapperData = "";
-
-        vm.expectRevert(abi.encodeWithSelector(CowEvcBaseWrapper.Unauthorized.selector, address(this)));
-        wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
-    }
-
-    function test_EvcInternalSettle_RequiresCorrectCalldata() public {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
-        params.account = OWNER;
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-        bytes memory remainingWrapperData = "";
-
-        mockSettlement.setSuccessfulSettle(true);
-
-        // the wrapper data is omitted in the expected call
-        TestableClosePositionWrapper(address(wrapper))
-            .setExpectedEvcInternalSettleCall(
-                abi.encodeCall(wrapper.evcInternalSettle, (settleData, new bytes(0), remainingWrapperData))
-            );
-
-        vm.prank(address(mockEvc));
-        vm.expectRevert(CowEvcBaseWrapper.InvalidCallback.selector);
-        wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
-    }
-
     function test_EvcInternalSettle_RequiresFundsInInbox() public {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
         params.account = OWNER; // Same account, no transfer needed
@@ -216,32 +186,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
                 CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account)
             )
         );
-        vm.prank(address(mockEvc));
-        wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
-    }
-
-    function test_EvcInternalSettle_CanBeCalledByEVC() public {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
-        params.account = OWNER; // Same account, no transfer needed
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-        bytes memory remainingWrapperData = "";
-
-        mockSettlement.setSuccessfulSettle(true);
-
-        TestableClosePositionWrapper(address(wrapper))
-            .setExpectedEvcInternalSettleCall(
-                abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
-            );
-
-        // put funds in the inbox so it doesn't revert
-        deal(
-            address(mockDebtAsset),
-            CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account),
-            1
-        );
-
         vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }

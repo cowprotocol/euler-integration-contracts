@@ -187,9 +187,8 @@ contract CowEvcBaseWrapperTest is Test {
         );
     }
 
-    function test_EvcInternalSettle_RequiresCorrectCalldata() public {
+    function testFuzz_EvcInternalSettle_RequiresCorrectCalldata(bytes memory remainingWrapperData) public {
         bytes memory settleData = _getEmptySettleData();
-        bytes memory remainingWrapperData = "";
 
         mockSettlement.setSuccessfulSettle(true);
 
