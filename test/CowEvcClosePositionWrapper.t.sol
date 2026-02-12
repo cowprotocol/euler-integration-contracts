@@ -285,7 +285,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Verify partial repayment
         uint256 debtAfter = IEVault(EWETH).debtOf(account);
-        assertApproxEqAbs(debtAfter, borrowAmount - buyAmount, 0.01e18, "Debt should be reduced by repaid amount");
+        assertEq(debtAfter, borrowAmount - buyAmount, "Debt should be reduced by repaid amount");
         assertEq(WETH.balanceOf(user), 0, "User should have used any collateral they received to repay");
     }
 
@@ -324,18 +324,18 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         bytes32 hash = closePositionWrapper.getApprovalHash(params);
         _setupPreApprovedFlow(user, account, hash);
 
-        // the pre approved flow requires setting a signature on the inbox (not on the settlement because the inbox is what sends the order)
-        vm.startPrank(user);
-        Inbox(closePositionWrapper.getInbox(user, account)).setPreSignature(settlement.orderUid, true);
-        vm.stopPrank();
+        // The inbox needs to be deployed in advance. Anyone can deploy the inbox with a call to `getInbox`
+        Inbox inbox = Inbox(closePositionWrapper.getInbox(user, account));
+
+        // The pre approved flow requires setting a signature on the inbox (not on the settlement because the inbox is what sends the order)
+        vm.prank(user);
+        inbox.setPreSignature(settlement.orderUid, true);
 
         // Verify that the operator is authorized before executing
         assertTrue(
             EVC.isAccountOperatorAuthorized(account, address(closePositionWrapper)),
             "Wrapper should be an authorized operator for the account before settle"
         );
-
-        // User signs order (already done in setupCowOrder)
 
         // Record balances before closing
         uint256 debtBefore = EWETH.debtOf(account);
@@ -345,7 +345,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             ICowSettlement.settle,
             (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
         );
-        bytes memory wrapperData = encodeWrapperData(abi.encode(params, new bytes(0)));
+        // An empty signature signifies that the wrapper needs to use the pre-sign flow and not the permit flow
+        bytes memory signature = new bytes(0);
+        bytes memory wrapperData = encodeWrapperData(abi.encode(params, signature));
 
         // Expect event emission
         vm.expectEmit();
