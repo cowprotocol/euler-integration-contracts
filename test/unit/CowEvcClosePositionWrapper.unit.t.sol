@@ -8,7 +8,7 @@ import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
 import {MockERC20, MockVault, MockBorrowVault} from "./mocks/MockERC20AndVaults.sol";
 import {UnitTestBase} from "./UnitTestBase.sol";
-import {IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {IERC20, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 // this is required because foundry doesn't have a cheatcode for override any transient storage.
 contract TestableClosePositionWrapper is CowEvcClosePositionWrapper {
@@ -172,8 +172,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
         bytes memory remainingWrapperData = "";
 
-        mockSettlement.setSuccessfulSettle(true);
-
         TestableClosePositionWrapper(address(wrapper))
             .setExpectedEvcInternalSettleCall(
                 abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
@@ -209,8 +207,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
         bytes memory remainingWrapperData = "";
-
-        mockSettlement.setSuccessfulSettle(true);
 
         TestableClosePositionWrapper(address(wrapper))
             .setExpectedEvcInternalSettleCall(
@@ -350,19 +346,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
                     EDGE CASE TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_MaxRepayAmount() public {
-        mockBorrowVault.setDebt(ACCOUNT, DEFAULT_REPAY_AMOUNT);
-
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
-
-        bytes memory permitData = CowEvcClosePositionWrapper(address(wrapper)).encodePermitData(params);
-        (IEVC.BatchItem[] memory items,) = _decodePermitData(permitData);
-
-        // Should create repay item
-        assertEq(items.length, 1, "Should have 1 item for repay with max amount");
-    }
-
-    function test_SameOwnerAndAccount() public {
+    function test_Params_SameOwnerAndAccount() public {
         mockBorrowVault.setDebt(OWNER, DEFAULT_REPAY_AMOUNT);
 
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
@@ -374,7 +358,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         assertEq(items[0].onBehalfOfAccount, OWNER, "Should operate on behalf of same account");
     }
 
-    function test_ZeroDebt() public {
+    function test_Params_ZeroDebt() public {
         mockBorrowVault.setDebt(ACCOUNT, 0);
 
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
@@ -382,5 +366,40 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         bytes memory permitData = CowEvcClosePositionWrapper(address(wrapper)).encodePermitData(params);
         (IEVC.BatchItem[] memory items,) = _decodePermitData(permitData);
         assertEq(items.length, 1, "Should have 1 item");
+    }
+
+    function test_RepayAmount_ExceedsDebt_SendsExcessToOwner() public {
+        // Setup: debt is 100 tokens, but swap gives us 110 tokens
+        uint256 debtAmount = 100e18;
+        uint256 swapResult = 110e18;
+
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+
+        mockBorrowVault.setDebt(ACCOUNT, debtAmount);
+
+        (address inbox,) =
+            CowEvcClosePositionWrapper(address(wrapper)).getInboxAddressAndDomainSeparator(params.owner, params.account);
+
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
+        bytes memory remainingWrapperData = "";
+
+        TestableClosePositionWrapper(address(wrapper))
+            .setExpectedEvcInternalSettleCall(
+                abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
+            );
+
+        // Simulate swap result: inbox has more debt asset than needed
+        deal(address(mockDebtAsset), inbox, swapResult);
+
+        // Expect repay to be called with exact debt amount (not the excess)
+        vm.expectCall(address(mockBorrowVault), abi.encodeCall(IBorrowing.repay, (debtAmount, ACCOUNT)));
+
+        vm.prank(address(mockEvc));
+        wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
+
+        // Verify: excess sent to owner, inbox is empty
+        assertEq(mockDebtAsset.balanceOf(OWNER), swapResult - debtAmount, "Owner should receive excess");
+        assertEq(mockDebtAsset.balanceOf(inbox), 0, "Inbox should be empty");
     }
 }
