@@ -357,7 +357,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             ICowSettlement.settle,
             (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
         );
-        bytes memory wrapperData = encodeWrapperData(abi.encode(params, new bytes(0)));
+        // An empty signature signifies that the wrapper needs to use the pre-sign flow and not the permit flow
+        bytes memory signature = new bytes(0);
+        bytes memory wrapperData = encodeWrapperData(abi.encode(params, signature));
 
         // Expect event emission
         vm.expectEmit();
