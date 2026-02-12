@@ -19,6 +19,7 @@ contract InboxUnitTest is Test {
     uint256 immutable BENEFICIARY_PRIVATE_KEY;
 
     address immutable BENEFICIARY;
+    address immutable ACCOUNT = makeAddr("account");
     address immutable RECIPIENT = makeAddr("recipient");
     address immutable OTHER_USER = makeAddr("other user");
 
@@ -49,7 +50,7 @@ contract InboxUnitTest is Test {
         mockVault = new MockBorrowVault(address(mockToken), "Mock Vault", "mMOCK");
 
         inboxFactory = new InboxFactory(address(mockSettlement));
-        inbox = Inbox(inboxFactory.getInbox(BENEFICIARY, (address(this))));
+        inbox = Inbox(inboxFactory.getInbox(BENEFICIARY, ACCOUNT));
     }
 
     // ============== InboxConstants Tests ==============
@@ -84,7 +85,7 @@ contract InboxUnitTest is Test {
         assertEq(inbox.OPERATOR(), address(inboxFactory), "OPERATOR not set");
         assertEq(inbox.BENEFICIARY(), BENEFICIARY, "BENEFICIARY not set");
         assertEq(inbox.SETTLEMENT(), address(mockSettlement), "SETTLEMENT not set");
-        (, bytes32 inboxDomainSeparator) = inboxFactory.getInboxAddressAndDomainSeparator(BENEFICIARY, address(this));
+        (, bytes32 inboxDomainSeparator) = inboxFactory.getInboxAddressAndDomainSeparator(BENEFICIARY, ACCOUNT);
         assertEq(inbox.INBOX_DOMAIN_SEPARATOR(), inboxDomainSeparator, "INBOX_DOMAIN_SEPARATOR not set");
     }
 
@@ -93,7 +94,7 @@ contract InboxUnitTest is Test {
         // https://etherscan.io/address/0x9008D19f58AAbD9eD0D60971565AA8510560ab41#readContract#F2
         inboxFactory = new InboxFactory(address(0x9008D19f58AAbD9eD0D60971565AA8510560ab41));
         vm.chainId(1);
-        inbox = Inbox(inboxFactory.getInbox(BENEFICIARY, (address(this))));
+        inbox = Inbox(inboxFactory.getInbox(BENEFICIARY, ACCOUNT));
         bytes32 expectedSettlementDomainSeparator = 0xc078f884a2676e1345748b1feace7b0abee5d00ecadb6e574dcdd109a63e8943;
 
         assertEq(
