@@ -57,7 +57,7 @@ contract InboxUnitTest is Test {
     function test_InboxConstants_DomainTypeHashMatchesCoWSettlement() public pure {
         // This constant must match the EIP-712 domain separator type hash used by CoW Protocol
         // Verification: https://etherscan.io/address/0x9008D19f58AAbD9eD0D60971565AA8510560ab41#code
-        // Take the constant of the same name in `GPv2Signing` and copy its value `chisel` to get the below hash
+        // Take the constant of the same name in `GPv2Signing` and copy its value `chisel` REPL to get the below hash
         bytes32 expectedDomainTypeHash = 0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f;
         assertEq(
             InboxConstants.DOMAIN_TYPE_HASH,
@@ -84,6 +84,23 @@ contract InboxUnitTest is Test {
         assertEq(inbox.OPERATOR(), address(inboxFactory), "OPERATOR not set");
         assertEq(inbox.BENEFICIARY(), BENEFICIARY, "BENEFICIARY not set");
         assertEq(inbox.SETTLEMENT(), address(mockSettlement), "SETTLEMENT not set");
+        (, bytes32 inboxDomainSeparator) = inboxFactory.getInboxAddressAndDomainSeparator(BENEFICIARY, address(this));
+        assertEq(inbox.INBOX_DOMAIN_SEPARATOR(), inboxDomainSeparator, "INBOX_DOMAIN_SEPARATOR not set");
+    }
+
+    function test_Constructor_SetsToActualSettlementContractDomainSeparatorCorrectly() public {
+        // Verifies the computed domain separator in the Inbox matches the hash used by CoW Protocol
+        // https://etherscan.io/address/0x9008D19f58AAbD9eD0D60971565AA8510560ab41#readContract#F2
+        inboxFactory = new InboxFactory(address(0x9008D19f58AAbD9eD0D60971565AA8510560ab41));
+        vm.chainId(1);
+        inbox = Inbox(inboxFactory.getInbox(BENEFICIARY, (address(this))));
+        bytes32 expectedSettlementDomainSeparator = 0xc078f884a2676e1345748b1feace7b0abee5d00ecadb6e574dcdd109a63e8943;
+
+        assertEq(
+            inbox.SETTLEMENT_DOMAIN_SEPARATOR(),
+            expectedSettlementDomainSeparator,
+            "SETTLEMENT_DOMAIN_SEPARATOR not set correctly"
+        );
     }
 
     function test_InboxFactory_GetInboxCreationCode() public view {
