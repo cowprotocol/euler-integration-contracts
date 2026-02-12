@@ -10,10 +10,11 @@ import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol"
 
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
+import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 
 import {MilkSwap} from "./MilkSwap.sol";
 
-contract CowBaseTest is Test {
+abstract contract CowBaseTest is Test {
     uint256 mainnetFork;
     uint256 constant BLOCK_NUMBER = 22546006;
     string forkRpcUrl = vm.envOr("FORK_RPC_URL", string(""));
@@ -34,6 +35,8 @@ contract CowBaseTest is Test {
     ICowSettlement constant COW_SETTLEMENT = ICowSettlement(payable(0x9008D19f58AAbD9eD0D60971565AA8510560ab41));
 
     EthereumVaultConnector constant EVC = EthereumVaultConnector(payable(0x0C9a3dd6b8F28529d72d7f9cE918D493519EE383));
+
+    CowEvcBaseWrapper internal wrapper;
 
     MilkSwap public milkSwap;
     address user;
@@ -384,5 +387,15 @@ contract CowBaseTest is Test {
     /// @dev Takes already abi.encoded params and signature
     function encodeWrapperData(bytes memory paramsAndSignature) internal pure returns (bytes memory) {
         return abi.encodePacked(uint16(paramsAndSignature.length), paramsAndSignature);
+    }
+
+    /// @notice Test that unauthorized users cannot call evcInternalSettle directly
+    function test_BaseWrapper_UnauthorizedInternalSettle() external {
+        bytes memory settleData = "";
+        bytes memory wrapperData = "";
+
+        // Try to call evcInternalSettle directly (not through EVC)
+        vm.expectRevert(abi.encodeWithSelector(CowEvcBaseWrapper.Unauthorized.selector, address(this)));
+        wrapper.evcInternalSettle(settleData, wrapperData, wrapperData);
     }
 }

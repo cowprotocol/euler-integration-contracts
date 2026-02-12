@@ -34,6 +34,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Deploy the new close position wrapper
         closePositionWrapper = new CowEvcClosePositionWrapper(address(EVC), COW_SETTLEMENT);
+        wrapper = closePositionWrapper;
 
         // Add wrapper as a solver
         GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
@@ -152,9 +153,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             new ICowSettlement.Interaction[](0)
         ];
         r.interactions[1][0] = getWithdrawInteraction(sellVaultToken, buyAmount * r.clearingPrices[1] / 1e18);
-        r.interactions[1][1] = getSwapInteraction(
-            IERC20(sellVaultToken.asset()), buyToRepayToken, buyAmount * r.clearingPrices[1] / 1e18
-        );
+        r.interactions[1][1] =
+            getSwapInteraction(IERC20(sellVaultToken.asset()), buyToRepayToken, buyAmount * r.clearingPrices[1] / 1e18);
     }
 
     /// @notice Test closing a leveraged position using the wrapper with EIP-1271 signatures
@@ -224,16 +224,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         assertLt(EUSDS.balanceOf(account), collateralBeforeAccount, "User should have less collateral after closing");
         assertEq(EUSDS.balanceOf(user), collateralBefore, "User main account balance should not have changed");
         assertGt(EUSDS.balanceOf(account), 0, "User should have some collateral remaining");
-    }
-
-    /// @notice Test that unauthorized users cannot call evcInternalSettle directly
-    function test_ClosePositionWrapper_UnauthorizedInternalSettle() external {
-        bytes memory settleData = "";
-        bytes memory wrapperData = "";
-
-        // Try to call evcInternalSettle directly (not through EVC)
-        vm.expectRevert(abi.encodeWithSelector(CowEvcBaseWrapper.Unauthorized.selector, address(this)));
-        closePositionWrapper.evcInternalSettle(settleData, wrapperData, wrapperData);
     }
 
     /// @notice Test shrinking the position with partial repayment using EIP-1271

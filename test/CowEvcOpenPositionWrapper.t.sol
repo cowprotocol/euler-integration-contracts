@@ -28,6 +28,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Deploy the new open position wrapper
         openPositionWrapper = new CowEvcOpenPositionWrapper(address(EVC), COW_SETTLEMENT);
+        wrapper = openPositionWrapper;
 
         // Add wrapper as a solver
         GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
