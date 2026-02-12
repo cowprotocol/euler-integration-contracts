@@ -31,24 +31,29 @@ abstract contract UnitTestBase is Test {
         mockAuth.setSolver(SOLVER, true);
     }
 
-    /// @notice Helper to get the decoded IEVC.BatchItem[] from a call to `encodePermitData`
+    /// @notice Helper to get the decoded IEVC.BatchItem[] and params hash from a call to `encodePermitData`
     function _decodePermitData(bytes memory permitData)
         internal
         pure
         returns (IEVC.BatchItem[] memory items, bytes32 paramsHash)
     {
-        bytes memory encodedItems = new bytes(permitData.length - 4);
-        for (uint256 i = 4; i < permitData.length; i++) {
-            encodedItems[i - 4] = permitData[i];
-        }
+        // The permit data is expected to be encoded as follows:
+        // | IEVC.batch selector | abi-encoded batch entries | parameter hash |
+        // | 4 bytes             | variable length           | 32 bytes       |
 
+        uint256 itemByteLength = permitData.length - 4 - 32;
+        bytes memory encodedItems = new bytes(itemByteLength);
+        for (uint256 i = 0; i < itemByteLength; i++) {
+            encodedItems[i] = permitData[i + 4];
+        }
         items = abi.decode(encodedItems, (IEVC.BatchItem[]));
 
-        // normally we subtract 64 here but the length field is at beginning so its just `length`
-        uint256 pos = permitData.length;
-        assembly {
-            paramsHash := mload(add(permitData, pos))
+        uint256 parametersByteStart = 4 + itemByteLength;
+        bytes memory encodedParameters = new bytes(itemByteLength);
+        for (uint256 i = 0; i < 32; i++) {
+            encodedParameters[i] = permitData[i + parametersByteStart];
         }
+        paramsHash = abi.decode(encodedParameters, (bytes32));
     }
 
     /// @notice Create empty settle data
