@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `CowEvcClosePositionWrapper` enables users to atomically close or reduce leveraged trading positions by:
+The [`CowEvcClosePositionWrapper`](../../src/CowEvcClosePositionWrapper.sol) enables users to atomically close or reduce leveraged trading positions by:
 
 1. Withdrawing collateral from the vault
 2. Swapping collateral back into debt repayment assets via CoW Protocol
@@ -22,7 +22,7 @@ Assuming 1 ETH = 1000 USDC
 User wants to completely exit their 5 ETH short (ETH = 1000 USDC):
 - Hold 6000 USDC collateral + 5 ETH debt
 - Withdraw ~5000-5100 USDC collateral (only the amount required to repay the debt)
-- Swap ~5000-5100 USDC → 5 ETH (accounting for interest)
+- Swap ~5000-5100 USDC to 5 ETH (accounting for interest)
 - Repay 5 ETH debt. There shouldbe little/no remaining ETH due to exact out order.
 - Keep ~0-1000 USDC remaining collateral in their subaccount
 
@@ -30,7 +30,7 @@ User wants to completely exit their 5 ETH short (ETH = 1000 USDC):
 User wants to reduce but keep a position:
 - Close 3 of 5 ETH debt
 - Withdraw ~3000 USDC collateral
-- Swap ~3000 USDC → 3 ETH
+- Swap ~3000 USDC to 3 ETH
 - Repay 3 ETH debt
 - Keep 2 ETH debt, ~3000 USDC collateral remaining
 
@@ -54,7 +54,7 @@ struct ClosePositionParams {
 #### Parameter Details
 
 - **owner**: The user's address that owns the position. CoW order must be signed/authorized by this address.
-- **account**: The EVC subaccount holding the position (usually different from owner if using subaccounts).
+- **account**: The [EVC subaccount](https://evc.wtf/docs/concepts/internals/sub-accounts) holding the position (usually different from owner if using subaccounts).
 - **deadline**: Operation validity deadline and hash uniqueness marker. Increment if executing identical operations.
 - **borrowVault**: The vault from which debt was borrowed (e.g., eWETH). The underlying asset (WETH) is what needs repayment.
 - **collateralVault**: The vault holding the collateral being swapped (e.g., eUSDC).
@@ -108,10 +108,10 @@ struct ClosePositionParams {
 
 ### What is an Inbox?
 
-The `Inbox` is a contract deployed per EVC subaccount that:
+The [`Inbox`](../../src/Inbox.sol) is a contract deployed per EVC subaccount that:
 
 1. **Receives funds from CoW settlement**: Acts as the settlement receiver for repayment assets
-2. **Implements EIP-1271 signature validation**: Allows it to authorize the CoW order
+2. **Implements [EIP-1271 signature validation](https://eips.ethereum.org/EIPS/eip-1271)**: Allows it to authorize the CoW order
 3. **Coordinates fund transfer**: Ensures swapped funds reach the repayment step
 
 ### Creating/Retrieving an Inbox
@@ -137,7 +137,7 @@ CoW Protocol settlement requires an authorized fund source. Since EVC subaccount
 
 ## Authorization Flows
 
-### Option 1: EVC Permit (Off-Chain Signature)
+### Option 1: [EVC Permit](https://evc.wtf/docs/concepts/internals/permit/) (Off-Chain Signature)
 
 ```solidity
 // User generates approval hash
@@ -184,7 +184,7 @@ bytes wrapperData = abi.encode(params, new bytes(0)); // Empty signature
 1. **Solver validates authorization**: Checks caller is authenticated solver
 2. **Wrapper validates user authorization**: Verifies permit signature or pre-approved hash
 3. **Inbox resolution**: Get or create Inbox for the (owner, account) pair
-4. **EVC batch assembly**: Wrapper constructs EVC batch items:
+4. **[EVC batch](https://evc.wtf/docs/concepts/internals/batch) assembly**: Wrapper constructs EVC batch items:
    - Optional: EVC.permit() if using permit flow
    - Transfer collateral from subaccount to Inbox (if subaccount different from owner)
    - **Settlement callback**: Call settlement with Inbox as receiver
@@ -193,7 +193,7 @@ bytes wrapperData = abi.encode(params, new bytes(0)); // Empty signature
    - Sends debt asset to Inbox for repayment
 6. **Repayment execution**: Wrapper instructs Inbox to repay debt
 7. **Asset return**: Excess funds returned to owner's subaccount
-8. **EVC account health check**: Verifies remaining position is healthy (if partial closure)
+8. **[EVC account health check](https://evc.wtf/docs/concepts/internals/account-status-checks/)**: Verifies remaining position is healthy (if partial closure)
 9. **Batch completion**: If all steps succeed, position is closed/reduced
 
 ### Fund Flow Diagram

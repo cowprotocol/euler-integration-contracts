@@ -13,7 +13,7 @@ The Euler-CoW integration wrappers are designed with multiple layers of security
 - Have economic incentive to provide good execution (competition for orders)
 - If it is possible for the entire sum of a user's trade to be extracted, that could be a risk as it may exceed the size of the solver's bond
 
-**Euler EVC**: A layer for coordinating vaults for money market and delayed position health checking operations.
+**[Euler EVC](https://evc.wtf/)**: A layer for coordinating vaults for money market and delayed position health checking operations.
 - Has been audited by multiple agencies
 - In production use
 - Published [security considerations on their website](https://evc.wtf/docs/concepts/internals/security-considerations)
@@ -28,7 +28,7 @@ The Euler-CoW integration wrappers are designed with multiple layers of security
 
 All wrapper operations require explicit user authorization through one of:
 
-1. **EVC Permit Signature**: User signs an EIP-712 permit authorizing the specific operation
+1. **[EVC Permit Signature](https://evc.wtf/docs/concepts/internals/permit/)**: User signs an EIP-712 permit authorizing the specific operation
   - It is possible that not all fields of the user's `params` object are effectively accounted in the `EVC.permit`. To prevent issues with this, the hash of the user's `params` object is additionally appended to the end of the permit request
 2. **Pre-Approved Hash**: User on-chain approves a specific operation hash
   - To prevent replay, a hash is *consumed* once it is used (or revoked by the user)
@@ -106,7 +106,7 @@ recomputedHash != hash  // INVALID - signature check fails
 - Cannot execute two operations with same deadline
 - Hash is tied to specific vaults, amounts, and deadline
 
-**Implementation**: In `CowEvcBaseWrapper._getApprovalHash()`:
+**Implementation**: In [`CowEvcBaseWrapper._getApprovalHash()`](../../src/CowEvcBaseWrapper.sol):
 ```solidity
 // Hash includes all parameters:
 bytes32 structHash = keccak256(abi.encode(
@@ -121,7 +121,7 @@ bytes32 structHash = keccak256(abi.encode(
 ));
 ```
 
-### 3. Atomicity Within EVC Batch
+### 3. Atomicity Within [EVC Batch](https://evc.wtf/docs/concepts/internals/batch)
 
 **Property**: All operations succeed or revert together
 
@@ -159,7 +159,7 @@ function evcInternalSettle(...) external {
 **Property**: Positions cannot become undercollateralized
 
 **Mechanism**:
-- EVC enforces account health checks at batch conclusion
+- [EVC enforces account health checks](https://evc.wtf/docs/concepts/internals/account-status-checks/) at batch conclusion
 - Minimum collateral ratio is vault-specific
 - If health check fails, entire batch reverts
 

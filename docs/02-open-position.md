@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `CowEvcOpenPositionWrapper` enables users to atomically open or grow leveraged trading positions by:
+The [`CowEvcOpenPositionWrapper`](../../src/CowEvcOpenPositionWrapper.sol) enables users to atomically open or grow leveraged trading positions by:
 
 1. Depositing collateral into a vault
 2. Borrowing assets against that collateral
@@ -21,14 +21,14 @@ Assuming 1 ETH = 1000 USDC
 User wants to go 5x long on ETH:
 - Deposit 1 ETH as collateral
 - Borrow 4000 USDC
-- Swap borrowed USDC → ETH collateral
+- Swap borrowed USDC to ETH collateral
 - Result: 5 ETH collateral backing 4000 USDC debt
 
 ### Leveraged Short Position
 User wants to go 5x short on ETH:
 - Deposit 1000 USDC as collateral
 - Borrow 5 ETH
-- Swap borrowed ETH → USDC collateral
+- Swap borrowed ETH to USDC collateral
 - Result: 6000 USDC collateral backing 5 ETH debt
 
 ### Growing Existing Position
@@ -53,7 +53,7 @@ struct OpenPositionParams {
 #### Parameter Details
 
 - **owner**: The user's address that will own and authorize the position. The CoW order must be signed/authorized by this address.
-- **account**: Can be the same as `owner` (default account) or a different subaccount. EVC subaccounts must share the same 19 high-order bits as the owner.
+- **account**: Can be the same as `owner` (default account) or a different [subaccount](https://evc.wtf/docs/concepts/internals/sub-accounts). EVC subaccounts must share the same 19 high-order bits as the owner.
 - **deadline**: Used for operation validity and hash uniqueness. If executing multiple operations with identical other parameters, increment deadline for uniqueness.
 - **collateralVault**: The vault token address to use as collateral backing (e.g., `eUSDC`)
 - **borrowVault**: The vault to borrow from (e.g., `eWETH`). Note: You borrow the underlying asset (WETH), not the vault token
@@ -78,7 +78,7 @@ struct OpenPositionParams {
 
 ## Authorization Flows
 
-### Option 1: EVC Permit (Off-Chain Signature)
+### Option 1: [EVC Permit](https://evc.wtf/docs/concepts/internals/permit/) (Off-Chain Signature)
 
 ```solidity
 // User generates approval hash
@@ -129,7 +129,7 @@ IERC20(collateralVault.asset()).approve(collateralVault, type(uint256).max);
 
 1. **Solver validates authorization**: Checks if caller is authenticated solver
 2. **Wrapper validates user authorization**: Verifies permit signature or pre-approved hash
-3. **EVC batch assembly**: Wrapper constructs EVC batch items:
+3. **[EVC batch](https://evc.wtf/docs/concepts/internals/batch) assembly**: Wrapper constructs EVC batch items:
    - Optional: EVC.permit() if using permit flow
    - Optional: Enable collateral vault (if first time with this vault)
    - Optional: Enable borrow vault (if first time with this vault)
@@ -140,7 +140,7 @@ IERC20(collateralVault.asset()).approve(collateralVault, type(uint256).max);
 4. **Settlement execution**: The solver will perform swaps that functionally:
    - Swaps the borrow asset into the collateral asset
    - Converts the collateral asset into vault tokens using `vault.deposit()`
-5. **EVC account health check**: Verifies user account is properly collateralized
+5. **[EVC account health check](https://evc.wtf/docs/concepts/internals/account-status-checks/)**: Verifies user account is properly collateralized
 6. **Batch completion**: If all steps succeed, position is opened
 
 ### Memory Layout

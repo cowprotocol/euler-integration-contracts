@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `CowEvcCollateralSwapWrapper` enables users to atomically swap collateral between different Euler vaults while maintaining an open leveraged position. This allows position adjustments without closing and reopening.
+The [`CowEvcCollateralSwapWrapper`](../../src/CowEvcCollateralSwapWrapper.sol) enables users to atomically swap collateral between different Euler vaults while maintaining an open leveraged position. This allows position adjustments without closing and reopening.
 
 **Key benefit**: Change collateral composition while keeping debt position intact, with optimal execution through CoW Protocol's distributed solver network.
 
@@ -15,7 +15,7 @@ Assuming 1 ETH = 1000 USDC
 ### Collateral Diversification
 Position holder wants to reduce concentration:
 - Hold 1000 eUSDC collateral + 5 ETH debt
-- Swap 500 eUSDC → ~0.5 eWETH (at 1 ETH = 1000 USDC)
+- Swap 500 eUSDC to ~0.5 eWETH (at 1 ETH = 1000 USDC)
 - Result: 500 eUSDC + 0.5 eWETH collateral + 5 ETH debt
 
 ## Parameters
@@ -37,7 +37,7 @@ struct CollateralSwapParams {
 #### Parameter Details
 
 - **owner**: The user's address that owns the position. CoW order must be signed/authorized by this address.
-- **account**: The EVC subaccount holding the position.
+- **account**: The [EVC subaccount](https://evc.wtf/docs/concepts/internals/sub-accounts) holding the position.
 - **deadline**: Operation validity deadline and hash uniqueness marker.
 - **fromVault**: The source vault token being withdrawn (e.g., eUSDC).
 - **toVault**: The destination vault token being acquired (e.g., eWETH).
@@ -62,7 +62,7 @@ struct CollateralSwapParams {
 
 ## Authorization Flows
 
-### Option 1: EVC Permit (Off-Chain Signature)
+### Option 1: [EVC Permit](https://evc.wtf/docs/concepts/internals/permit/) (Off-Chain Signature)
 
 ```solidity
 // User generates approval hash
@@ -105,7 +105,7 @@ bytes wrapperData = abi.encode(params, new bytes(0)); // Empty signature
 
 1. **Solver validates authorization**: Checks caller is authenticated solver
 2. **Wrapper validates user authorization**: Verifies permit signature or pre-approved hash
-3. **EVC batch assembly**: Wrapper constructs EVC batch items:
+3. **[EVC batch](https://evc.wtf/docs/concepts/internals/batch) assembly**: Wrapper constructs EVC batch items:
    - Optional: EVC.permit() if using permit flow
    - Enable destination vault (toVault) as collateral if not already enabled
    - Transfer collateral from subaccount to owner (if subaccount different from owner)
@@ -114,7 +114,7 @@ bytes wrapperData = abi.encode(params, new bytes(0)); // Empty signature
    - Swaps old collateral vault tokens into new collateral vault tokens
    - Sends new collateral to receiver (subaccount)
 5. **Collateral deposit**: New collateral automatically deposited in destination vault
-6. **EVC account health check**: Verifies account remains properly collateralized
+6. **[EVC account health check](https://evc.wtf/docs/concepts/internals/account-status-checks/)**: Verifies account remains properly collateralized
 7. **Batch completion**: If all steps succeed, collateral swap is complete
 
 ### Fund Flow Diagram
@@ -170,8 +170,8 @@ You can execute multiple swap operations on the same subaccount:
 - Can chain multiple swaps by using output of one as input to next
 
 **Example sequence**:
-1. Swap 500 eUSDC → 250 eWETH
-2. Swap 250 eWETH → 100 eDAI
+1. Swap 500 eUSDC to 250 eWETH
+2. Swap 250 eWETH to 100 eDAI
 3. Result: 500 eUSDC + 100 eDAI collateral (original 500 eUSDC went to other swaps)
 
 ## Special Handling for Subaccounts

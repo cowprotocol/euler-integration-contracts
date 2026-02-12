@@ -2,24 +2,22 @@
 
 ## Introduction
 
-This repository contains **Euler-CoW Protocol integration contracts** that enable leveraged position management (opening, closing, growing, and shrinking) and collateral swaps through CoW Protocol settlements combined with Ethereum Vault Connector (EVC) operations. The contracts act as "wrappers" that coordinate complex multi-step DeFi operations atomically. Through its
+This repository contains **Euler-CoW Protocol integration contracts** that enable leveraged position management (opening, closing, growing, and shrinking) and collateral swaps through CoW Protocol settlements combined with [Ethereum Vault Connector (EVC)](https://evc.wtf/) operations. The contracts, using CoW's [Generalized Wrappers](https://docs.cow.fi/cow-protocol/concepts/order-types/wrappers) architecture, coordinate complex multi-step DeFi operations atomically around a CoW settlement operation. Through its
 design, further wrappers could be added in the future to satisfy evolving use-cases.
+
+## What is the EVC?
+
+Short for Ethereum Vault Connector, its an architecture designed and used by the [Euler Finance](https://eulerlabs.com/) team to coordinate money market operations between [vault contracts](https://docs.euler.finance/concepts/core/vaults/).
 
 ## What Are Wrappers?
 
-Wrappers are smart contracts that add custom logic around [CoW Protocol settlements](https://docs.cow.fi/cow-protocol/reference/contracts/core/settlement). They enable transactions that would otherwise be impossible in a single atomic operation by coordinating multiple steps:
-
-1. **Pre-settlement operations** (e.g., enabling vaults, approving collateral)
-2. **CoW Protocol settlement** (DEX aggregation and order matching, converting to Euler vault tokens)
-3. **Post-settlement operations** (e.g., repaying debt, adding collateral to user's vault)
-
-All of these steps execute atomically within an EVC batch, allowing for flash-loan like functionality where tokens can be borrowed before the supporting collateral exists.
+Wrappers are smart contracts that add custom logic around [CoW Protocol settlements](https://docs.cow.fi/cow-protocol/reference/contracts/core/settlement). They serve as the basis for the implementation of the Euler integration with CoW.
 
 ## Architecture Overview
 
 ### Base Framework: CowWrapper
 
-`CowWrapper.sol` is a self-contained abstract base contract provided by the CoW DAO which should be used for all wrappers. In particular it ensures:
+[`CowWrapper.sol`](../../src/CowWrapper.sol) is a self-contained abstract base contract provided by the CoW DAO which should be used for all wrappers. In particular it ensures:
 
 - **Solver Authentication**: Verifies that only authenticated CoW Protocol solvers can initiate settlements
 - **Wrapper Chaining**: Allows multiple wrappers to be chained together, where each wrapper processes its own logic before delegating to the next wrapper or final settlement
@@ -27,11 +25,11 @@ All of these steps execute atomically within an EVC batch, allowing for flash-lo
 
 ### EVC Integration Base: CowEvcBaseWrapper
 
-`CowEvcBaseWrapper.sol` extends `CowWrapper` with:
+[`CowEvcBaseWrapper.sol`](../../src/CowEvcBaseWrapper.sol) extends `CowWrapper` with:
 
-- **EVC Batch Coordination**: Manages batching of operations within the EVC's atomic execution context
+- **EVC Batch Coordination**: Manages batching of operations within the [EVC's atomic execution context](https://evc.wtf/docs/concepts/internals/batch)
 - **Authorization Mechanisms**: Supports two authorization flows:
-  - **EVC Permit Flow**: Users sign a permit message for one-time authorization with the EVC
+  - **EVC Permit Flow**: Users sign a [permit message](https://evc.wtf/docs/concepts/internals/permit/) for one-time authorization with the EVC
   - **Pre-Approved Hash Flow**: Users pre-approve operation hashes on-chain (useful for EIP-7702 wallets)
 - **Parameter Hashing**: Uses EIP-712 to securely hash parameters and verify user intent
 - **Account Health Checks**: Leverages EVC's automatic account status checks at batch conclusion
@@ -40,80 +38,33 @@ All of these steps execute atomically within an EVC batch, allowing for flash-lo
 
 ### 1. CowEvcOpenPositionWrapper
 
-**Purpose**: Opens or grows leveraged positions (long or short)
+The [`CowEvcOpenPositionWrapper`](../../src/CowEvcOpenPositionWrapper.sol) opens or grows leveraged positions (long or short).
 
-**Flow**:
-1. Wrapper validates user authorization (permit or pre-approved hash)
-2. Enable collateral vault as collateral
-3. Enable borrow vault as controller
-4. Deposit user's margin collateral as needed
-5. Borrow assets against the collateral
-6. Execute CoW settlement to swap borrowed assets → collateral assets
-7. All operations occur atomically within EVC batch
-8. EVC validates account is sufficiently collateralized (above minimum collateral ratio)
+**Example**: The user starts with no funds or debt in their account. User deposits 1000 USDC, borrows 5 ETH (when 1 ETH = $1000), swaps those 5 ETH back to $5000 USDC. Result: 6000 USDC collateral backing $5000 WETH debt (120% collateralization).
 
 **Result**: User holds a leveraged position with borrowed assets converted to additional collateral
 
-**Example**: User deposits 1000 USDC, borrows 5 ETH (when 1 ETH = $1000), swaps those 5 ETH back to $5000 USDC. Result: 6000 USDC collateral backing $5000 WETH debt (120% collateralization).
+See the [dedicated page](./02-open-position.md) on this wrapper.
 
 ### 2. CowEvcClosePositionWrapper
 
-**Purpose**: Closes leveraged positions (full or partial)
+The [`CowEvcClosePositionWrapper`](../../src/CowEvcClosePositionWrapper.sol) closes leveraged positions (full or partial)
 
-**Flow**:
-1. Wrapper validates user authorization
-2. Create or reuse an Inbox contract (temporary fund holder unique to each Euler subaccount for security)
-3. Transfer collateral from subaccount to Inbox
-4. Execute CoW settlement to swap collateral → debt repayment assets
-5. Repay debt on user's behalf using swapped assets
-6. Return excess assets to user's account
-7. All operations occur atomically within EVC batch
+**Example**: Using the position opened in the open position wrapper above as an example, the user closes all 5 ETH of their short position (ETH = $1000). Around 5000 USDC collateral is swapped to exactly the user's debt of 5 ETH. The debt is repaid, and remaining USDC ($1000) is left in the account.
 
-**Special Considerations**:
-- **Unlike other wrappers, uses an `Inbox` contract as the settlement receiver and sender. This means that this wrapper should be signed as a EIP-1271 order.**
-- Inbox temporarily holds swapped funds and manages repayment
-- Supports both full repayment (with CoW order kind `KIND_BUY`) and partial repayment (`KIND_SELL`)
+**Result**: User's debt is repaid and remaining collateral is left in the account
 
-**Result**: User's debt is repaid and remaining collateral is returned
-
-**Example**: User closes a 5 ETH short position (ETH = $1000). Around 5000 USDC collateral is swapped to exactly the user's debt of 5 ETH. The debt is repaid, and remaining USDC ($1000) is returned to the owner's account.
+See the [dedicated page](./03-close-position.md) on this wrapper.
 
 ### 3. CowEvcCollateralSwapWrapper
 
-**Purpose**: Swaps all or a portion of collateral between different Euler vaults while holding debt
+The [`CowEvcCollateralSwapWrapper`](../../src/CowEvcCollateralSwapWrapper.sol) swaps all or a portion of collateral between different Euler vaults while holding debt
 
-**Flow**:
-1. Wrapper validates user authorization
-2. Enable destination vault as new collateral
-3. Transfer collateral from subaccount to main account (if using subaccount)
-4. Execute CoW settlement to swap old collateral → new collateral
-5. New collateral is automatically deposited in the destination vault
-6. All operations occur atomically within EVC batch
-7. EVC validates account is sufficiently collateralized after swap (above minimum collateral ratio)
+**Example**: Using the position opened in the open position wrapper above as an example, the user swaps their full 6000 USDC collateral to ~0.06 BTC (1 BTC = $100000) collateral while maintaining their debt position.
 
-**Result**: User's collateral composition changes without closing the position
+**Result**: The user holds both 0.06 BTC as collateral assets against their ETH debt. User's collateral composition changes without closing the position
 
-**Example**: User swaps from 1000 USDC collateral to 1 WETH collateral while maintaining their debt position.
-
-## How Wrappers Fit Into CoW Orders
-
-Each wrapper is referenced in the CoW order's `appData` along with its encoded parameters:
-
-```json
-{
-  "appCode": "euler_position_open",
-  "wrappers": [
-    {
-      "address": "<wrapper-contract-address>",
-      "data": "<abi-encoded-params><signature-if-needed>"
-    }
-  ]
-}
-```
-
-Where `<wrapper-contract-address>` is the address of whichever user operation is occuring (ex. open position, close position, collateral swap), `<abi-encoded-params>` should be the parameters object being used by the current wrapper, and `<signature-if-needed>` is the EVC permit signature if using the permit authorization flow.
-
-The solver executes the wrapper instead of the settlement contract directly, which results in the requested user operation being handled.
+See the [dedicated page](./04-collateral-swap.md) on this wrapper.
 
 ## Authorization Flows
 
@@ -121,7 +72,7 @@ There are two different ways a user can authorize their order.
 
 ### Flow 1: EVC Permit (Off-Chain Signature)
 
-Users provide a [EIP-712 EVC.permit signature](https://evc.wtf/docs/concepts/internals/permit/) of the data returned by `getPermitData(params)` authorizing a specific operation.
+Users provide an EIP-712 EVC.permit signature of the data returned by `getPermitData(params)` authorizing a specific operation.
 
 Additionally, the user signs a [EIP-712 order with CoW](https://docs.cow.fi/cow-protocol/reference/core/signing-schemes#eip-712) (in the case of the close position wrapper, its a EIP-1271 order with the same signing).
 
@@ -136,7 +87,7 @@ The full flow is:
 7. User's browser constructs a wrapper request with the CoW order + signature, and then submits to the CoW API.
 8. When a solver executes the order, the wrapper validates signature via `EVC.permit()`
 
-**Advantages**: Requires less (potentially no) on-chain transactions, no need to set trust to the wrapper contract as an operator
+**Advantages**: Requires less (potentially no) on-chain transactions, no need to set trust to the wrapper contract as an [operator](https://evc.wtf/docs/concepts/internals/operators)
 **Disadvantages**: Not compatible with smart contract wallets, impossible to reduce to one signature request from the user
 
 ### Flow 2: Pre-Approved Hash (On-Chain)
@@ -181,9 +132,9 @@ A detailed accounting of these risks and more can be seen in the [security consi
 
 ## Key Dependencies
 
-- **Euler Vault Kit** (`lib/euler-vault-kit`): ERC4626 vault implementation with borrowing support
-- **Ethereum Vault Connector (EVC)**: Batch transaction coordinator with account health checks
+- **[Ethereum Vault Connector (EVC)](https://evc.wtf/)**: Batch transaction coordinator with account health checks
 - **CoW Protocol** (`lib/cow`): DEX aggregator settlement contracts and order libraries
+- **Euler Vault Kit** (`lib/euler-vault-kit`): ERC4626 vault implementation with borrowing support
 - **OpenZeppelin**: Standard token interfaces (via EVC dependency)
 
 ## Related Documentation
