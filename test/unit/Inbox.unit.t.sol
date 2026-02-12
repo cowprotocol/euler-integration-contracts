@@ -7,6 +7,7 @@ import {Inbox, InboxLibrary} from "../../src/Inbox.sol";
 import {InboxFactory} from "../../src/InboxFactory.sol";
 import {MockCowSettlement, MockCowAuthentication} from "./mocks/MockCowProtocol.sol";
 import {MockERC20, MockBorrowVault} from "./mocks/MockERC20AndVaults.sol";
+import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 
 contract InboxUnitTest is Test {
     InboxFactory public inboxFactory;
@@ -93,6 +94,11 @@ contract InboxUnitTest is Test {
         assertEq(inbox.SETTLEMENT(), address(mockSettlement), "SETTLEMENT not set");
         (, bytes32 inboxDomainSeparator) = inboxFactory.getInboxAddressAndDomainSeparator(BENEFICIARY, ACCOUNT);
         assertEq(inbox.INBOX_DOMAIN_SEPARATOR(), inboxDomainSeparator, "INBOX_DOMAIN_SEPARATOR not set");
+        assertNotEq(
+            inbox.SETTLEMENT_DOMAIN_SEPARATOR(),
+            inbox.INBOX_DOMAIN_SEPARATOR(),
+            "SETTLEMENT_DOMAIN_SEPARATOR should not match INBOX_DOMAIN_SEPARATOR"
+        );
     }
 
     function test_Constructor_SetsToActualSettlementContractDomainSeparatorCorrectly() public {
@@ -173,6 +179,19 @@ contract InboxUnitTest is Test {
         assertEq(mockToken.allowance(address(inbox), RECIPIENT), 2000e18, "Approval not updated");
     }
 
+    function test_CallApprove_RevertsWhenTokenReturnsFalse() public {
+        // Mock the approve call to return false
+        vm.mockCall(
+            address(mockToken),
+            abi.encodeWithSelector(MockERC20.approve.selector, RECIPIENT, 1000e18),
+            abi.encode(false)
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(SafeERC20.SafeERC20FailedOperation.selector, address(mockToken)));
+        vm.prank(address(inboxFactory));
+        inbox.callApprove(address(mockToken), RECIPIENT, 1000e18);
+    }
+
     // ============== callTransfer Tests ==============
 
     function test_CallTransfer_ByOperator() public {
@@ -200,6 +219,19 @@ contract InboxUnitTest is Test {
         vm.prank(address(inboxFactory));
         vm.expectRevert("ERC20Mock: insufficient balance");
         inbox.callTransfer(address(mockToken), RECIPIENT, 1500e18);
+    }
+
+    function test_CallTransfer_RevertsWhenTokenReturnsFalse() public {
+        // Mock the transfer call to return false
+        vm.mockCall(
+            address(mockToken),
+            abi.encodeWithSelector(MockERC20.transfer.selector, RECIPIENT, 500e18),
+            abi.encode(false)
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(SafeERC20.SafeERC20FailedOperation.selector, address(mockToken)));
+        vm.prank(address(inboxFactory));
+        inbox.callTransfer(address(mockToken), RECIPIENT, 500e18);
     }
 
     // ============== callVaultRepay Tests ==============
