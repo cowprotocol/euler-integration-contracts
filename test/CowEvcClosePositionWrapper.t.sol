@@ -336,10 +336,12 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         bytes32 hash = closePositionWrapper.getApprovalHash(params);
         _setupPreApprovedFlow(account, hash);
 
-        // the pre approved flow requires setting a signature on the inbox (not on the settlement because the inbox is what sends the order)
-        vm.startPrank(user);
-        Inbox(closePositionWrapper.getInbox(user, account)).setPreSignature(settlement.orderUid, true);
-        vm.stopPrank();
+        // The inbox needs to be deployed in advance. Anyone can deploy the inbox with a call to `getInbox`
+        Inbox inbox = Inbox(closePositionWrapper.getInbox(user, account));
+
+        // The pre approved flow requires setting a signature on the inbox (not on the settlement because the inbox is what sends the order)
+        vm.prank(user);
+        inbox.setPreSignature(settlement.orderUid, true);
 
         // Verify that the operator is authorized before executing
         assertTrue(
