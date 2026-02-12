@@ -42,14 +42,12 @@ contract InboxFactory {
     /// @param subaccount The subaccount address
     /// @return creationAddress The computed Inbox address
     /// @return domainSeparator The domain separator for the Inbox contract
-    /// @return creationCode The `creationCode` parameter used for `CREATE2`
-    /// @return salt The `salt` parameter used for `CREATE2`
     function getInboxAddressAndDomainSeparator(address owner, address subaccount)
         external
         view
-        returns (address creationAddress, bytes32 domainSeparator, bytes memory creationCode, bytes32 salt)
+        returns (address creationAddress, bytes32 domainSeparator)
     {
-        (creationAddress, creationCode, salt) = _getInboxAddress(owner, subaccount);
+        (creationAddress,,) = _getInboxAddress(owner, subaccount);
         domainSeparator = keccak256(
             abi.encode(
                 InboxConstants.DOMAIN_TYPE_HASH, keccak256("Inbox"), keccak256("1"), block.chainid, creationAddress

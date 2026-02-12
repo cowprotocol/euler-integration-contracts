@@ -129,7 +129,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         // Get trade data using EIP-1271
         r.trades = new ICowSettlement.Trade[](1);
 
-        (address inboxAddress, bytes32 inboxDomainSeparator,,) =
+        (address inboxAddress, bytes32 inboxDomainSeparator) =
             closePositionWrapper.getInboxAddressAndDomainSeparator(owner, account);
 
         (r.trades[0], r.orderData, r.orderUid) = setupCowOrderWithInbox({
@@ -558,7 +558,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         ICowSettlement.Trade[] memory trades = new ICowSettlement.Trade[](3);
         {
-            (address inboxAddress, bytes32 inboxDomainSeparator,,) =
+            (address inboxAddress, bytes32 inboxDomainSeparator) =
                 closePositionWrapper.getInboxAddressAndDomainSeparator(user, account);
             (trades[0],,) = setupCowOrderWithInbox({
                 tokens: tokens,
@@ -574,7 +574,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             });
         }
         {
-            (address inboxAddress, bytes32 inboxDomainSeparator,,) =
+            (address inboxAddress, bytes32 inboxDomainSeparator) =
                 closePositionWrapper.getInboxAddressAndDomainSeparator(user2, account2);
             (trades[1],,) = setupCowOrderWithInbox({
                 tokens: tokens,
@@ -590,7 +590,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             });
         }
         {
-            (address inboxAddress, bytes32 inboxDomainSeparator,,) =
+            (address inboxAddress, bytes32 inboxDomainSeparator) =
                 closePositionWrapper.getInboxAddressAndDomainSeparator(user3, account3);
 
             (trades[2],,) = setupCowOrderWithInbox({

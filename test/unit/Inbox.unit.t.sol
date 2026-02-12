@@ -98,7 +98,7 @@ contract InboxUnitTest is Test {
     }
 
     function testFuzz_InboxFactory_ViewFunctionReturnsCorrectValues(address beneficiary, address account) public {
-        (address computedAddress, bytes32 domainSeparator, bytes memory creationCode, bytes32 salt) =
+        (address computedAddress, bytes32 domainSeparator) =
             inboxFactory.getInboxAddressAndDomainSeparator(beneficiary, account);
 
         address createdInbox = inboxFactory.getInbox(beneficiary, account);
@@ -107,12 +107,6 @@ contract InboxUnitTest is Test {
 
         assertEq(computedAddress, createdInbox, "Creation address doesnt match");
         assertEq(domainSeparator, Inbox(createdInbox).INBOX_DOMAIN_SEPARATOR(), "Domain separator mismatch");
-        assertEq(
-            creationCode,
-            abi.encodePacked(type(Inbox).creationCode, abi.encode(inboxFactory, beneficiary, mockSettlement)),
-            "Creation code is not as expected"
-        );
-        assertEq(salt, bytes32(uint256(uint160(account))), "Salt is not as expected");
     }
 
     // ============== getInbox Tests ==============

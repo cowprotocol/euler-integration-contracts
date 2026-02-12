@@ -200,7 +200,8 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
             collateralAmount: 1000e18
         });
 
-        address inbox = CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account);
+        (address inbox,) =
+            CowEvcClosePositionWrapper(address(wrapper)).getInboxAddressAndDomainSeparator(params.owner, params.account);
 
         // Give  some collateral vault tokens (what it would received previously from transferring from the user in the EVC.permit)
         mockCollateralVault.mint(inbox, 5000e18);
