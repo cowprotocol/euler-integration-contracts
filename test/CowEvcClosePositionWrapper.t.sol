@@ -158,7 +158,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
     }
 
     /// @notice Test closing a leveraged position using the wrapper with EIP-1271 signatures
-    function test_ClosePositionWrapper_Permit_SuccessfulRepay() external {
+    function test_ClosePositionWrapper_Permit_SuccessFullRepay() external {
         uint256 borrowAmount = 1e18;
         uint256 collateralAmount = USDS_MARGIN + 2495e18;
 
@@ -221,9 +221,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Verify the position was closed successfully
         assertEq(IEVault(EWETH).debtOf(account), 0, "User should have no debt after closing");
-        assertLt(EUSDS.balanceOf(account), collateralBeforeAccount, "User should have less collateral after closing");
+        assertApproxEqRel(EUSDS.balanceOf(account), collateralBeforeAccount - DEFAULT_SELL_AMOUNT, 0.01 ether, "User should have used approximately 2500 EUSDS to repay after closing");
         assertEq(EUSDS.balanceOf(user), collateralBefore, "User main account balance should not have changed");
-        assertGt(EUSDS.balanceOf(account), 0, "User should have some collateral remaining");
     }
 
     /// @notice Test shrinking the position with partial repayment using EIP-1271
@@ -290,7 +289,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
     }
 
     /// @notice Test closing a position with pre-approved hash (no signature needed)
-    function test_ClosePositionWrapper_PreApprove_SuccessfulRepay() external {
+    function test_ClosePositionWrapper_PreApprove_SuccessFullRepay() external {
         uint256 borrowAmount = 1e18;
         uint256 collateralAmount = USDS_MARGIN + 2495e18;
 
