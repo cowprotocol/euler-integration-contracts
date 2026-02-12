@@ -133,8 +133,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
     //////////////////////////////////////////////////////////////*/
 
     function test_EncodePermitData_EncodesAsExpected() public {
-        mockBorrowVault.setDebt(ACCOUNT, DEFAULT_REPAY_AMOUNT);
-
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
         bytes memory permitData = CowEvcClosePositionWrapper(address(wrapper)).encodePermitData(params);
@@ -322,8 +320,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
     }
 
     function test_WrappedSettle_PreApprovedHashRevertsIfDeadlineExceeded() public {
-        mockBorrowVault.setDebt(ACCOUNT, DEFAULT_REPAY_AMOUNT);
-
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
         params.deadline = block.timestamp - 1; // Past deadline
 
@@ -347,8 +343,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
     //////////////////////////////////////////////////////////////*/
 
     function test_Params_SameOwnerAndAccount() public {
-        mockBorrowVault.setDebt(OWNER, DEFAULT_REPAY_AMOUNT);
-
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
         params.account = OWNER; // Same as owner
 
