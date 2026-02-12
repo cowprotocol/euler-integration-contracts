@@ -3,11 +3,9 @@ pragma solidity ^0.8;
 
 import {GPv2Order} from "cow/libraries/GPv2Order.sol";
 
-import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IEVault, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcClosePositionWrapper} from "../src/CowEvcClosePositionWrapper.sol";
-import {CowEvcBaseWrapper} from "../src/CowEvcBaseWrapper.sol";
 import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 import {Inbox} from "../src/Inbox.sol";

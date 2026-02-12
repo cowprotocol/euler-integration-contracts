@@ -378,7 +378,7 @@ contract InboxUnitTest is Test {
         );
     }
 
-    function _createMockOrderData(MockOrder memory order) internal view returns (bytes memory) {
+    function _createMockOrderData(MockOrder memory order) internal pure returns (bytes memory) {
         // Manually construct the structure matching EIP-712 Order encoding
         return abi.encode(
             order.sellToken,

@@ -341,7 +341,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
                     EDGE CASE TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_Params_SameOwnerAndAccount() public {
+    function test_Params_SameOwnerAndAccount() public view {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
         params.account = OWNER; // Same as owner
 
