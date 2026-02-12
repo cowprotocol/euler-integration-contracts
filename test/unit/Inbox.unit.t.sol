@@ -22,13 +22,6 @@ contract InboxUnitTest is Test {
     address immutable RECIPIENT = makeAddr("recipient");
     address immutable OTHER_USER = makeAddr("other user");
 
-    // EIP-712 constants from Inbox
-    bytes32 constant DOMAIN_TYPE_HASH =
-        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
-    bytes32 constant ORDER_TYPE_HASH = keccak256(
-        "Order(address sellToken,address buyToken,address receiver,uint256 sellAmount,uint256 buyAmount,uint32 validTo,bytes32 appData,uint256 feeAmount,string kind,bool partiallyFillable,string sellTokenBalance,string buyTokenBalance)"
-    );
-
     // This struct represents the order data that is signed by a user of CoW Protocol
     struct MockOrder {
         address sellToken;
@@ -392,7 +385,7 @@ contract InboxUnitTest is Test {
     }
 
     function _getOrderStructHash(bytes memory orderData) internal pure returns (bytes32 structHash) {
-        bytes32 typeHash = ORDER_TYPE_HASH;
+        bytes32 typeHash = InboxConstants.ORDER_TYPE_HASH;
 
         // Compute struct hash with order data prepended with type hash
         assembly {
