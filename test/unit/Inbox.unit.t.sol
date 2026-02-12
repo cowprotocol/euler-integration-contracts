@@ -271,9 +271,9 @@ contract InboxUnitTest is Test {
 
     // ============== isValidSignature Tests ==============
 
-    function test_IsValidSignature_ValidSignatureReturnsCorrectMagicValue() public view {
+    function testFuzz_IsValidSignature_ValidSignatureReturnsCorrectMagicValue(MockOrder memory mockOrder) public view {
         // Create a mock valid signature and order data
-        (bytes32 orderDigest, bytes memory signatureData) = _createValidSignature();
+        (bytes32 orderDigest, bytes memory signatureData) = _createValidSignature(mockOrder);
 
         bytes4 result = inbox.isValidSignature(orderDigest, signatureData);
 
@@ -296,9 +296,9 @@ contract InboxUnitTest is Test {
         inbox.isValidSignature(orderDigest, insufficientData);
     }
 
-    function test_IsValidSignature_RevertsIfSignerIsNotBeneficiary() public {
+    function testFuzz_IsValidSignature_RevertsIfSignerIsNotBeneficiary(MockOrder memory mockOrder) public {
         // Create a signature with the wrong signer
-        bytes memory orderData = _createMockOrderData();
+        bytes memory orderData = _createMockOrderData(mockOrder);
         (bytes32 settlementOrderDigest, bytes32 inboxOrderDigest) = _getOrderDigests(orderData);
 
         // Sign with a different private key (not BENEFICIARY)
@@ -311,9 +311,9 @@ contract InboxUnitTest is Test {
         inbox.isValidSignature(settlementOrderDigest, signatureData);
     }
 
-    function test_IsValidSignature_RevertsOnOrderDigestMismatch() public {
+    function testFuzz_IsValidSignature_RevertsOnOrderDigestMismatch(MockOrder memory mockOrder) public {
         bytes32 wrongDigest = keccak256("wrong");
-        (bytes32 rightDigest, bytes memory signatureData) = _createValidSignature();
+        (bytes32 rightDigest, bytes memory signatureData) = _createValidSignature(mockOrder);
 
         vm.expectRevert(abi.encodeWithSelector(Inbox.OrderHashMismatch.selector, rightDigest, wrongDigest));
         inbox.isValidSignature(wrongDigest, signatureData);
@@ -321,9 +321,13 @@ contract InboxUnitTest is Test {
 
     // ============== Helper Functions ==============
 
-    function _createValidSignature() internal view returns (bytes32 orderDigest, bytes memory signatureData) {
+    function _createValidSignature(MockOrder memory mockOrder)
+        internal
+        view
+        returns (bytes32 orderDigest, bytes memory signatureData)
+    {
         // Create mock order data (384 bytes)
-        bytes memory orderData = _createMockOrderData();
+        bytes memory orderData = _createMockOrderData(mockOrder);
 
         // Compute the inbox order digest
         (bytes32 settlementOrderDigest, bytes32 inboxOrderDigest) = _getOrderDigests(orderData);
@@ -349,25 +353,8 @@ contract InboxUnitTest is Test {
         );
     }
 
-    function _createMockOrderData() internal view returns (bytes memory) {
-        // Create a 416 byte order data structure
-        // This is the raw encoding of a CoW Order struct
-        MockOrder memory order = MockOrder({
-            sellToken: address(0x1),
-            buyToken: address(0x2),
-            receiver: address(0x3),
-            sellAmount: 1000e18,
-            buyAmount: 500e18,
-            validTo: uint32(block.timestamp + 3600),
-            appData: bytes32(0),
-            feeAmount: 0,
-            kind: "sell",
-            partiallyFillable: false,
-            sellTokenBalance: "erc20",
-            buyTokenBalance: "erc20"
-        });
-
-        // Manually construct the 416-byte structure matching EIP-712 Order encoding
+    function _createMockOrderData(MockOrder memory order) internal view returns (bytes memory) {
+        // Manually construct the structure matching EIP-712 Order encoding
         return abi.encode(
             order.sellToken,
             order.buyToken,
