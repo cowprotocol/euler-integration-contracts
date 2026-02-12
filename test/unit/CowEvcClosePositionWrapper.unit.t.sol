@@ -96,12 +96,11 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
                     PARSE WRAPPER DATA TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_ValidateWrapperData_EmptySignature() public view {
+    function test_ValidateWrapperData_Valid() public view {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
 
-        // Should not revert for valid wrapper data
         wrapper.validateWrapperData(wrapperData);
     }
 

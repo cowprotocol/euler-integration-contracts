@@ -289,18 +289,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         assertEq(WETH.balanceOf(user), 0, "User should have used any collateral they received to repay");
     }
 
-    /// @notice Test parseWrapperData function
-    function test_ClosePositionWrapper_ParseWrapperData() external view {
-        address account = address(uint160(user) ^ uint8(0x01));
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
-        params.collateralAmount = 0;
-
-        bytes memory wrapperData = abi.encode(params, new bytes(65));
-
-        // Should not revert for valid wrapper data
-        closePositionWrapper.validateWrapperData(wrapperData);
-    }
-
     /// @notice Test closing a position with pre-approved hash (no signature needed)
     function test_ClosePositionWrapper_PreApprove_SuccessfulRepay() external {
         uint256 borrowAmount = 1e18;
