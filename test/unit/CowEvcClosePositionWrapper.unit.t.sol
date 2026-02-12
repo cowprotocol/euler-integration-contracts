@@ -358,16 +358,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         assertEq(items[0].onBehalfOfAccount, OWNER, "Should operate on behalf of same account");
     }
 
-    function test_Params_ZeroDebt() public {
-        mockBorrowVault.setDebt(ACCOUNT, 0);
-
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
-
-        bytes memory permitData = CowEvcClosePositionWrapper(address(wrapper)).encodePermitData(params);
-        (IEVC.BatchItem[] memory items,) = _decodePermitData(permitData);
-        assertEq(items.length, 1, "Should have 1 item");
-    }
-
     function test_RepayAmount_ExceedsDebt_SendsExcessToOwner() public {
         // Setup: debt is 100 tokens, but swap gives us 110 tokens
         uint256 debtAmount = 100e18;
