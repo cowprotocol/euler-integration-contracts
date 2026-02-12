@@ -157,8 +157,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
     /// @notice Test closing a leveraged position using the wrapper with EIP-1271 signatures
     function test_ClosePositionWrapper_SuccessFullRepay() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
         uint256 borrowAmount = 1e18;
         uint256 collateralAmount = USDS_MARGIN + 2495e18;
 
@@ -228,8 +226,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
     /// @notice Test that unauthorized users cannot call evcInternalSettle directly
     function test_ClosePositionWrapper_UnauthorizedInternalSettle() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
         bytes memory settleData = "";
         bytes memory wrapperData = "";
 
@@ -240,8 +236,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
     /// @notice Test shrinking the position with partial repayment using EIP-1271
     function test_ClosePositionWrapper_PartialRepay() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
         uint256 borrowAmount = 2e18;
         uint256 collateralAmount = USDS_MARGIN + 4990e18;
         uint256 sellAmount = 2500e18;
@@ -317,8 +311,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
     /// @notice Test closing a position with pre-approved hash (no signature needed)
     function test_ClosePositionWrapper_WithPreApprovedHash() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
         uint256 borrowAmount = 1e18;
         uint256 collateralAmount = USDS_MARGIN + 2495e18;
 
@@ -403,8 +395,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
     /// @notice Test that invalid signature causes the transaction to revert with EIP-1271
     function test_ClosePositionWrapper_InvalidSignatureReverts() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
         uint256 borrowAmount = 1e18;
         uint256 collateralAmount = USDS_MARGIN + 2495e18;
 
@@ -461,8 +451,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
     /// @notice Test that the wrapper can handle being called three times in the same chain
     /// @dev Two users close positions in the same direction (long USDS), one user closes opposite (long WETH)
     function test_ClosePositionWrapper_ThreeUsers_TwoSameOneOpposite() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
         // Setup User1: Long USDS (USDS collateral, WETH debt). ~1 ETH debt
         setupLeveragedPositionFor({
             owner: user,
