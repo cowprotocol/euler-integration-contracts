@@ -75,8 +75,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
     }
 
     /// @notice Setup pre-approved hash flow for close position
-    function _setupPreApprovedFlow(address account, bytes32 hash) internal {
-        vm.startPrank(user);
+    function _setupPreApprovedFlow(address owner, address account, bytes32 hash) internal {
+        vm.startPrank(owner);
 
         // Set operators
         EVC.setAccountOperator(account, address(closePositionWrapper), true);
@@ -322,7 +322,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Setup pre-approved flow
         bytes32 hash = closePositionWrapper.getApprovalHash(params);
-        _setupPreApprovedFlow(account, hash);
+        _setupPreApprovedFlow(user, account, hash);
 
         // the pre approved flow requires setting a signature on the inbox (not on the settlement because the inbox is what sends the order)
         vm.startPrank(user);
