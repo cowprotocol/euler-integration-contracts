@@ -106,19 +106,6 @@ contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
     }
 
     /*//////////////////////////////////////////////////////////////
-                    PARSE WRAPPER DATA TESTS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_ValidateWrapperData_EmptySignature() public view {
-        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
-
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-
-        // Should not revert for valid wrapper data
-        wrapper.validateWrapperData(wrapperData);
-    }
-
-    /*//////////////////////////////////////////////////////////////
                     APPROVAL HASH TESTS
     //////////////////////////////////////////////////////////////*/
 

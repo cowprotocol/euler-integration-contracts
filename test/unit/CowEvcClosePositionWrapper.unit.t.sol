@@ -132,18 +132,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
     }
 
     /*//////////////////////////////////////////////////////////////
-                    PARSE WRAPPER DATA TESTS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_ValidateWrapperData_Valid() public view {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
-
-        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
-
-        wrapper.validateWrapperData(wrapperData);
-    }
-
-    /*//////////////////////////////////////////////////////////////
                     APPROVAL HASH TESTS
     //////////////////////////////////////////////////////////////*/
 

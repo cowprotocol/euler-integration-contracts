@@ -10,6 +10,7 @@ import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
 import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 import {EmptyWrapper} from "../EmptyWrapper.sol";
 import {IEVC} from "evc/EthereumVaultConnector.sol";
+import {Bytes} from "openzeppelin-contracts/contracts/utils/Bytes.sol";
 
 abstract contract UnitTestBase is Test {
     MockEVC public mockEvc;
@@ -166,5 +167,12 @@ abstract contract UnitTestBase is Test {
         bytes memory malformedData = hex"deadbeef";
         vm.expectRevert(new bytes(0));
         wrapper.validateWrapperData(malformedData);
+    }
+
+    function test_ValidateWrapperData_Valid() public {
+        (, bytes memory wrapperData,) = _prepareSuccessfulPreSignSettlement();
+
+        // Should not revert for valid wrapper data
+        wrapper.validateWrapperData(Bytes.slice(wrapperData, 2)); // Skip the length prefix to get to the actual wrapper data expected by validateWrapperData
     }
 }

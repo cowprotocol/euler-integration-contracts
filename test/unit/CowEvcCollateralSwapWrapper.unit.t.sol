@@ -125,19 +125,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
     }
 
     /*//////////////////////////////////////////////////////////////
-                    PARSE WRAPPER DATA TESTS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_ValidateWrapperData_EmptySignature() public view {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
-
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-
-        // Should not revert for valid wrapper data
-        wrapper.validateWrapperData(wrapperData);
-    }
-
-    /*//////////////////////////////////////////////////////////////
                     APPROVAL HASH TESTS
     //////////////////////////////////////////////////////////////*/
 
