@@ -37,11 +37,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // Setup user with USDS
         deal(address(USDS), user, 10000e18);
-
-        // User has approved WBTC for COW Protocol
-        address vaultRelayer = COW_SETTLEMENT.vaultRelayer();
-        vm.prank(user);
-        require(WBTC.approve(vaultRelayer, type(uint256).max));
     }
 
     /// @notice Create default CollateralSwapParams for testing
