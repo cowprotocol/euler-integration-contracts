@@ -99,10 +99,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
             new TestableCollateralSwapWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)))
         );
 
-        // Set solver as authenticated
-        mockAuth.setSolver(address(wrapper), true);
-        mockAuth.setSolver(address(emptyWrapper), true);
-
         mockFromVault.mint(ACCOUNT, 1000e18);
 
         mockFromVault.mint(OWNER, 2000e18);
