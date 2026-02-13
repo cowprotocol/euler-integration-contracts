@@ -196,7 +196,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
 
-    function test_EvcInternalSettle_WithSubaccountTransfer() public {
+    function test_EvcInternalSettle_ReturnsSourceTokenIfExcess() public {
         // Set up scenario where owner != account
         CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
             owner: OWNER,
@@ -225,6 +225,11 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         // put funds in the inbox so it doesn't revert
         deal(address(mockDebtAsset), inbox, 1);
 
+        assertEq(mockCollateralVault.balanceOf(ACCOUNT), 0, "Account should have no funds before settlement");
+
+        // Since there is no debt, all swap result (1 wei) is excess. We still call `repay` with 0 amount because it keeps the logic simpler
+        vm.expectCall(address(mockBorrowVault), abi.encodeCall(IBorrowing.repay, (0, ACCOUNT)));
+
         vm.prank(address(mockEvc));
         wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
 
@@ -235,6 +240,46 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
             "Inbox should not have any funds left over because it all gets sent back to the subaccount"
         );
         assertEq(mockCollateralVault.balanceOf(ACCOUNT), 5000e18, "Account should have everything returned to it");
+    }
+
+    function test_EvcInternalSettle_RevertsOnUnexpectedRepayResult() public {
+        // Setup: We expect to repay 100 tokens, but vault returns a different amount
+        uint256 debtAmount = 100e18;
+        uint256 swapResult = 100e18;
+        uint256 unexpectedRepayAmount = 50e18; // Vault will actually repay less than requested
+
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+
+        mockBorrowVault.setDebt(ACCOUNT, debtAmount);
+        // Configure mock vault to return unexpected amount
+        mockBorrowVault.setRepayAmount(unexpectedRepayAmount);
+
+        (address inbox,) =
+            CowEvcClosePositionWrapper(address(wrapper)).getInboxAddressAndDomainSeparator(params.owner, params.account);
+
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
+        bytes memory remainingWrapperData = "";
+
+        TestableClosePositionWrapper(address(wrapper))
+            .setExpectedEvcInternalSettleCall(
+                abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
+            );
+
+        // Give inbox the swap result
+        deal(address(mockDebtAsset), inbox, swapResult);
+
+        // Expect repay to be called with the swap result amount
+        vm.expectCall(address(mockBorrowVault), abi.encodeCall(IBorrowing.repay, (swapResult, ACCOUNT)));
+
+        // Expect revert with UnexpectedRepayResult error
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CowEvcClosePositionWrapper.UnexpectedRepayResult.selector, swapResult, unexpectedRepayAmount
+            )
+        );
+        vm.prank(address(mockEvc));
+        wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -270,6 +315,9 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
             1
         );
 
+        // Since there is no debt, all swap result (1 wei) is excess. We still call `repay` with 0 amount because it keeps the logic simpler
+        vm.expectCall(address(mockBorrowVault), abi.encodeCall(IBorrowing.repay, (0, ACCOUNT)));
+
         vm.prank(SOLVER);
         wrapper.wrappedSettle(settleData, chainedWrapperData);
     }
@@ -288,6 +336,9 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
             CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account),
             1
         );
+
+        // Since there is no debt, all swap result (1 wei) is excess. We still call `repay` with 0 amount because it keeps the logic simpler
+        vm.expectCall(address(mockBorrowVault), abi.encodeCall(IBorrowing.repay, (0, ACCOUNT)));
 
         vm.prank(SOLVER);
         wrapper.wrappedSettle(settleData, chainedWrapperData);
@@ -358,7 +409,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         assertEq(items[0].onBehalfOfAccount, OWNER, "Should operate on behalf of same account");
     }
 
-    function test_RepayAmount_ExceedsDebt_SendsExcessToOwner() public {
+    function test_RepayAmount_ExceedsDebt_SendsExcessDestinationTokenToOwner() public {
         // Setup: debt is 100 tokens, but swap gives us 110 tokens
         uint256 debtAmount = 100e18;
         uint256 swapResult = 110e18;
@@ -381,6 +432,8 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
 
         // Simulate swap result: inbox has more debt asset than needed
         deal(address(mockDebtAsset), inbox, swapResult);
+
+        assertEq(mockDebtAsset.balanceOf(OWNER), 0, "Owner does not have any funds before settlement");
 
         // Expect repay to be called with exact debt amount (not the excess)
         vm.expectCall(address(mockBorrowVault), abi.encodeCall(IBorrowing.repay, (debtAmount, ACCOUNT)));
