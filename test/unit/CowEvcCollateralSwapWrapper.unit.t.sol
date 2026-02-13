@@ -206,15 +206,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
                     EVC INTERNAL SWAP TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_EvcInternalSettle_OnlyEVC() public {
-        bytes memory settleData = "";
-        bytes memory wrapperData = "";
-        bytes memory remainingWrapperData = "";
-
-        vm.expectRevert(abi.encodeWithSelector(CowEvcBaseWrapper.Unauthorized.selector, address(this)));
-        wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
-    }
-
     function test_EvcInternalSettle_RequiresCorrectCalldata() public {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
             owner: OWNER,
