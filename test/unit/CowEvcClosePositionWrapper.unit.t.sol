@@ -96,11 +96,8 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
             new TestableClosePositionWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)))
         );
 
-        // Supply tokens for inbox since we don't simulate the actual swapping of the tokens
-        deal(address(mockDebtAsset), CowEvcClosePositionWrapper(address(wrapper)).getInbox(OWNER, ACCOUNT), 1);
-
         // This is generally required for the UnitTestBase provided tests: put funds in the inbox so it doesn't revert
-        deal(address(mockDebtAsset), CowEvcClosePositionWrapper(address(wrapper)).getInbox(OWNER, ACCOUNT), 1);
+        //deal(address(mockDebtAsset), CowEvcClosePositionWrapper(address(wrapper)).getInbox(OWNER, ACCOUNT), 1);
     }
 
     /*//////////////////////////////////////////////////////////////

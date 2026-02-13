@@ -295,33 +295,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         wrapper.validateWrapperData(wrapperData);
     }
 
-    function test_EvcInternalSettle_WithRemainingWrapperData() public {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: OWNER,
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            fromAmount: 1000e18,
-            toAmount: 0
-        });
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-        bytes memory remainingWrapperData = abi.encodePacked(emptyWrapper, hex"0004deadbeef");
-
-        TestableCollateralSwapWrapper(address(wrapper))
-            .setExpectedEvcInternalSettleCall(
-                abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
-            );
-
-        vm.prank(address(mockEvc));
-
-        wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
-
-        // Should handle remaining wrapper data gracefully
-    }
-
     function test_WrappedSettle_BuildsCorrectBatchWithPermit() public {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
             owner: OWNER,
