@@ -31,9 +31,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
     bytes32 private constant KIND_SELL = keccak256("sell");
     bytes32 private constant KIND_BUY = keccak256("buy");
 
-    event PreApprovedHash(address indexed owner, bytes32 indexed hash, bool approved);
-    event PreApprovedHashConsumed(address indexed owner, bytes32 indexed hash);
-
     /// @notice Get default CollateralSwapParams for testing
     function _getDefaultParams() internal view returns (CowEvcCollateralSwapWrapper.CollateralSwapParams memory) {
         return CowEvcCollateralSwapWrapper.CollateralSwapParams({
