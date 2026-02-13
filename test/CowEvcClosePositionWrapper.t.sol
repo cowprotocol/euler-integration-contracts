@@ -3,7 +3,7 @@ pragma solidity ^0.8;
 
 import {GPv2Order} from "cow/libraries/GPv2Order.sol";
 
-import {IEVault, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {IEVault, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcClosePositionWrapper} from "../src/CowEvcClosePositionWrapper.sol";
 import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
@@ -20,12 +20,12 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
     SignerECDSA internal ecdsa;
 
     uint256 constant USDS_MARGIN = 3000e18;
-    uint256 constant DEFAULT_SELL_AMOUNT = 2510 ether;
-    uint256 constant DEFAULT_BUY_AMOUNT = 1.001 ether;
+    uint256 constant DEFAULT_SELL_AMOUNT = 2900 ether; // would repay all debt by a large margin
+    uint256 constant DEFAULT_BUY_AMOUNT = 1.12 ether;
 
     // when repaying, if no time passes, we should have exactly 0.001 eth left over
     uint256 constant DEFAULT_BUY_REPAID = 1 ether;
-    uint256 constant DEFAULT_BUY_LEFTOVER = 0.001 ether;
+    uint256 constant DEFAULT_BUY_LEFTOVER = 0.12 ether;
 
     function setUp() public override {
         super.setUp();
@@ -234,9 +234,14 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         assertEq(IEVault(EWETH).debtOf(account), 0, "User should have no debt after closing");
         assertApproxEqRel(
             EUSDS.balanceOf(account),
-            collateralBeforeAccount - DEFAULT_SELL_AMOUNT,
+            // the amount of ether *actually sold* should be very close to.
+            // While 2900 EUSDS is pulled out of the wallet, only 2800 (1.12 ETH * $2500) would be spent, and the rest returned to the account.
+            collateralBeforeAccount - 2800 ether,
             0.01 ether,
-            "User should have used approximately 2500 EUSDS to repay after closing"
+            "User should have used approximately 2800 EUSDS to repay after closing"
+        );
+        assertEq(
+            WETH.balanceOf(user), DEFAULT_BUY_LEFTOVER, "User should have any surplus WETH left over after repaying"
         );
         assertEq(EUSDS.balanceOf(user), collateralBefore, "User main account balance should not have changed");
     }
@@ -379,11 +384,16 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         assertEq(IEVault(EWETH).debtOf(account), 0, "User should have no debt after closing");
         assertApproxEqRel(
             EUSDS.balanceOf(account),
-            collateralBeforeAccount - DEFAULT_SELL_AMOUNT,
+            // the amount of ether *actually sold* should be very close to.
+            // While 2900 EUSDS is pulled out of the wallet, only 2800 (1.12 ETH * $2500) would be spent, and the rest returned to the account.
+            collateralBeforeAccount - 2800 ether,
             0.01 ether,
             "User should have used approximately 2500 EUSDS to repay after closing"
         );
         assertEq(EUSDS.balanceOf(user), collateralBefore, "User main account balance should not have changed");
+        assertEq(
+            WETH.balanceOf(user), DEFAULT_BUY_LEFTOVER, "User should have any surplus WETH left over after repaying"
+        );
 
         // Verify that the operator has been revoked for the account after the operation
         assertFalse(
@@ -443,6 +453,70 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Execute wrapped settlement - should revert with EVC_NotAuthorized due to invalid signature
         vm.expectRevert(abi.encodeWithSignature("EVC_NotAuthorized()"));
+        CowWrapper(address(closePositionWrapper)).wrappedSettle(settleData, wrapperData);
+    }
+
+    /// @notice Test that UnexpectedRepayResult is triggered when repay returns different amount
+    function test_ClosePositionWrapper_UnexpectedRepayResult() external {
+        uint256 borrowAmount = 1e18;
+        uint256 collateralAmount = USDS_MARGIN + 2495e18;
+
+        // First, set up a leveraged position
+        setupLeveragedPositionFor({
+            owner: user,
+            ownerAccount: account,
+            collateralVault: EUSDS,
+            borrowVault: EWETH,
+            collateralAmount: collateralAmount,
+            borrowAmount: borrowAmount
+        });
+
+        // Verify position exists
+        uint256 debtBefore = IEVault(EWETH).debtOf(account);
+        assertEq(debtBefore, borrowAmount, "Position should have debt");
+
+        // Create params using helper
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
+
+        // Get settlement data using EIP-1271
+        SettlementData memory settlement = prepareAndSignClosePositionSettlementWithInbox({
+            owner: user,
+            account: account,
+            sellVaultToken: EUSDS,
+            buyToRepayToken: WETH,
+            sellAmount: DEFAULT_SELL_AMOUNT,
+            buyAmount: DEFAULT_BUY_AMOUNT,
+            userPrivateKey: privateKey
+        });
+
+        // Create permit signature
+        bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
+
+        // Encode settlement and wrapper data
+        bytes memory settleData = _encodeSettleData(settlement);
+        bytes memory wrapperData = _encodeClosePositionWrapperData(params, permitSignature);
+
+        // Mock the vault's repay function to return a different amount than requested
+        // We expect DEFAULT_BUY_REPAID (1 ether) to be repaid, but mock returns 0.5 ether
+        uint256 expectedRepayAmount = DEFAULT_BUY_REPAID;
+        uint256 mockReturnAmount = 0.5 ether;
+
+        // Mock the repay call on the borrow vault (EWETH)
+        // The repay function is called with (amount, account) and returns the amount repaid
+        vm.mockCall(
+            address(EWETH),
+            abi.encodeWithSelector(IBorrowing.repay.selector, expectedRepayAmount, account),
+            abi.encode(mockReturnAmount)
+        );
+
+        // Expect the UnexpectedRepayResult error
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CowEvcClosePositionWrapper.UnexpectedRepayResult.selector, expectedRepayAmount, mockReturnAmount
+            )
+        );
+
+        // Execute wrapped settlement - should revert with UnexpectedRepayResult
         CowWrapper(address(closePositionWrapper)).wrappedSettle(settleData, wrapperData);
     }
 
