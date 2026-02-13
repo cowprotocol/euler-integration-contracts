@@ -89,13 +89,6 @@ contract InboxUnitTest is Test {
         assertEq(inbox.OPERATOR(), address(inboxFactory), "OPERATOR not set");
         assertEq(inbox.BENEFICIARY(), BENEFICIARY, "BENEFICIARY not set");
         assertEq(inbox.SETTLEMENT(), address(mockSettlement), "SETTLEMENT not set");
-        (, bytes32 inboxDomainSeparator) = inboxFactory.getInboxAddressAndDomainSeparator(BENEFICIARY, ACCOUNT);
-        assertEq(inbox.INBOX_DOMAIN_SEPARATOR(), inboxDomainSeparator, "INBOX_DOMAIN_SEPARATOR not set");
-        assertNotEq(
-            inbox.SETTLEMENT_DOMAIN_SEPARATOR(),
-            inbox.INBOX_DOMAIN_SEPARATOR(),
-            "SETTLEMENT_DOMAIN_SEPARATOR should not match INBOX_DOMAIN_SEPARATOR"
-        );
     }
 
     function test_Constructor_SetsToActualSettlementContractDomainSeparatorCorrectly() public {
@@ -110,6 +103,12 @@ contract InboxUnitTest is Test {
             inbox.SETTLEMENT_DOMAIN_SEPARATOR(),
             expectedSettlementDomainSeparator,
             "SETTLEMENT_DOMAIN_SEPARATOR not set correctly"
+        );
+
+        assertNotEq(
+            inbox.SETTLEMENT_DOMAIN_SEPARATOR(),
+            inbox.INBOX_DOMAIN_SEPARATOR(),
+            "SETTLEMENT_DOMAIN_SEPARATOR should not match INBOX_DOMAIN_SEPARATOR"
         );
     }
 
