@@ -33,9 +33,6 @@ contract MockEVC {
         operatorMask = mask;
     }
 
-    // NOTE: evc `setOperator` is not technically used by our tests/contracts.
-    // Only `setAccountOperator`, `setOperatorMask`, and `getOperator` are used.
-
     function setAccountOperator(address account, address operator, bool authorized) external {
         operators[account][operator] = authorized;
     }
