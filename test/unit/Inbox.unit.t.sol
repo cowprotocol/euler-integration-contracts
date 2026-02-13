@@ -55,9 +55,6 @@ contract InboxUnitTest is Test {
 
         // Give inbox some tokens
         mockToken.mint(address(inbox), 1000e18);
-
-        // Set some debt that would need to be repaid
-        mockVault.setDebt(BENEFICIARY, 500e18);
     }
 
     // ============== InboxConstants Tests ==============
@@ -237,6 +234,9 @@ contract InboxUnitTest is Test {
     // ============== callVaultRepay Tests ==============
 
     function test_CallVaultRepay_ByOperator() public {
+        // Set some debt that would need to be repaid
+        mockVault.setDebt(BENEFICIARY, 500e18);
+
         vm.expectCall(
             address(mockToken), abi.encodeWithSelector(MockERC20.approve.selector, address(mockVault), 500e18)
         );
@@ -246,6 +246,9 @@ contract InboxUnitTest is Test {
     }
 
     function test_CallVaultRepay_ByBeneficiary() public {
+        // Set some debt that would need to be repaid
+        mockVault.setDebt(BENEFICIARY, 500e18);
+
         vm.prank(BENEFICIARY);
         inbox.callVaultRepay(address(mockVault), address(mockToken), 500e18, BENEFICIARY);
     }
