@@ -103,6 +103,23 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         );
     }
 
+    /// @notice Encode settlement data for ICowSettlement.settle call
+    function _encodeSettleData(SettlementData memory settlement) internal pure returns (bytes memory) {
+        return abi.encodeCall(
+            ICowSettlement.settle,
+            (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
+        );
+    }
+
+    /// @notice Encode close position wrapper data with length prefix
+    /// @dev Combines encoding params+signature and adding length prefix
+    function _encodeClosePositionWrapperData(
+        CowEvcClosePositionWrapper.ClosePositionParams memory params,
+        bytes memory signature
+    ) internal pure returns (bytes memory) {
+        return encodeWrapperData(abi.encode(params, signature));
+    }
+
     /// @notice Create settlement data for closing a leveraged position with EIP-1271 signature
     /// @dev Sells vault shares to buy repayment token (WETH), using Inbox EIP-1271 signature
     function prepareAndSignClosePositionSettlementWithInbox(
@@ -196,11 +213,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 collateralBeforeAccount = EUSDS.balanceOf(account);
 
         // Encode settlement and wrapper data
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
-        );
-        bytes memory wrapperData = encodeWrapperData(abi.encode(params, permitSignature));
+        bytes memory settleData = _encodeSettleData(settlement);
+        bytes memory wrapperData = _encodeClosePositionWrapperData(params, permitSignature);
 
         // Expect event emission
         vm.expectEmit();
@@ -264,11 +278,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
 
         // Encode settlement and wrapper data
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
-        );
-        bytes memory wrapperData = encodeWrapperData(abi.encode(params, permitSignature));
+        bytes memory settleData = _encodeSettleData(settlement);
+        bytes memory wrapperData = _encodeClosePositionWrapperData(params, permitSignature);
 
         // Expect event emission
         vm.expectEmit();
@@ -346,13 +357,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         assertEq(debtBefore, borrowAmount, "User should start with debt");
 
         // Encode settlement and wrapper data (empty signature since pre-approved)
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
-        );
+        bytes memory settleData = _encodeSettleData(settlement);
         // An empty signature signifies that the wrapper needs to use the pre-sign flow and not the permit flow
-        bytes memory signature = new bytes(0);
-        bytes memory wrapperData = encodeWrapperData(abi.encode(params, signature));
+        bytes memory wrapperData = _encodeClosePositionWrapperData(params, new bytes(0));
 
         // Expect event emission
         vm.expectEmit();
@@ -432,11 +439,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         );
 
         // Encode settlement and wrapper data
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
-        );
-        bytes memory wrapperData = encodeWrapperData(abi.encode(params, invalidPermitSignature));
+        bytes memory settleData = _encodeSettleData(settlement);
+        bytes memory wrapperData = _encodeClosePositionWrapperData(params, invalidPermitSignature);
 
         // Execute wrapped settlement - should revert with EVC_NotAuthorized due to invalid signature
         vm.expectRevert(abi.encodeWithSignature("EVC_NotAuthorized()"));

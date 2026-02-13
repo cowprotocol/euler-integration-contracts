@@ -51,6 +51,16 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         return abi.encode(params, signature);
     }
 
+    /// @notice Encode wrapper data with length prefix for single chained wrapper
+    /// @dev Combines encoding params+signature and adding length prefix
+    function _encodeSingleChainedWrapperData(
+        CowEvcClosePositionWrapper.ClosePositionParams memory params,
+        bytes memory signature
+    ) internal pure returns (bytes memory) {
+        bytes memory wrapperData = _encodeWrapperData(params, signature);
+        return abi.encodePacked(uint16(wrapperData.length), wrapperData);
+    }
+
     /// @notice Setup pre-approved hash flow
     function _setupPreApprovedHash(CowEvcClosePositionWrapper.ClosePositionParams memory params)
         internal
@@ -251,8 +261,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
 
         bytes memory signature = new bytes(65);
         bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = _encodeWrapperData(params, signature);
-        bytes memory chainedWrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
+        bytes memory chainedWrapperData = _encodeSingleChainedWrapperData(params, signature);
 
         // put funds in the inbox so it doesn't revert
         deal(
@@ -271,8 +280,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         bytes32 hash = _setupPreApprovedHash(params);
 
         bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
-        bytes memory chainedWrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
+        bytes memory chainedWrapperData = _encodeSingleChainedWrapperData(params, new bytes(0));
 
         // put funds in the inbox so it doesn't revert
         deal(
@@ -294,8 +302,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         bytes32 hash = CowEvcClosePositionWrapper(address(wrapper)).getApprovalHash(params);
 
         bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0)); // Empty signature triggers pre-approved hash flow
-        bytes memory chainedWrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
+        bytes memory chainedWrapperData = _encodeSingleChainedWrapperData(params, new bytes(0)); // Empty signature triggers pre-approved hash flow
 
         // Expect revert with HashNotApproved error
         vm.prank(SOLVER);
@@ -307,10 +314,9 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
         bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData =
-            _encodeWrapperData(params, hex"0000000000000000000000000000000000000000000000000000000000000000");
-
-        bytes memory chainedWrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
+        bytes memory chainedWrapperData = _encodeSingleChainedWrapperData(
+            params, hex"0000000000000000000000000000000000000000000000000000000000000000"
+        );
 
         vm.mockCallRevert(address(mockEvc), 0, abi.encodeWithSelector(IEVC.permit.selector), "permit failure");
 
@@ -327,8 +333,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         _setupPreApprovedHash(params);
 
         bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
-        bytes memory chainedWrapperData = abi.encodePacked(uint16(wrapperData.length), wrapperData);
+        bytes memory chainedWrapperData = _encodeSingleChainedWrapperData(params, new bytes(0));
 
         vm.prank(SOLVER);
         vm.expectRevert(
