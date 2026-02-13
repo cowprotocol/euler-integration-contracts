@@ -82,8 +82,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         super.setUp();
         mockFromAsset = new MockERC20("Mock Asset From", "MOCKFROM");
         mockToAsset = new MockERC20("Mock Asset To", "MOCKTO");
-        mockFromVault = new MockVault(mockEvc, address(mockFromAsset), "Mock From Vault", "mFROM");
-        mockToVault = new MockVault(mockEvc, address(mockToAsset), "Mock To Vault", "mTO");
+        mockFromVault = new MockVault(mockEvc, address(mockFromAsset), "Mock From Vault", "eMOCKFROM");
+        mockToVault = new MockVault(mockEvc, address(mockToAsset), "Mock To Vault", "eMOCKTO");
 
         wrapper = CowEvcBaseWrapper(
             new TestableCollateralSwapWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)))
