@@ -136,11 +136,10 @@ abstract contract UnitTestBase is Test {
 
     function test_WrappedSettle_RevertsOnTamperedSignature() public {
         bytes memory settleData = _getEmptySettleData();
-        bytes memory chainedWrapperData = _encodeDefaultWrapperData(hex"0000000000000000000000000000000000000000");
+        bytes memory chainedWrapperData = _encodeDefaultWrapperData(new bytes(64));
 
         vm.mockCallRevert(address(mockEvc), 0, abi.encodeWithSelector(IEVC.permit.selector), "permit failure");
 
-        // Expect revert with ECDSA error when permit fails
         vm.prank(SOLVER);
         vm.expectRevert("permit failure");
         wrapper.wrappedSettle(settleData, chainedWrapperData);

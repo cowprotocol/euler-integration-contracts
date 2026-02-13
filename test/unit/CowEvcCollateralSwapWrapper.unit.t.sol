@@ -28,11 +28,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
     uint256 constant DEFAULT_SWAP_AMOUNT = 1000e18;
 
     // Constants from the contract
-    bytes32 private constant KIND_SELL = hex"f3b277728b3fee749481eb3e0b3b48980dbbab78658fc419025cb16eee346775";
-    bytes32 private constant KIND_BUY = hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc";
-
-    event PreApprovedHash(address indexed owner, bytes32 indexed hash, bool approved);
-    event PreApprovedHashConsumed(address indexed owner, bytes32 indexed hash);
+    bytes32 private constant KIND_SELL = keccak256("sell");
+    bytes32 private constant KIND_BUY = keccak256("buy");
 
     /// @notice Get default CollateralSwapParams for testing
     function _getDefaultParams() internal view returns (CowEvcCollateralSwapWrapper.CollateralSwapParams memory) {
@@ -85,8 +82,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         super.setUp();
         mockFromAsset = new MockERC20("Mock Asset From", "MOCKFROM");
         mockToAsset = new MockERC20("Mock Asset To", "MOCKTO");
-        mockFromVault = new MockVault(mockEvc, address(mockFromAsset), "Mock From Vault", "mFROM");
-        mockToVault = new MockVault(mockEvc, address(mockToAsset), "Mock To Vault", "mTO");
+        mockFromVault = new MockVault(mockEvc, address(mockFromAsset), "Mock From Vault", "eMOCKFROM");
+        mockToVault = new MockVault(mockEvc, address(mockToAsset), "Mock To Vault", "eMOCKTO");
 
         wrapper = CowEvcBaseWrapper(
             new TestableCollateralSwapWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)))
@@ -196,7 +193,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
             abi.encodeCall(MockERC20.transfer, (address(OWNER), params.fromAmount)),
             "Should call transfer"
         );
-        assertEq(items[0].onBehalfOfAccount, ACCOUNT, "Should have zero onBehalfOfAccount");
+        assertEq(items[0].onBehalfOfAccount, ACCOUNT, "Should be sent on behalf of the account");
         assertEq(items[1].targetContract, address(mockEvc), "Should target EVC");
         assertEq(
             items[1].data,

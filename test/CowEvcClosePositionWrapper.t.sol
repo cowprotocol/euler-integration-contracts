@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 
-import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {IEVault, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcClosePositionWrapper} from "../src/CowEvcClosePositionWrapper.sol";
