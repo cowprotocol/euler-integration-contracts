@@ -240,8 +240,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         bytes memory remainingWrapperData = "";
 
-        mockSettlement.setSuccessfulSettle(true);
-
         // the wrapper data is omitted in the expected call
         TestableCollateralSwapWrapper(address(wrapper))
             .setExpectedEvcInternalSettleCall(
@@ -267,8 +265,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         bytes memory remainingWrapperData = "";
-
-        mockSettlement.setSuccessfulSettle(true);
 
         TestableCollateralSwapWrapper(address(wrapper))
             .setExpectedEvcInternalSettleCall(
@@ -316,8 +312,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = abi.encode(params, new bytes(0));
         bytes memory remainingWrapperData = abi.encodePacked(emptyWrapper, hex"0004deadbeef");
-
-        mockSettlement.setSuccessfulSettle(true);
 
         TestableCollateralSwapWrapper(address(wrapper))
             .setExpectedEvcInternalSettleCall(

@@ -21,7 +21,6 @@ contract MockCowAuthentication is ICowAuthentication {
 /// @notice Mock implementation of CoW Protocol settlement contract for unit testing
 contract MockCowSettlement is ICowSettlement {
     ICowAuthentication public immutable AUTH;
-    bool public shouldSucceed = true;
     mapping(bytes => bool) public preSignatures;
 
     constructor(address _auth) {
@@ -48,11 +47,5 @@ contract MockCowSettlement is ICowSettlement {
         external
         view
         override
-    {
-        require(shouldSucceed, "MockCowSettlement: settle failed");
-    }
-
-    function setSuccessfulSettle(bool success) external {
-        shouldSucceed = success;
-    }
+    {}
 }

@@ -26,6 +26,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Deploy the new open position wrapper
         openPositionWrapper = new CowEvcOpenPositionWrapper(address(EVC), COW_SETTLEMENT);
+        wrapper = openPositionWrapper;
 
         // Add wrapper as a solver
         GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
@@ -144,7 +145,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     }
 
     /// @notice Test opening a leveraged position using the new wrapper
-    function test_OpenPositionWrapper_Success() external {
+    function test_OpenPositionWrapper_Permit_Success() external {
         // Create params using helper
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
@@ -208,7 +209,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     }
 
     /// @notice Test opening a position with pre-approved hash (no signature needed)
-    function test_OpenPositionWrapper_WithPreApprovedHash() external {
+    function test_OpenPositionWrapper_PreApprove_Success() external {
         // Create params using helper
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
@@ -288,6 +289,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             EVC.isAccountOperatorAuthorized(account, address(openPositionWrapper)),
             "Wrapper should no longer be an authorized operator for the owner after settle"
         );
+
+        assertFalse(openPositionWrapper.isHashPreApproved(user, hash), "Pre-approved hash should be cleared after use");
     }
 
     /// @notice Test that invalid signature causes the transaction to revert

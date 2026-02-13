@@ -8,12 +8,21 @@ import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/Safe
 import {ICowSettlement} from "./CowWrapper.sol";
 
 /// @dev Collection of EIP-712 type hashes. These hashes match those used by the CoW settlement contract.
-library InboxConstants {
+library InboxLibrary {
     bytes32 internal constant DOMAIN_TYPE_HASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes32 internal constant ORDER_TYPE_HASH = keccak256(
         "Order(address sellToken,address buyToken,address receiver,uint256 sellAmount,uint256 buyAmount,uint32 validTo,bytes32 appData,uint256 feeAmount,string kind,bool partiallyFillable,string sellTokenBalance,string buyTokenBalance)"
     );
+
+    /// @notice Compute the EIP-712 domain separator for the Inbox contract
+    /// @param creationAddress The address of the Inbox contract
+    /// @return domainSeparator The computed domain separator
+    function computeDomainSeparator(address creationAddress) internal view returns (bytes32 domainSeparator) {
+        return
+            /// forge-lint: disable-next-line(asm-keccak256)
+            keccak256(abi.encode(DOMAIN_TYPE_HASH, keccak256("Inbox"), keccak256("1"), block.chainid, creationAddress));
+    }
 }
 
 /// @notice A contract for receiving funds from the CoW Settlement contract which can then be operated upon by a different contract in post (i.e. a wrapper)
@@ -45,19 +54,11 @@ contract Inbox is IERC1271 {
         BENEFICIARY = beneficiary;
         SETTLEMENT = settlement;
 
-        INBOX_DOMAIN_SEPARATOR = keccak256(
-            abi.encode(
-                InboxConstants.DOMAIN_TYPE_HASH, keccak256("Inbox"), keccak256("1"), block.chainid, address(this)
-            )
-        );
+        INBOX_DOMAIN_SEPARATOR = InboxLibrary.computeDomainSeparator(address(this));
 
         SETTLEMENT_DOMAIN_SEPARATOR = keccak256(
             abi.encode(
-                InboxConstants.DOMAIN_TYPE_HASH,
-                keccak256("Gnosis Protocol"),
-                keccak256("v2"),
-                block.chainid,
-                settlement
+                InboxLibrary.DOMAIN_TYPE_HASH, keccak256("Gnosis Protocol"), keccak256("v2"), block.chainid, settlement
             )
         );
     }
@@ -78,7 +79,7 @@ contract Inbox is IERC1271 {
             require(signatureData.length >= 65 + 384, InvalidSignatureOrderData(signatureData));
 
             bytes memory orderData = signatureData[65:];
-            bytes32 typeHash = InboxConstants.ORDER_TYPE_HASH;
+            bytes32 typeHash = InboxLibrary.ORDER_TYPE_HASH;
             bytes32 structHash;
 
             // NOTE: Compute the EIP-712 order struct hash in place. As suggested

@@ -104,7 +104,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
         /// @dev The Euler vault used as collateral. The CoW order should have `sellToken` as this asset.
         address collateralVault;
 
-        /// @dev The amount of collateral to use for the repayment. This effectively detemrines how much collateral will be sent from the account at the beginning of the operation.
+        /// @dev The amount of collateral to use for the repayment. This effectively determines how much collateral will be sent from the account at the beginning of the operation.
         /// Any unused amount for the CoW swap will be returned to the account. In all cases, this should be the same as `sellAmount` in the CoW order.
         uint256 collateralAmount;
     }
