@@ -60,13 +60,34 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         return abi.encodePacked(uint16(wrapperData.length), wrapperData);
     }
 
-    function _encodeDefaultWrapperData(bytes memory signature)
+    function _prepareSuccessfulPermitSettlement()
         internal
-        view
         override
-        returns (bytes memory wrapperData)
+        returns (bytes memory settleData, bytes memory wrapperData)
     {
-        return _encodeSingleChainedWrapperData(_getDefaultParams(), signature);
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+        bytes memory signature = new bytes(65);
+        wrapperData = _encodeSingleChainedWrapperData(params, signature);
+        settleData = _getEmptySettleData();
+
+        // Put funds in the inbox so the repayment doesn't revert
+        address inbox = CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account);
+        deal(address(mockDebtAsset), inbox, 1);
+    }
+
+    function _prepareSuccessfulPreSignSettlement()
+        internal
+        override
+        returns (bytes memory settleData, bytes memory wrapperData, bytes32 hash)
+    {
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+        wrapperData = _encodeSingleChainedWrapperData(params, new bytes(0));
+        settleData = _getEmptySettleData();
+        hash = CowEvcClosePositionWrapper(address(wrapper)).getApprovalHash(params);
+
+        // Put funds in the inbox so the repayment doesn't revert
+        address inbox = CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account);
+        deal(address(mockDebtAsset), inbox, 1);
     }
 
     /// @notice Setup pre-approved hash flow
@@ -80,10 +101,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         return hash;
     }
 
-    function _setupPreApprovedHashDefaultParams() internal override returns (bytes32) {
-        return _setupPreApprovedHash(_getDefaultParams());
-    }
-
     function setUp() public override {
         super.setUp();
 
@@ -95,9 +112,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         wrapper = CowEvcBaseWrapper(
             new TestableClosePositionWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)))
         );
-
-        // This is generally required for the UnitTestBase provided tests: put funds in the inbox so it doesn't revert
-        //deal(address(mockDebtAsset), CowEvcClosePositionWrapper(address(wrapper)).getInbox(OWNER, ACCOUNT), 1);
     }
 
     /*//////////////////////////////////////////////////////////////

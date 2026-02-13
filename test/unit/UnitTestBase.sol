@@ -38,9 +38,24 @@ abstract contract UnitTestBase is Test {
         vm.label(ACCOUNT, "ACCOUNT");
     }
 
-    function _encodeDefaultWrapperData(bytes memory signature) internal view virtual returns (bytes memory wrapperData);
+    /// @notice Prepare settlement data for permit-based authorization flow
+    /// @dev Returns everything needed to execute a successful settlement with permit signature
+    /// @return settleData The encoded settle() call data
+    /// @return wrapperData The encoded wrapper data with signature
+    function _prepareSuccessfulPermitSettlement()
+        internal
+        virtual
+        returns (bytes memory settleData, bytes memory wrapperData);
 
-    function _setupPreApprovedHashDefaultParams() internal virtual returns (bytes32);
+    /// @notice Prepare settlement data for pre-approved hash authorization flow
+    /// @dev Returns everything needed to execute a successful settlement with pre-approved hash
+    /// @return settleData The encoded settle() call data
+    /// @return wrapperData The encoded wrapper data (empty signature)
+    /// @return hash The pre-approved hash that was set on the contract
+    function _prepareSuccessfulPreSignSettlement()
+        internal
+        virtual
+        returns (bytes memory settleData, bytes memory wrapperData, bytes32 hash);
 
     /// @notice Helper to get the decoded IEVC.BatchItem[] and params hash from a call to `encodePermitData`
     function _decodePermitData(bytes memory permitData)
@@ -104,45 +119,42 @@ abstract contract UnitTestBase is Test {
     }
 
     function test_WrappedSettle_WithPermitSignature() public {
-        bytes memory signature = new bytes(65);
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory chainedWrapperData = _encodeDefaultWrapperData(signature);
+        (bytes memory settleData, bytes memory wrapperData) = _prepareSuccessfulPermitSettlement();
 
         vm.prank(SOLVER);
-        wrapper.wrappedSettle(settleData, chainedWrapperData);
+        wrapper.wrappedSettle(settleData, wrapperData);
     }
 
     function test_WrappedSettle_WithPreApprovedHash() public {
-        bytes32 hash = _setupPreApprovedHashDefaultParams();
+        (bytes memory settleData, bytes memory wrapperData, bytes32 hash) = _prepareSuccessfulPreSignSettlement();
 
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory chainedWrapperData = _encodeDefaultWrapperData(new bytes(0));
+        // Explicitly pre-approve the hash
+        vm.prank(OWNER);
+        wrapper.setPreApprovedHash(hash, true);
 
         vm.prank(SOLVER);
-        wrapper.wrappedSettle(settleData, chainedWrapperData);
+        wrapper.wrappedSettle(settleData, wrapperData);
 
         assertFalse(wrapper.isHashPreApproved(OWNER, hash), "Hash should be consumed");
     }
 
     function test_WrappedSettle_RevertsIfHashNotPreApproved() public {
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory chainedWrapperData = _encodeDefaultWrapperData(new bytes(0)); // Empty signature triggers pre-approved hash flow
+        (bytes memory settleData, bytes memory wrapperData,) = _prepareSuccessfulPreSignSettlement();
+        // Don't pre-approve the hash - expect revert
 
-        // Expect revert with HashNotApproved error
         vm.prank(SOLVER);
         vm.expectPartialRevert(PreApprovedHashes.HashNotApproved.selector);
-        wrapper.wrappedSettle(settleData, chainedWrapperData);
+        wrapper.wrappedSettle(settleData, wrapperData);
     }
 
     function test_WrappedSettle_RevertsOnTamperedSignature() public {
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory chainedWrapperData = _encodeDefaultWrapperData(new bytes(64));
+        (bytes memory settleData, bytes memory wrapperData) = _prepareSuccessfulPermitSettlement();
 
         vm.mockCallRevert(address(mockEvc), 0, abi.encodeWithSelector(IEVC.permit.selector), "permit failure");
 
         vm.prank(SOLVER);
         vm.expectRevert("permit failure");
-        wrapper.wrappedSettle(settleData, chainedWrapperData);
+        wrapper.wrappedSettle(settleData, wrapperData);
     }
 
     /*//////////////////////////////////////////////////////////////

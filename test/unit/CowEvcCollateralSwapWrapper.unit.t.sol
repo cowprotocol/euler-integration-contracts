@@ -54,13 +54,27 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         return abi.encodePacked(uint16(wrapperData.length), wrapperData);
     }
 
-    function _encodeDefaultWrapperData(bytes memory signature)
+    function _prepareSuccessfulPermitSettlement()
         internal
         view
         override
-        returns (bytes memory wrapperData)
+        returns (bytes memory settleData, bytes memory wrapperData)
     {
-        return _encodeWrapperData(_getDefaultParams(), signature);
+        bytes memory signature = new bytes(65);
+        wrapperData = _encodeWrapperData(_getDefaultParams(), signature);
+        settleData = _getEmptySettleData();
+    }
+
+    function _prepareSuccessfulPreSignSettlement()
+        internal
+        view
+        override
+        returns (bytes memory settleData, bytes memory wrapperData, bytes32 hash)
+    {
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
+        wrapperData = _encodeWrapperData(params, new bytes(0));
+        settleData = _getEmptySettleData();
+        hash = CowEvcCollateralSwapWrapper(address(wrapper)).getApprovalHash(params);
     }
 
     /// @notice Setup pre-approved hash flow
@@ -72,10 +86,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         vm.prank(OWNER);
         wrapper.setPreApprovedHash(hash, true);
         return hash;
-    }
-
-    function _setupPreApprovedHashDefaultParams() internal override returns (bytes32) {
-        return _setupPreApprovedHash(_getDefaultParams());
     }
 
     function setUp() public override {
