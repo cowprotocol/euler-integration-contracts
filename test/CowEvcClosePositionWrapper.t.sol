@@ -91,7 +91,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 userPrivateKey
     ) internal returns (bytes memory) {
         ecdsa.setPrivateKey(userPrivateKey);
-        // NOTE: this permit signature differs from the other wrappers as we are signing *WITH THE SUBACCOUNT*
         return ecdsa.signPermit(
             params.owner,
             address(closePositionWrapper),
