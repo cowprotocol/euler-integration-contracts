@@ -154,6 +154,8 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
             "Should enable collateral"
         );
 
+        assertEq(items[0].onBehalfOfAccount, params.account, "Should operate on behalf of correct account");
+
         assertEq(items.length, 1, "Should have 1 batch item for partial repay");
     }
 
