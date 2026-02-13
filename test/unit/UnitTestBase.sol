@@ -136,7 +136,6 @@ abstract contract UnitTestBase is Test {
 
         vm.mockCallRevert(address(mockEvc), 0, abi.encodeWithSelector(IEVC.permit.selector), "permit failure");
 
-        // Expect revert with ECDSA error when permit fails
         vm.prank(SOLVER);
         vm.expectRevert("permit failure");
         wrapper.wrappedSettle(settleData, wrapperData);
