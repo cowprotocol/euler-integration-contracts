@@ -120,8 +120,6 @@ abstract contract UnitTestBase is Test {
     }
 
     function test_WrappedSettle_RevertsIfHashNotPreApproved() public {
-        // Set operator permissions (required for EVC batch operations)
-
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = _encodeDefaultWrapperData(new bytes(0)); // Empty signature triggers pre-approved hash flow
 
