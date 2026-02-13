@@ -132,7 +132,7 @@ abstract contract UnitTestBase is Test {
     function test_WrappedSettle_RevertsOnTamperedSignature() public {
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData =
-            _encodeDefaultWrapperData(hex"0000000000000000000000000000000000000000000000000000000000000000");
+            _encodeDefaultWrapperData(new bytes(64));
 
         vm.mockCallRevert(address(mockEvc), 0, abi.encodeWithSelector(IEVC.permit.selector), "permit failure");
 
