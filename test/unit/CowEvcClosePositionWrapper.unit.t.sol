@@ -66,7 +66,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         override
         returns (bytes memory wrapperData)
     {
-        return _encodeWrapperData(_getDefaultParams(), signature);
+        return _encodeSingleChainedWrapperData(_getDefaultParams(), signature);
     }
 
     /// @notice Setup pre-approved hash flow
@@ -97,6 +97,9 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         );
 
         // Supply tokens for inbox since we don't simulate the actual swapping of the tokens
+        deal(address(mockDebtAsset), CowEvcClosePositionWrapper(address(wrapper)).getInbox(OWNER, ACCOUNT), 1);
+
+        // This is generally required for the UnitTestBase provided tests: put funds in the inbox so it doesn't revert
         deal(address(mockDebtAsset), CowEvcClosePositionWrapper(address(wrapper)).getInbox(OWNER, ACCOUNT), 1);
     }
 

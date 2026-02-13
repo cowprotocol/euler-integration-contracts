@@ -25,6 +25,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // Deploy the collateral swap wrapper
         collateralSwapWrapper = new CowEvcCollateralSwapWrapper(address(EVC), COW_SETTLEMENT);
+        wrapper = collateralSwapWrapper;
 
         // Add wrapper as a solver
         GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
