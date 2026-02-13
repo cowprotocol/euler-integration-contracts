@@ -28,8 +28,8 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
     uint256 constant DEFAULT_SWAP_AMOUNT = 1000e18;
 
     // Constants from the contract
-    bytes32 private constant KIND_SELL = hex"f3b277728b3fee749481eb3e0b3b48980dbbab78658fc419025cb16eee346775";
-    bytes32 private constant KIND_BUY = hex"6ed88e868af0a1983e3886d5f3e95a2fafbd6c3450bc229e27342283dc429ccc";
+    bytes32 private constant KIND_SELL = keccak256("sell");
+    bytes32 private constant KIND_BUY = keccak256("buy");
 
     event PreApprovedHash(address indexed owner, bytes32 indexed hash, bool approved);
     event PreApprovedHashConsumed(address indexed owner, bytes32 indexed hash);
