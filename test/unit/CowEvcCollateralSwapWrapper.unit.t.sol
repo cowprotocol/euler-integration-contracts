@@ -193,7 +193,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
             abi.encodeCall(MockERC20.transfer, (address(OWNER), params.fromAmount)),
             "Should call transfer"
         );
-        assertEq(items[0].onBehalfOfAccount, ACCOUNT, "Should have zero onBehalfOfAccount");
+        assertEq(items[0].onBehalfOfAccount, ACCOUNT, "Should be sent on behalf of the account");
         assertEq(items[1].targetContract, address(mockEvc), "Should target EVC");
         assertEq(
             items[1].data,
