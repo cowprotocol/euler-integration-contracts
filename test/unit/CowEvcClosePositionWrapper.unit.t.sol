@@ -67,7 +67,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
     {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
-        // A permit settlement is triggered by having signature data in `wrapperData`. 
+        // A permit settlement is triggered by having signature data in `wrapperData`.
         // For unit testing, we can just use 65 bytes of "zero" signtaure since we're not actually verifying it here.
         wrapperData = _encodeSingleChainedWrapperData(params, new bytes(65));
         settleData = _getEmptySettleData();

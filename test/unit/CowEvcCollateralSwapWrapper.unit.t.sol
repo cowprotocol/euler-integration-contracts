@@ -69,7 +69,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         override
         returns (bytes memory settleData, bytes memory wrapperData)
     {
-        // A permit settlement is triggered by having signature data in `wrapperData`. 
+        // A permit settlement is triggered by having signature data in `wrapperData`.
         // For unit testing, we can just use 65 bytes of "zero" signtaure since we're not actually verifying it here.
         wrapperData = _encodeSingleChainedWrapperData(_getDefaultParams(), new bytes(65));
         settleData = _getEmptySettleData();
@@ -161,7 +161,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         wrapper.setPreApprovedHash(hash, true);
 
         bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
+        bytes memory wrapperData = _encodeSingleChainedWrapperData(params, new bytes(0));
 
         vm.prank(SOLVER);
         vm.expectRevert(
@@ -178,7 +178,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
 
     function test_EncodePermitData_IsCorrectSameOwnerAccount() public view {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
-        params.account = OWNER; 
+        params.account = OWNER;
 
         bytes memory permitData = CowEvcCollateralSwapWrapper(address(wrapper)).encodePermitData(params);
         (IEVC.BatchItem[] memory items, bytes32 paramsHash) = _decodePermitData(permitData);
@@ -232,4 +232,85 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
     /*//////////////////////////////////////////////////////////////
                     EDGE CASE TESTS
     //////////////////////////////////////////////////////////////*/
+
+    function test_WrappedSettle_ZeroCollateralSwap_SameOwnerAccount() public {
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
+        params.account = OWNER; // Same as owner
+        params.fromAmount = 0; // Zero swap amount
+
+        bytes32 hash = CowEvcCollateralSwapWrapper(address(wrapper)).getApprovalHash(params);
+        vm.prank(OWNER);
+        wrapper.setPreApprovedHash(hash, true);
+
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeSingleChainedWrapperData(params, new bytes(0));
+
+        // Setup expected EVC internal settle call
+        TestableCollateralSwapWrapper(address(wrapper))
+            .setExpectedEvcInternalSettleCall(
+                abi.encodeCall(CowEvcBaseWrapper.evcInternalSettle, (settleData, wrapperData, new bytes(0)))
+            );
+
+        // The call should succeed - there's no validation preventing 0 amount transfers
+        vm.prank(SOLVER);
+        vm.expectEmit(true, true, true, true);
+        emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
+            params.owner, params.account, params.fromVault, params.toVault, 0, 0
+        );
+        wrapper.wrappedSettle(settleData, wrapperData);
+    }
+
+    function test_WrappedSettle_ZeroCollateralSwap_DifferentOwnerAccount() public {
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
+        params.fromAmount = 0; // Zero swap amount
+
+        bytes32 hash = CowEvcCollateralSwapWrapper(address(wrapper)).getApprovalHash(params);
+        vm.prank(OWNER);
+        wrapper.setPreApprovedHash(hash, true);
+
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeSingleChainedWrapperData(params, new bytes(0));
+
+        // Setup expected EVC internal settle call
+        TestableCollateralSwapWrapper(address(wrapper))
+            .setExpectedEvcInternalSettleCall(
+                abi.encodeCall(CowEvcBaseWrapper.evcInternalSettle, (settleData, wrapperData, new bytes(0)))
+            );
+
+        // With different owner/account, a transfer of 0 tokens should be attempted
+        // This should succeed as transferring 0 tokens is typically allowed
+        vm.prank(SOLVER);
+        vm.expectEmit(true, true, true, true);
+        emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
+            params.owner, params.account, params.fromVault, params.toVault, 0, 0
+        );
+        wrapper.wrappedSettle(settleData, wrapperData);
+    }
+
+    function test_WrappedSettle_SameFromAndToVault() public {
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
+        params.toVault = params.fromVault; // Same vault for both from and to
+
+        bytes32 hash = CowEvcCollateralSwapWrapper(address(wrapper)).getApprovalHash(params);
+        vm.prank(OWNER);
+        wrapper.setPreApprovedHash(hash, true);
+
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeSingleChainedWrapperData(params, new bytes(0));
+
+        // Setup expected EVC internal settle call
+        TestableCollateralSwapWrapper(address(wrapper))
+            .setExpectedEvcInternalSettleCall(
+                abi.encodeCall(CowEvcBaseWrapper.evcInternalSettle, (settleData, wrapperData, new bytes(0)))
+            );
+
+        // No validation prevents swapping from/to the same vault
+        // Transaction should succeed but accomplishes nothing economically useful
+        vm.prank(SOLVER);
+        vm.expectEmit(true, true, true, true);
+        emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
+            params.owner, params.account, params.fromVault, params.fromVault, DEFAULT_SWAP_AMOUNT, 0
+        );
+        wrapper.wrappedSettle(settleData, wrapperData);
+    }
 }

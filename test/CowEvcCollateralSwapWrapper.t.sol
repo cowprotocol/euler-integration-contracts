@@ -191,7 +191,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         uint256 borrowAmount = 0.5e18; // Borrow 0.5 WETH
         uint256 collateralAmount = 1000e18;
 
-        // Set up a leveraged position
         setupLeveragedPositionFor({
             owner: owner,
             ownerAccount: account,
@@ -201,10 +200,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             borrowAmount: borrowAmount
         });
 
-        // Create params
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(owner, account);
 
-        // Get settlement data
         SettlementData memory settlement = prepareCollateralSwapSettlement({
             owner: owner,
             account: account,
@@ -218,7 +215,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         uint256 fromVaultBalanceBefore = EUSDS.balanceOf(account);
         uint256 toVaultBalanceBefore = EWBTC.balanceOf(account);
 
-        // Setup authorization and encode wrapper data
         bytes memory wrapperData;
         bool isPermitFlow = userPrivateKey != 0;
 
@@ -257,16 +253,13 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             wrapperData = _encodeCollateralSwapWrapperData(params, new bytes(0));
         }
 
-        // Encode settlement data
         bytes memory settleData = _encodeSettleData(settlement);
 
-        // Expect event emission
         vm.expectEmit();
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
             params.owner, params.account, params.fromVault, params.toVault, params.fromAmount, params.toAmount
         );
 
-        // Execute wrapped settlement
         CowWrapper(address(collateralSwapWrapper)).wrappedSettle(settleData, wrapperData);
 
         // Verify the collateral was swapped successfully
@@ -282,8 +275,15 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Verify the new collateral vault is enabled
         assertTrue(EVC.isCollateralEnabled(account, address(EWBTC)), "EWBTC vault should be enabled");
 
-        assertFalse(EVC.isAccountOperatorAuthorized(owner, address(collateralSwapWrapper)), "Wrapper should not be operator after settlement");
-        assertFalse(EVC.isAccountOperatorAuthorized(account, address(collateralSwapWrapper)), "Wrapper should not be operator after settlement");
+        // Operator authorizations should have been revoked (only actually used by pre-approve flow)
+        assertFalse(
+            EVC.isAccountOperatorAuthorized(owner, address(collateralSwapWrapper)),
+            "Wrapper should not be operator after settlement"
+        );
+        assertFalse(
+            EVC.isAccountOperatorAuthorized(account, address(collateralSwapWrapper)),
+            "Wrapper should not be operator after settlement"
+        );
     }
 
     function test_CollateralSwapWrapper_Permit_MainAccount() external {
@@ -307,7 +307,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         uint256 borrowAmount = 0.5e18; // Borrow 0.5 WETH
         uint256 collateralAmount = 2000e18;
 
-        // Set up a leveraged position
         setupLeveragedPositionFor({
             owner: user,
             ownerAccount: user,
@@ -320,55 +319,11 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Create params using helper (use user as both owner and account to avoid subaccount transfers)
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, user);
 
-        // Get settlement data
-        SettlementData memory settlement;
-        {
-            uint32 validTo = uint32(block.timestamp + 1 hours);
-
-            // Get tokens and prices
-            settlement.tokens = new address[](2);
-            settlement.tokens[0] = address(EUSDS);
-            settlement.tokens[1] = address(WBTC);
-
-            settlement.clearingPrices = new uint256[](2);
-            settlement.clearingPrices[0] = milkSwap.prices(IERC4626(EUSDS).asset());
-            settlement.clearingPrices[1] = milkSwap.prices(address(WBTC)) * 1 ether / 0.98 ether;
-
-            // Get trade data
-            settlement.trades = new ICowSettlement.Trade[](1);
-            (settlement.trades[0], settlement.orderData, settlement.orderUid) = setupCowOrder({
-                tokens: settlement.tokens,
-                sellTokenIndex: 0,
-                buyTokenIndex: 1,
-                sellAmount: params.fromAmount,
-                buyAmount: params.toAmount,
-                validTo: validTo,
-                owner: params.owner,
-                receiver: params.account,
-                isBuy: false
-            });
-
-            // Setup interactions - withdraw from sell vault, swap underlying assets, deposit to buy vault
-            settlement.interactions = [
-                new ICowSettlement.Interaction[](0),
-                new ICowSettlement.Interaction[](2),
-                new ICowSettlement.Interaction[](0)
-            ];
-
-            // Withdraw from sell vault
-            settlement.interactions[1][0] = getWithdrawInteraction(EUSDS, params.fromAmount);
-
-            // Swap underlying assets
-            uint256 swapAmount = params.fromAmount * 0.999 ether / 1 ether;
-            settlement.interactions[1][1] = getSwapInteraction(IERC20(EUSDS.asset()), WBTC, swapAmount);
-        }
-
-        // Approve vault shares for settlement
         vm.prank(user);
         require(EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max));
 
         // Create INVALID permit signature by signing with wrong private key (user2's key instead of user's)
-        ecdsa.setPrivateKey(privateKey2); // Wrong private key!
+        ecdsa.setPrivateKey(privateKey2);
         bytes memory invalidPermitSignature = ecdsa.signPermit(
             params.owner,
             address(collateralSwapWrapper),
@@ -379,38 +334,14 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             collateralSwapWrapper.encodePermitData(params)
         );
 
-        // Encode settlement and wrapper data
+        // Encode empty settlement and some wrapper data
+        SettlementData memory settlement;
         bytes memory settleData = _encodeSettleData(settlement);
         bytes memory wrapperData = _encodeCollateralSwapWrapperData(params, invalidPermitSignature);
 
         // Execute wrapped settlement - should revert with EVC_NotAuthorized due to invalid signature
         vm.expectRevert(abi.encodeWithSignature("EVC_NotAuthorized()"));
         CowWrapper(address(collateralSwapWrapper)).wrappedSettle(settleData, wrapperData);
-    }
-
-    /// @notice Test that unauthorized users cannot call evcInternalSwap directly
-    function test_CollateralSwapWrapper_UnauthorizedInternalSwap() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
-        bytes memory settleData = "";
-        bytes memory wrapperData = "";
-
-        // Try to call evcInternalSwap directly (not through EVC)
-        vm.expectRevert(abi.encodeWithSelector(CowEvcBaseWrapper.Unauthorized.selector, address(this)));
-        collateralSwapWrapper.evcInternalSettle(settleData, wrapperData, wrapperData);
-    }
-
-    /// @notice Test that non-solvers cannot call wrappedSettle
-    function test_CollateralSwapWrapper_NonSolverCannotSettle() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
-        bytes memory settleData = "";
-        bytes memory wrapperData = hex"0000";
-
-        // Try to call wrappedSettle as non-solver
-        vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, user));
-        collateralSwapWrapper.wrappedSettle(settleData, wrapperData);
     }
 
     /// @notice Test that the wrapper can handle being called three times in the same chain

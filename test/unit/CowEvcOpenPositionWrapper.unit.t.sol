@@ -52,8 +52,7 @@ contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
         override
         returns (bytes memory settleData, bytes memory wrapperData)
     {
-
-        // A permit settlement is triggered by having signature data in `wrapperData`. 
+        // A permit settlement is triggered by having signature data in `wrapperData`.
         // For unit testing, we can just use 65 bytes of "zero" signtaure since we're not actually verifying it here.
         wrapperData = _encodeWrapperData(_getDefaultParams(), new bytes(65));
         settleData = _getEmptySettleData();
