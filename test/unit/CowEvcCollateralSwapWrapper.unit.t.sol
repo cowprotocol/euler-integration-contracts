@@ -173,7 +173,31 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
                     ENCODE PERMIT DATA TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_EncodePermitData_IsCorrect() public view {
+    function test_EncodePermitData_IsCorrectSameOwnerAccount() public view {
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
+        params.account = OWNER; 
+
+        bytes memory permitData = CowEvcCollateralSwapWrapper(address(wrapper)).encodePermitData(params);
+        (IEVC.BatchItem[] memory items, bytes32 paramsHash) = _decodePermitData(permitData);
+
+        // For same owner and account, only the enableCollateral call should be needed, no transfer
+        assertEq(items.length, 1, "Should have correct batch item count");
+        assertEq(items[0].targetContract, address(mockEvc), "Should target EVC");
+        assertEq(
+            items[0].data,
+            abi.encodeCall(IEVC.enableCollateral, (params.account, params.toVault)),
+            "Should call enableCollateral"
+        );
+        assertEq(items[0].onBehalfOfAccount, address(0), "Should have zero onBehalfOfAccount");
+
+        assertEq(
+            paramsHash,
+            CowEvcCollateralSwapWrapper(address(wrapper)).getApprovalHash(params),
+            "Params hash should match"
+        );
+    }
+
+    function test_EncodePermitData_IsCorrectDifferentOwnerAccount() public view {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
 
         bytes memory permitData = CowEvcCollateralSwapWrapper(address(wrapper)).encodePermitData(params);
