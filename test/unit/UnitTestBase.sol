@@ -6,7 +6,6 @@ import {Test} from "forge-std/Test.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
 import {ICowSettlement, CowWrapper} from "../../src/CowWrapper.sol";
-import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
 import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 import {EmptyWrapper} from "../EmptyWrapper.sol";
 import {IEVC} from "evc/EthereumVaultConnector.sol";
