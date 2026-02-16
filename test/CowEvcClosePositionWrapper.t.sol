@@ -415,7 +415,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             buyToRepayToken: WETH,
             sellAmount: DEFAULT_SELL_AMOUNT,
             buyAmount: DEFAULT_BUY_AMOUNT,
-            userPrivateKey: privateKey2 // Use wrong private key to create invalid digest to sign
+            userPrivateKey: privateKey // Use wrong private key to create invalid signature
         });
 
         // typecast is safe because the string is constant
