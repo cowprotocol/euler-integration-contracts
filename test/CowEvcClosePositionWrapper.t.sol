@@ -421,7 +421,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             buyToRepayToken: WETH,
             sellAmount: DEFAULT_SELL_AMOUNT,
             buyAmount: DEFAULT_BUY_AMOUNT,
-            userPrivateKey: privateKey2 // Use wrong private key to create invalid signature
+            userPrivateKey: privateKey // Use wrong private key to create invalid signature
         });
 
         // Create INVALID permit signature by signing with wrong private key (user2's key instead of user's)
