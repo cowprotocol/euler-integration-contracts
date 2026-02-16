@@ -3,7 +3,6 @@ pragma solidity ^0.8;
 
 import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
-import {CowEvcBaseWrapper} from "../src/CowEvcBaseWrapper.sol";
 import {CowEvcCollateralSwapWrapper} from "../src/CowEvcCollateralSwapWrapper.sol";
 import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
