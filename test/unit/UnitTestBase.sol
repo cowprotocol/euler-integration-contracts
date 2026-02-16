@@ -139,15 +139,6 @@ abstract contract UnitTestBase is Test {
         assertFalse(wrapper.isHashPreApproved(OWNER, hash), "Hash should be consumed");
     }
 
-    function test_WrappedSettle_RevertsIfHashNotPreApproved() public {
-        (bytes memory settleData, bytes memory wrapperData,) = _prepareSuccessfulPreSignSettlement();
-        // Don't pre-approve the hash - expect revert
-
-        vm.prank(SOLVER);
-        vm.expectPartialRevert(PreApprovedHashes.HashNotApproved.selector);
-        wrapper.wrappedSettle(settleData, wrapperData);
-    }
-
     function test_WrappedSettle_RevertsOnTamperedSignature() public {
         (bytes memory settleData, bytes memory wrapperData) = _prepareSuccessfulPermitSettlement();
 

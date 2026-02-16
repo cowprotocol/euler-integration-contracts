@@ -7,6 +7,7 @@ import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
 import {UnitTestBase} from "./UnitTestBase.sol";
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {Constants} from "../helpers/Constants.sol";
 
 // this is required because foundry doesn't have a cheatcode for override any transient storage.
 contract TestableOpenPositionWrapper is CowEvcOpenPositionWrapper {
@@ -87,7 +88,7 @@ contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
     function test_Constructor_SetsDomainSeparator() public view {
         bytes32 expectedDomainSeparator = keccak256(
             abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                Constants.EIP712_DOMAIN_TYPE_HASH,
                 keccak256("CowEvcOpenPositionWrapper"),
                 keccak256("1"),
                 block.chainid,

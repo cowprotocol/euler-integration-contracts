@@ -7,6 +7,7 @@ import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 import {CowEvcCollateralSwapWrapper} from "../../src/CowEvcCollateralSwapWrapper.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
 import {MockERC20, MockVault} from "./mocks/MockERC20AndVaults.sol";
+import {Constants} from "../helpers/Constants.sol";
 
 // this is required because foundry doesn't have a cheatcode for override any transient storage.
 contract TestableCollateralSwapWrapper is CowEvcCollateralSwapWrapper {
@@ -115,7 +116,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
     function test_Constructor_SetsDomainSeparator() public view {
         bytes32 expectedDomainSeparator = keccak256(
             abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                Constants.EIP712_DOMAIN_TYPE_HASH,
                 keccak256("CowEvcCollateralSwapWrapper"),
                 keccak256("1"),
                 block.chainid,

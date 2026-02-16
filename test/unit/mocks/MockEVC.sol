@@ -2,6 +2,7 @@
 pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
+import {Constants} from "../../helpers/Constants.sol";
 
 /// @title MockEVC
 /// @notice Mock implementation of EVC for unit testing
@@ -18,14 +19,13 @@ contract MockEVC {
         "Permit(address signer,address sender,uint256 nonceNamespace,uint256 nonce,uint256 deadline,uint256 value,bytes data)"
     );
 
-    bytes32 private constant DOMAIN_TYPE_HASH =
-        keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
-
     bytes32 private immutable DOMAIN_SEPARATOR;
 
     constructor() {
         DOMAIN_SEPARATOR = keccak256(
-            abi.encode(DOMAIN_TYPE_HASH, keccak256("Ethereum Vault Connector"), block.chainid, address(this))
+            abi.encode(
+                Constants.EIP712_DOMAIN_TYPE_HASH, keccak256("Ethereum Vault Connector"), block.chainid, address(this)
+            )
         );
     }
 
