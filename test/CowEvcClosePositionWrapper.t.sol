@@ -232,14 +232,24 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         // Verify the position was closed successfully
         assertEq(IEVault(EWETH).debtOf(account), 0, "User should have no debt after closing");
-        assertApproxEqRel(
+
+        // We're testing a buy order, so the execution should only take the minimum amount needed
+        // from the user to pay for the proceeds at the settlement price.
+        // DEFAULT_SELL_AMOUNT EUSDS is still pulled out of the wallet, but the rest should be
+        // returned to the account.
+        // Note: 2500 is the price in the settlement.
+        uint256 expectedProceeds = DEFAULT_BUY_AMOUNT * 2500;
+        assertEq(
             EUSDS.balanceOf(account),
-            // the amount of ether *actually sold* should be very close to.
-            // While 2900 EUSDS is pulled out of the wallet, only 2800 (1.12 ETH * $2500) would be spent, and the rest returned to the account.
-            collateralBeforeAccount - 2800 ether,
-            0.01 ether,
-            "User should have used approximately 2800 EUSDS to repay after closing"
+            collateralBeforeAccount - expectedProceeds,
+            "User final balance should account for buy order surplus"
         );
+        assertNotEq(
+            expectedProceeds,
+            DEFAULT_SELL_AMOUNT,
+            "We want to test that leftovers are sent back but there are no leftovers"
+        );
+
         assertEq(
             WETH.balanceOf(user), DEFAULT_BUY_LEFTOVER, "User should have any surplus WETH left over after repaying"
         );
