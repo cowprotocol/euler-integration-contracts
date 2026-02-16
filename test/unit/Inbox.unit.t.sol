@@ -53,9 +53,6 @@ contract InboxUnitTest is Test {
 
         inboxFactory = new InboxFactory(address(mockSettlement));
         inbox = Inbox(inboxFactory.getInbox(BENEFICIARY, ACCOUNT));
-
-        // Give inbox some tokens
-        mockToken.mint(address(inbox), 1000e18);
     }
 
     // ============== InboxConstants Tests ==============
@@ -192,6 +189,9 @@ contract InboxUnitTest is Test {
     // ============== callTransfer Tests ==============
 
     function test_CallTransfer_ByOperator() public {
+        // Give inbox some tokens
+        mockToken.mint(address(inbox), 1000e18);
+
         vm.prank(address(inboxFactory));
         inbox.callTransfer(address(mockToken), RECIPIENT, 500e18);
 
@@ -200,6 +200,9 @@ contract InboxUnitTest is Test {
     }
 
     function test_CallTransfer_ByBeneficiary() public {
+        // Give inbox some tokens
+        mockToken.mint(address(inbox), 1000e18);
+
         vm.prank(BENEFICIARY);
         inbox.callTransfer(address(mockToken), RECIPIENT, 500e18);
 
@@ -234,6 +237,9 @@ contract InboxUnitTest is Test {
     // ============== callVaultRepay Tests ==============
 
     function test_CallVaultRepay_ByOperator() public {
+        // Give inbox some tokens for repayment
+        mockToken.mint(address(inbox), 1000e18);
+
         // Set some debt that would need to be repaid
         mockVault.setDebt(BENEFICIARY, 500e18);
 
@@ -246,6 +252,9 @@ contract InboxUnitTest is Test {
     }
 
     function test_CallVaultRepay_ByBeneficiary() public {
+        // Give inbox some tokens for repayment
+        mockToken.mint(address(inbox), 1000e18);
+
         // Set some debt that would need to be repaid
         mockVault.setDebt(BENEFICIARY, 500e18);
 

@@ -73,17 +73,6 @@ contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
         hash = CowEvcOpenPositionWrapper(address(wrapper)).getApprovalHash(params);
     }
 
-    /// @notice Setup pre-approved hash flow
-    function _setupPreApprovedHash(CowEvcOpenPositionWrapper.OpenPositionParams memory params)
-        internal
-        returns (bytes32)
-    {
-        bytes32 hash = CowEvcOpenPositionWrapper(address(wrapper)).getApprovalHash(params);
-        vm.prank(OWNER);
-        wrapper.setPreApprovedHash(hash, true);
-        return hash;
-    }
-
     function setUp() public override {
         super.setUp();
 

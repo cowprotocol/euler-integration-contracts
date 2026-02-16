@@ -94,17 +94,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         deal(address(mockDebtAsset), inbox, 1);
     }
 
-    /// @notice Setup pre-approved hash flow
-    function _setupPreApprovedHash(CowEvcClosePositionWrapper.ClosePositionParams memory params)
-        internal
-        returns (bytes32)
-    {
-        bytes32 hash = CowEvcClosePositionWrapper(address(wrapper)).getApprovalHash(params);
-        vm.prank(params.owner);
-        wrapper.setPreApprovedHash(hash, true);
-        return hash;
-    }
-
     function setUp() public override {
         super.setUp();
 
@@ -311,7 +300,9 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
         params.deadline = block.timestamp - 1; // Past deadline
 
-        _setupPreApprovedHash(params);
+        bytes32 hash = CowEvcClosePositionWrapper(address(wrapper)).getApprovalHash(params);
+        vm.prank(params.owner);
+        wrapper.setPreApprovedHash(hash, true);
 
         bytes memory settleData = _getEmptySettleData();
         bytes memory chainedWrapperData = _encodeSingleChainedWrapperData(params, new bytes(0));

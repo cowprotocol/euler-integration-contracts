@@ -146,15 +146,12 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
     /// @notice Test opening a leveraged position using the new wrapper
     function test_OpenPositionWrapper_Permit_Success() external {
-        // Create params using helper
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
-        // Get settlement data
         SettlementData memory settlement = prepareOpenPositionSettlement({
             owner: user, receiver: account, sellAmount: DEFAULT_BORROW_AMOUNT, buyAmount: MIN_BUY_SHARES_AMOUNT
         });
 
-        // Setup user approvals
         vm.startPrank(user);
         require(USDS.approve(address(EUSDS), type(uint256).max));
 
@@ -163,7 +160,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
         vm.stopPrank();
 
-        // Create permit signature for EVC
         bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
 
         // Verify that no position is open
@@ -176,14 +172,12 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             allowedDelta: 0
         });
 
-        // Encode settlement and wrapper data
         bytes memory settleData = abi.encodeCall(
             ICowSettlement.settle,
             (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
         );
         bytes memory wrapperData = encodeWrapperData(abi.encode(params, permitSignature));
 
-        // Expect event emission
         vm.expectEmit();
         emit CowEvcOpenPositionWrapper.CowEvcPositionOpened(
             params.owner,
@@ -194,7 +188,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             params.borrowAmount
         );
 
-        // Execute wrapped settlement
         openPositionWrapper.wrappedSettle(settleData, wrapperData);
 
         // Verify position was created successfully
@@ -210,15 +203,12 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
     /// @notice Test opening a position with pre-approved hash (no signature needed)
     function test_OpenPositionWrapper_PreApprove_Success() external {
-        // Create params using helper
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
-        // Get settlement data
         SettlementData memory settlement = prepareOpenPositionSettlement({
             owner: user, receiver: account, sellAmount: DEFAULT_BORROW_AMOUNT, buyAmount: MIN_BUY_SHARES_AMOUNT
         });
 
-        // Setup user approvals and pre-approve hash
         bytes32 hash = openPositionWrapper.getApprovalHash(params);
         _setupUserPreApprovedFlow(account, hash);
 
@@ -255,7 +245,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         );
         bytes memory wrapperData = encodeWrapperData(abi.encode(params, new bytes(0)));
 
-        // Expect event emission
         vm.expectEmit();
         emit CowEvcOpenPositionWrapper.CowEvcPositionOpened(
             params.owner,
@@ -266,10 +255,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             params.borrowAmount
         );
 
-        // Execute wrapped settlement
         CowWrapper(address(openPositionWrapper)).wrappedSettle(settleData, wrapperData);
 
-        // Verify the position was created successfully
         _verifyPositionOpened({
             account: account,
             collateralVaultToken: EUSDS,
@@ -295,15 +282,12 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
     /// @notice Test that invalid signature causes the transaction to revert
     function test_OpenPositionWrapper_InvalidSignatureReverts() external {
-        // Create params using helper
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
-        // Get settlement data
         SettlementData memory settlement = prepareOpenPositionSettlement({
             owner: user, receiver: account, sellAmount: DEFAULT_BORROW_AMOUNT, buyAmount: DEFAULT_BUY_AMOUNT
         });
 
-        // Setup user approvals
         vm.prank(user);
         require(USDS.approve(address(EUSDS), type(uint256).max));
 
@@ -319,7 +303,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             openPositionWrapper.encodePermitData(params)
         );
 
-        // Encode settlement and wrapper data
         bytes memory settleData = abi.encodeCall(
             ICowSettlement.settle,
             (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)

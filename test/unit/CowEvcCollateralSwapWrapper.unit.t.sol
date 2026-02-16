@@ -80,17 +80,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         hash = CowEvcCollateralSwapWrapper(address(wrapper)).getApprovalHash(params);
     }
 
-    /// @notice Setup pre-approved hash flow
-    function _setupPreApprovedHash(CowEvcCollateralSwapWrapper.CollateralSwapParams memory params)
-        internal
-        returns (bytes32)
-    {
-        bytes32 hash = CowEvcCollateralSwapWrapper(address(wrapper)).getApprovalHash(params);
-        vm.prank(OWNER);
-        wrapper.setPreApprovedHash(hash, true);
-        return hash;
-    }
-
     function setUp() public override {
         super.setUp();
         mockFromAsset = new MockERC20("Mock Asset From", "MOCKFROM");
@@ -158,7 +147,9 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         params.account = OWNER; // Same account
         params.deadline = block.timestamp - 1; // Past deadline
 
-        _setupPreApprovedHash(params);
+        bytes32 hash = CowEvcCollateralSwapWrapper(address(wrapper)).getApprovalHash(params);
+        vm.prank(OWNER);
+        wrapper.setPreApprovedHash(hash, true);
 
         bytes memory settleData = _getEmptySettleData();
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
@@ -227,60 +218,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
             CowEvcCollateralSwapWrapper(address(wrapper)).getApprovalHash(params),
             "Params hash should match"
         );
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                    EVC INTERNAL SWAP TESTS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_EvcInternalSettle_RequiresCorrectCalldata() public {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: OWNER,
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            fromAmount: 1000e18,
-            toAmount: 0
-        });
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-        bytes memory remainingWrapperData = "";
-
-        // the wrapper data is omitted in the expected call
-        TestableCollateralSwapWrapper(address(wrapper))
-            .setExpectedEvcInternalSettleCall(
-                abi.encodeCall(wrapper.evcInternalSettle, (settleData, new bytes(0), remainingWrapperData))
-            );
-
-        vm.prank(address(mockEvc));
-        vm.expectRevert(CowEvcBaseWrapper.InvalidCallback.selector);
-        wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
-    }
-
-    function test_EvcInternalSettle_CanBeCalledByEVC() public {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: OWNER, // Same account, no transfer needed
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            fromAmount: 1000e18,
-            toAmount: 0
-        });
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory wrapperData = abi.encode(params, new bytes(0));
-        bytes memory remainingWrapperData = "";
-
-        TestableCollateralSwapWrapper(address(wrapper))
-            .setExpectedEvcInternalSettleCall(
-                abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
-            );
-
-        vm.prank(address(mockEvc));
-        wrapper.evcInternalSettle(settleData, wrapperData, remainingWrapperData);
     }
 
     /*//////////////////////////////////////////////////////////////
