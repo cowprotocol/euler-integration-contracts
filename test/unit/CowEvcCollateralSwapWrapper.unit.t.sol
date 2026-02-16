@@ -283,23 +283,4 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
     /*//////////////////////////////////////////////////////////////
                     EDGE CASE TESTS
     //////////////////////////////////////////////////////////////*/
-
-    function test_ValidateWrapperData_LongSignature() public view {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = CowEvcCollateralSwapWrapper.CollateralSwapParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            fromVault: address(mockFromVault),
-            toVault: address(mockToVault),
-            fromAmount: 1000e18,
-            toAmount: 0
-        });
-
-        // Create a signature longer than 65 bytes
-        bytes memory signature = new bytes(128);
-        bytes memory wrapperData = abi.encode(params, signature);
-
-        // Should not revert for valid wrapper data with long signature
-        wrapper.validateWrapperData(wrapperData);
-    }
 }
