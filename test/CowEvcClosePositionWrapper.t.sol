@@ -445,17 +445,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             userPrivateKey: privateKey2 // Use wrong private key to create invalid signature
         });
 
-        // Create INVALID permit signature by signing with wrong private key (user2's key instead of user's)
-        ecdsa.setPrivateKey(privateKey2); // Wrong private key!
-        bytes memory invalidPermitSignature = ecdsa.signPermit(
-            params.owner,
-            address(closePositionWrapper),
-            uint256(uint160(address(closePositionWrapper))),
-            0,
-            params.deadline,
-            0,
-            closePositionWrapper.encodePermitData(params)
-        );
+        // Create INVALID permit signature by signing the wrong digest
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, bytes32("invalid digest"));
+        bytes memory invalidPermitSignature = abi.encodePacked(r, s, v);
 
         // Encode settlement and wrapper data
         bytes memory settleData = _encodeSettleData(settlement);
