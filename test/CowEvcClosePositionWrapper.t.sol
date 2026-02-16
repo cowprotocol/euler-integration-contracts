@@ -176,7 +176,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 borrowAmount = 1e18;
         uint256 collateralAmount = USDS_MARGIN + 2495e18;
 
-        // First, set up a leveraged position
         setupLeveragedPositionFor({
             owner: user,
             ownerAccount: account,
@@ -186,14 +185,11 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowAmount: borrowAmount
         });
 
-        // Verify position exists
         uint256 debtBefore = IEVault(EWETH).debtOf(account);
         assertEq(debtBefore, borrowAmount, "Position should have debt");
 
-        // Create params using helper
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
-        // Get settlement data using EIP-1271
         SettlementData memory settlement = prepareAndSignClosePositionSettlementWithInbox({
             owner: user,
             account: account,
@@ -204,18 +200,14 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             userPrivateKey: privateKey
         });
 
-        // Create permit signature
         bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
 
-        // Record balances before closing
         uint256 collateralBefore = EUSDS.balanceOf(user);
         uint256 collateralBeforeAccount = EUSDS.balanceOf(account);
 
-        // Encode settlement and wrapper data
         bytes memory settleData = _encodeSettleData(settlement);
         bytes memory wrapperData = _encodeClosePositionWrapperData(params, permitSignature);
 
-        // Expect event emission
         vm.expectEmit();
         emit CowEvcClosePositionWrapper.CowEvcPositionClosed(
             params.owner,
@@ -227,7 +219,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             DEFAULT_BUY_LEFTOVER
         );
 
-        // Execute wrapped settlement
         CowWrapper(address(closePositionWrapper)).wrappedSettle(settleData, wrapperData);
 
         // Verify the position was closed successfully
@@ -263,7 +254,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 sellAmount = 2500e18;
         uint256 buyAmount = 0.98e18;
 
-        // First, set up a leveraged position
         setupLeveragedPositionFor({
             owner: user,
             ownerAccount: account,
@@ -273,11 +263,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowAmount: borrowAmount
         });
 
-        // Create params with custom amounts
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
         params.collateralAmount = sellAmount;
 
-        // Get settlement data using EIP-1271
         SettlementData memory settlement = prepareAndSignClosePositionSettlementWithInbox({
             owner: user,
             account: account,
@@ -288,14 +276,11 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             userPrivateKey: privateKey
         });
 
-        // Create permit signature
         bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
 
-        // Encode settlement and wrapper data
         bytes memory settleData = _encodeSettleData(settlement);
         bytes memory wrapperData = _encodeClosePositionWrapperData(params, permitSignature);
 
-        // Expect event emission
         vm.expectEmit();
         emit CowEvcClosePositionWrapper.CowEvcPositionClosed(
             params.owner,
@@ -307,7 +292,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             0
         );
 
-        // Execute wrapped settlement
         CowWrapper(address(closePositionWrapper)).wrappedSettle(settleData, wrapperData);
 
         // Verify partial repayment
@@ -323,7 +307,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         address account = address(uint160(user) ^ uint8(0x01));
 
-        // First, set up a leveraged position
         setupLeveragedPositionFor({
             owner: user,
             ownerAccount: account,
@@ -333,10 +316,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowAmount: borrowAmount
         });
 
-        // Create params using helper
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
-        // Get settlement data
         SettlementData memory settlement = prepareAndSignClosePositionSettlementWithInbox({
             owner: user,
             account: account,
@@ -347,14 +328,13 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             userPrivateKey: 0 // triggers pre-approved signature type
         });
 
-        // Setup pre-approved flow
         bytes32 hash = closePositionWrapper.getApprovalHash(params);
         _setupPreApprovedFlow(user, account, hash);
 
         // The inbox needs to be deployed in advance. Anyone can deploy the inbox with a call to `getInbox`
         Inbox inbox = Inbox(closePositionWrapper.getInbox(user, account));
 
-        // The pre approved flow requires setting a signature on the inbox (not on the settlement because the inbox is what sends the order)
+        // Now that the inbox is deployed, the pre approved flow requires setting a signature on the inbox (not on the settlement because the inbox is what sends the order)
         vm.prank(user);
         inbox.setPreSignature(settlement.orderUid, true);
 
@@ -370,12 +350,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 collateralBeforeAccount = EUSDS.balanceOf(account);
         assertEq(debtBefore, borrowAmount, "User should start with debt");
 
-        // Encode settlement and wrapper data (empty signature since pre-approved)
         bytes memory settleData = _encodeSettleData(settlement);
-        // An empty signature signifies that the wrapper needs to use the pre-sign flow and not the permit flow
         bytes memory wrapperData = _encodeClosePositionWrapperData(params, new bytes(0));
 
-        // Expect event emission
         vm.expectEmit();
         emit CowEvcClosePositionWrapper.CowEvcPositionClosed(
             params.owner,
@@ -387,7 +364,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             DEFAULT_BUY_LEFTOVER
         );
 
-        // Execute wrapped settlement
         CowWrapper(address(closePositionWrapper)).wrappedSettle(settleData, wrapperData);
 
         // Verify the position was closed successfully
@@ -421,7 +397,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
         address account = address(uint160(user) ^ 1);
 
-        // First, set up a leveraged position
         setupLeveragedPositionFor({
             owner: user,
             ownerAccount: account,
@@ -431,10 +406,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             borrowAmount: borrowAmount
         });
 
-        // Create params using helper
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
-        // Get settlement data using EIP-1271
         SettlementData memory settlement = prepareAndSignClosePositionSettlementWithInbox({
             owner: user,
             account: account,
@@ -442,18 +415,15 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             buyToRepayToken: WETH,
             sellAmount: DEFAULT_SELL_AMOUNT,
             buyAmount: DEFAULT_BUY_AMOUNT,
-            userPrivateKey: privateKey2 // Use wrong private key to create invalid signature
+            userPrivateKey: privateKey2 // Use wrong private key to create invalid digest to sign
         });
 
-        // Create INVALID permit signature by signing the wrong digest
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, bytes32("invalid digest"));
         bytes memory invalidPermitSignature = abi.encodePacked(r, s, v);
 
-        // Encode settlement and wrapper data
         bytes memory settleData = _encodeSettleData(settlement);
         bytes memory wrapperData = _encodeClosePositionWrapperData(params, invalidPermitSignature);
 
-        // Execute wrapped settlement - should revert with EVC_NotAuthorized due to invalid signature
         vm.expectRevert(abi.encodeWithSignature("EVC_NotAuthorized()"));
         CowWrapper(address(closePositionWrapper)).wrappedSettle(settleData, wrapperData);
     }
@@ -463,7 +433,6 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 borrowAmount = 1e18;
         uint256 collateralAmount = USDS_MARGIN + 2495e18;
 
-        // First, set up a leveraged position
         setupLeveragedPositionFor({
             owner: user,
             ownerAccount: account,
@@ -477,10 +446,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         uint256 debtBefore = IEVault(EWETH).debtOf(account);
         assertEq(debtBefore, borrowAmount, "Position should have debt");
 
-        // Create params using helper
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _createDefaultParams(user, account);
 
-        // Get settlement data using EIP-1271
         SettlementData memory settlement = prepareAndSignClosePositionSettlementWithInbox({
             owner: user,
             account: account,
@@ -491,10 +458,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             userPrivateKey: privateKey
         });
 
-        // Create permit signature
         bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
 
-        // Encode settlement and wrapper data
         bytes memory settleData = _encodeSettleData(settlement);
         bytes memory wrapperData = _encodeClosePositionWrapperData(params, permitSignature);
 
@@ -511,14 +476,12 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             abi.encode(mockReturnAmount)
         );
 
-        // Expect the UnexpectedRepayResult error
         vm.expectRevert(
             abi.encodeWithSelector(
                 CowEvcClosePositionWrapper.UnexpectedRepayResult.selector, expectedRepayAmount, mockReturnAmount
             )
         );
 
-        // Execute wrapped settlement - should revert with UnexpectedRepayResult
         CowWrapper(address(closePositionWrapper)).wrappedSettle(settleData, wrapperData);
     }
 
