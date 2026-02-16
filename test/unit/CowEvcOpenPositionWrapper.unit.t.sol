@@ -52,8 +52,10 @@ contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
         override
         returns (bytes memory settleData, bytes memory wrapperData)
     {
-        bytes memory signature = new bytes(65);
-        wrapperData = _encodeWrapperData(_getDefaultParams(), signature);
+
+        // A permit settlement is triggered by having signature data in `wrapperData`. 
+        // For unit testing, we can just use 65 bytes of "zero" signtaure since we're not actually verifying it here.
+        wrapperData = _encodeWrapperData(_getDefaultParams(), new bytes(65));
         settleData = _getEmptySettleData();
     }
 
@@ -64,6 +66,8 @@ contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
         returns (bytes memory settleData, bytes memory wrapperData, bytes32 hash)
     {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
+
+        // A pre-hash settlement is triggered by having 0-length signature data in `wrapperData`.
         wrapperData = _encodeWrapperData(params, new bytes(0));
         settleData = _getEmptySettleData();
         hash = CowEvcOpenPositionWrapper(address(wrapper)).getApprovalHash(params);
