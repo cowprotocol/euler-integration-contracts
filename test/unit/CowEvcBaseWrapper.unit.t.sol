@@ -187,14 +187,8 @@ contract CowEvcBaseWrapperTest is Test {
         );
     }
 
-    function test_EvcInternalSettle_RequiresCorrectCalldata() public {
+    function testFuzz_EvcInternalSettle_RequiresCorrectCalldata(bytes memory remainingWrapperData) public {
         bytes memory settleData = _getEmptySettleData();
-        bytes memory remainingWrapperData = "";
-
-        mockSettlement.setSuccessfulSettle(true);
-
-        // Set incorrect onBehalfOfAccount (not address(wrapper))
-        mockEvc.setOnBehalfOf(address(0x9999));
 
         // set incorrect expected call
         wrapper.setExpectedEvcInternalSettleCall(
@@ -209,8 +203,6 @@ contract CowEvcBaseWrapperTest is Test {
     function test_EvcInternalSettle_CanBeCalledByEVC() public {
         bytes memory settleData = _getEmptySettleData();
         bytes memory remainingWrapperData = "";
-
-        mockSettlement.setSuccessfulSettle(true);
 
         wrapper.setExpectedEvcInternalSettleCall(
             abi.encodeCall(wrapper.evcInternalSettle, (settleData, hex"", remainingWrapperData))

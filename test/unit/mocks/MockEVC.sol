@@ -8,7 +8,6 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 contract MockEVC {
     mapping(address => mapping(address => bool)) public operators;
     mapping(address => uint256) public nonces;
-    address public onBehalfOf;
     uint256 public operatorMask = 0;
 
     error InvalidSignature();
@@ -30,10 +29,6 @@ contract MockEVC {
 
     function setOperatorMask(uint256 mask) external {
         operatorMask = mask;
-    }
-
-    function setOnBehalfOf(address shouldBeOnBehalfOf) external {
-        onBehalfOf = shouldBeOnBehalfOf;
     }
 
     function setAccountOperator(address account, address operator, bool authorized) external {
@@ -61,13 +56,7 @@ contract MockEVC {
     function batch(IEVC.BatchItem[] calldata items) external returns (IEVC.BatchItemResult[] memory) {
         // Execute each item
         for (uint256 i = 0; i < items.length; i++) {
-            // Set onBehalfOf to the item's onBehalfOfAccount for the duration of the call
-            onBehalfOf = items[i].onBehalfOfAccount;
-
             (bool success, bytes memory reason) = items[i].targetContract.call(items[i].data);
-
-            // reset onBehalfOf
-            onBehalfOf = address(0);
 
             if (!success) {
                 assembly ("memory-safe") {

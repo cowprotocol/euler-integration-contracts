@@ -21,7 +21,7 @@ contract MockCowAuthentication is ICowAuthentication {
 /// @notice Mock implementation of CoW Protocol settlement contract for unit testing
 contract MockCowSettlement is ICowSettlement {
     ICowAuthentication public immutable AUTH;
-    bool public shouldSucceed = true;
+    mapping(bytes => bool) public preSignatures;
 
     constructor(address _auth) {
         AUTH = ICowAuthentication(_auth);
@@ -39,17 +39,13 @@ contract MockCowSettlement is ICowSettlement {
         return keccak256("MockDomainSeparator");
     }
 
-    function setPreSignature(bytes calldata, bool) external pure override {}
+    function setPreSignature(bytes calldata orderUid, bool approved) external override {
+        preSignatures[orderUid] = approved;
+    }
 
     function settle(address[] calldata, uint256[] calldata, Trade[] calldata, Interaction[][3] calldata)
         external
         view
         override
-    {
-        require(shouldSucceed, "MockCowSettlement: settle failed");
-    }
-
-    function setSuccessfulSettle(bool success) external {
-        shouldSucceed = success;
-    }
+    {}
 }

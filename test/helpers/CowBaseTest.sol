@@ -10,10 +10,11 @@ import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol"
 
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
+import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 
 import {MilkSwap} from "./MilkSwap.sol";
 
-contract CowBaseTest is Test {
+abstract contract CowBaseTest is Test {
     uint256 mainnetFork;
     uint256 constant BLOCK_NUMBER = 22546006;
     string forkRpcUrl = vm.envOr("FORK_RPC_URL", string(""));
@@ -34,6 +35,8 @@ contract CowBaseTest is Test {
     ICowSettlement constant COW_SETTLEMENT = ICowSettlement(payable(0x9008D19f58AAbD9eD0D60971565AA8510560ab41));
 
     EthereumVaultConnector constant EVC = EthereumVaultConnector(payable(0x0C9a3dd6b8F28529d72d7f9cE918D493519EE383));
+
+    CowEvcBaseWrapper internal wrapper;
 
     MilkSwap public milkSwap;
     address user;
@@ -89,20 +92,20 @@ contract CowBaseTest is Test {
 
         // Set the approval for MilkSwap in the settlement as a convenience
         vm.startPrank(address(COW_SETTLEMENT));
-        WETH.approve(address(milkSwap), type(uint256).max);
-        USDS.approve(address(milkSwap), type(uint256).max);
-        WBTC.approve(address(milkSwap), type(uint256).max);
+        require(WETH.approve(address(milkSwap), type(uint256).max));
+        require(USDS.approve(address(milkSwap), type(uint256).max));
+        require(WBTC.approve(address(milkSwap), type(uint256).max));
 
-        USDS.approve(address(EUSDS), type(uint256).max);
-        WETH.approve(address(EWETH), type(uint256).max);
-        WBTC.approve(address(EWBTC), type(uint256).max);
+        require(USDS.approve(address(EUSDS), type(uint256).max));
+        require(WETH.approve(address(EWETH), type(uint256).max));
+        require(WBTC.approve(address(EWBTC), type(uint256).max));
 
         vm.stopPrank();
 
         // User has approved WETH for COW Protocol
         address vaultRelayer = COW_SETTLEMENT.vaultRelayer();
         vm.prank(user);
-        WETH.approve(vaultRelayer, type(uint256).max);
+        require(WETH.approve(vaultRelayer, type(uint256).max));
 
         // Setup labels
         //vm.label(solver, "solver");
@@ -245,6 +248,95 @@ contract CowBaseTest is Test {
         orderId = getOrderUid(owner, order);
     }
 
+    /// @notice Setup CoW order with EIP-1271 signature using Inbox as the order owner
+    /// @dev Creates an order where the Inbox contract signs on behalf of the user.
+    /// This is used for the CowEvcClosePositionWrapper
+    /// Note: to reduce params, inboxForUser is assumed to be same as receiver
+    /// @param signerPrivateKey The private key that should be used to create the signature for the order. If `0` is given (i.e. no private key), it will be assumed that this order is to be pre signed, the cow order flags will be set appropriately, and the order signature will be set to the address of the recipient
+    function setupCowOrderWithInbox(
+        address[] memory tokens,
+        uint256 sellTokenIndex,
+        uint256 buyTokenIndex,
+        uint256 sellAmount,
+        uint256 buyAmount,
+        uint32 validTo,
+        address receiver,
+        bytes32 inboxDomainSeparator,
+        bool isBuy,
+        uint256 signerPrivateKey
+    ) public view returns (ICowSettlement.Trade memory trade, GPv2Order.Data memory order, bytes memory orderId) {
+        uint256 flags = isBuy ? 1 : 0;
+        if (signerPrivateKey == 0) {
+            // pre-signature type
+            flags = flags | (3 << 5);
+        } else {
+            // EIP-1271 signature type
+            flags = flags | (1 << 6);
+        }
+
+        order = GPv2Order.Data({
+            sellToken: CowERC20(tokens[sellTokenIndex]),
+            buyToken: CowERC20(tokens[buyTokenIndex]),
+            receiver: receiver,
+            sellAmount: sellAmount,
+            buyAmount: buyAmount,
+            validTo: validTo,
+            appData: bytes32(0),
+            feeAmount: 0,
+            kind: isBuy ? GPv2Order.KIND_BUY : GPv2Order.KIND_SELL,
+            partiallyFillable: false,
+            sellTokenBalance: GPv2Order.BALANCE_ERC20,
+            buyTokenBalance: GPv2Order.BALANCE_ERC20
+        });
+
+        // Create the EIP-1271 signature
+        // the "Inbox" for the user is assumed to be the same as the receiver
+        // If we don't have a private key, create a pre-signed order (which gives the address of the presign as the signature)
+        bytes memory computedSignature = signerPrivateKey != 0
+            ? _createEip1271Signature(receiver, inboxDomainSeparator, order, signerPrivateKey)
+            : abi.encodePacked(receiver);
+
+        // Create the trade with EIP-1271 signature
+        trade = ICowSettlement.Trade({
+            sellTokenIndex: sellTokenIndex,
+            buyTokenIndex: buyTokenIndex,
+            receiver: receiver,
+            sellAmount: sellAmount,
+            buyAmount: buyAmount,
+            validTo: validTo,
+            appData: bytes32(0),
+            feeAmount: 0,
+            flags: flags,
+            executedAmount: 0,
+            signature: computedSignature
+        });
+
+        orderId = getOrderUid(receiver, order);
+    }
+
+    /// @notice Create EIP-1271 signature for a CoW order
+    /// @dev Signs the order digest with the user's private key and returns the signature
+    function _createEip1271Signature(
+        address inboxForUser,
+        bytes32 inboxDomainSeparator,
+        GPv2Order.Data memory orderData,
+        uint256 userPrivateKey
+    ) internal pure returns (bytes memory signature) {
+        bytes memory rawOrderData = abi.encode(orderData);
+        // Compute the order hash (raw)
+        bytes32 wrappedOrderHash = keccak256(
+            abi.encodePacked(
+                "\x19\x01", inboxDomainSeparator, keccak256(abi.encodePacked(GPv2Order.TYPE_HASH, rawOrderData))
+            )
+        );
+
+        // Sign the digest with the user's private key
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPrivateKey, wrappedOrderHash);
+
+        // Return the signature as packed bytes (inbox || r || s || v || orderData) (in CoW, first 20 bytes is the 1271 isValidSignature verifier)
+        return abi.encodePacked(inboxForUser, r, s, v, rawOrderData);
+    }
+
     /// @notice Helper to get common tokens and prices for tests. Simplifies many test flows by using shared indexes
     /// for the tokens and their prices
     /// (Note: in the future we could possibly put the actual indexes into constants to improve clarity)
@@ -262,9 +354,48 @@ contract CowBaseTest is Test {
         clearingPrices[3] = IERC4626(EWETH).convertToAssets(clearingPrices[1]); // eWETH price
     }
 
+    /// @notice Helper to set up a leveraged position for any user
+    /// @dev More flexible version that accepts owner, account, and vault parameters
+    /// The proceeds of the `borrow` are thrown away and *NOT* deposited in the account.
+    /// So make sure that `collateralAmount` is margin + borrowValue if that is something you care about.
+    function setupLeveragedPositionFor(
+        address owner,
+        address ownerAccount,
+        IEVault collateralVault,
+        IEVault borrowVault,
+        uint256 collateralAmount,
+        uint256 borrowAmount
+    ) internal {
+        IERC20 collateralAsset = IERC20(collateralVault.asset());
+
+        deal(address(collateralAsset), owner, collateralAmount);
+
+        vm.startPrank(owner);
+        require(collateralAsset.approve(address(collateralVault), type(uint256).max));
+        EVC.enableCollateral(ownerAccount, address(collateralVault));
+        EVC.enableController(ownerAccount, address(borrowVault));
+        collateralVault.deposit(collateralAmount, ownerAccount);
+        vm.stopPrank();
+
+        vm.prank(ownerAccount);
+        // for testing purposes, we don't want to swap back the tokens leveraged or anything like that, so
+        // we mint them to a throwaway address to ensure they don't impact the test
+        borrowVault.borrow(borrowAmount, makeAddr("trash"));
+    }
+
     /// @notice Encode wrapper data with length prefix
     /// @dev Takes already abi.encoded params and signature
     function encodeWrapperData(bytes memory paramsAndSignature) internal pure returns (bytes memory) {
         return abi.encodePacked(uint16(paramsAndSignature.length), paramsAndSignature);
+    }
+
+    /// @notice Test that unauthorized users cannot call evcInternalSettle directly
+    function test_BaseWrapper_UnauthorizedInternalSettle() external {
+        bytes memory settleData = "";
+        bytes memory wrapperData = "";
+
+        // Try to call evcInternalSettle directly (not through EVC)
+        vm.expectRevert(abi.encodeWithSelector(CowEvcBaseWrapper.Unauthorized.selector, address(this)));
+        wrapper.evcInternalSettle(settleData, wrapperData, wrapperData);
     }
 }

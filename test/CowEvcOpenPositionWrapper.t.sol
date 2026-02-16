@@ -28,6 +28,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Deploy the new open position wrapper
         openPositionWrapper = new CowEvcOpenPositionWrapper(address(EVC), COW_SETTLEMENT);
+        wrapper = openPositionWrapper;
 
         // Add wrapper as a solver
         GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
@@ -72,7 +73,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     /// in order to simplify order creation.
     function _setupUserPreApprovedFlow(address account, bytes32 hash) internal {
         vm.startPrank(user);
-        USDS.approve(address(EUSDS), type(uint256).max);
+        require(USDS.approve(address(EUSDS), type(uint256).max));
         EVC.setAccountOperator(user, address(openPositionWrapper), true);
         EVC.setAccountOperator(account, address(openPositionWrapper), true);
         openPositionWrapper.setPreApprovedHash(hash, true);
@@ -155,25 +156,21 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     }
 
     /// @notice Test opening a leveraged position using the new wrapper
-    function test_OpenPositionWrapper_Success() external {
-        // Create params using helper
+    function test_OpenPositionWrapper_Permit_Success() external {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
-        // Get settlement data
         SettlementData memory settlement = prepareOpenPositionSettlement({
             owner: user, receiver: account, sellAmount: DEFAULT_BORROW_AMOUNT, buyAmount: MIN_BUY_SHARES_AMOUNT
         });
 
-        // Setup user approvals
         vm.startPrank(user);
-        USDS.approve(address(EUSDS), type(uint256).max);
+        require(USDS.approve(address(EUSDS), type(uint256).max));
 
         // User signs order
         // We use a pre-signature here for convenience rather than EIP-712
         COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
         vm.stopPrank();
 
-        // Create permit signature for EVC
         bytes memory permitSignature = _createPermitSignatureFor(params, privateKey);
 
         // Verify that no position is open
@@ -186,14 +183,12 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             allowedDelta: 0
         });
 
-        // Encode settlement and wrapper data
         bytes memory settleData = abi.encodeCall(
             ICowSettlement.settle,
             (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
         );
         bytes memory wrapperData = encodeWrapperData(abi.encode(params, permitSignature));
 
-        // Expect event emission
         vm.expectEmit();
         emit CowEvcOpenPositionWrapper.CowEvcPositionOpened(
             params.owner,
@@ -204,7 +199,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             params.borrowAmount
         );
 
-        // Execute wrapped settlement
         openPositionWrapper.wrappedSettle(settleData, wrapperData);
 
         // Verify position was created successfully
@@ -219,16 +213,13 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     }
 
     /// @notice Test opening a position with pre-approved hash (no signature needed)
-    function test_OpenPositionWrapper_WithPreApprovedHash() external {
-        // Create params using helper
+    function test_OpenPositionWrapper_PreApprove_Success() external {
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
-        // Get settlement data
         SettlementData memory settlement = prepareOpenPositionSettlement({
             owner: user, receiver: account, sellAmount: DEFAULT_BORROW_AMOUNT, buyAmount: MIN_BUY_SHARES_AMOUNT
         });
 
-        // Setup user approvals and pre-approve hash
         bytes32 hash = openPositionWrapper.getApprovalHash(params);
         _setupUserPreApprovedFlow(account, hash);
 
@@ -265,7 +256,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         );
         bytes memory wrapperData = encodeWrapperData(abi.encode(params, new bytes(0)));
 
-        // Expect event emission
         vm.expectEmit();
         emit CowEvcOpenPositionWrapper.CowEvcPositionOpened(
             params.owner,
@@ -276,10 +266,8 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             params.borrowAmount
         );
 
-        // Execute wrapped settlement
         CowWrapper(address(openPositionWrapper)).wrappedSettle(settleData, wrapperData);
 
-        // Verify the position was created successfully
         _verifyPositionOpened({
             account: account,
             collateralVaultToken: EUSDS,
@@ -299,21 +287,20 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             EVC.isAccountOperatorAuthorized(account, address(openPositionWrapper)),
             "Wrapper should no longer be an authorized operator for the owner after settle"
         );
+
+        assertFalse(openPositionWrapper.isHashPreApproved(user, hash), "Pre-approved hash should be cleared after use");
     }
 
     /// @notice Test that invalid signature causes the transaction to revert
     function test_OpenPositionWrapper_InvalidSignatureReverts() external {
-        // Create params using helper
         CowEvcOpenPositionWrapper.OpenPositionParams memory params = _createDefaultParams(user, account);
 
-        // Get settlement data
         SettlementData memory settlement = prepareOpenPositionSettlement({
             owner: user, receiver: account, sellAmount: DEFAULT_BORROW_AMOUNT, buyAmount: DEFAULT_BUY_AMOUNT
         });
 
-        // Setup user approvals
         vm.prank(user);
-        USDS.approve(address(EUSDS), type(uint256).max);
+        require(USDS.approve(address(EUSDS), type(uint256).max));
 
         // Create INVALID permit signature by signing with wrong private key (user2's key instead of user's)
         ecdsa.setPrivateKey(privateKey2); // Wrong private key!
@@ -327,7 +314,6 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
             openPositionWrapper.encodePermitData(params)
         );
 
-        // Encode settlement and wrapper data
         bytes memory settleData = abi.encodeCall(
             ICowSettlement.settle,
             (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
@@ -350,9 +336,9 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Approve USDS spending by eUSDS for user1
         vm.startPrank(user);
-        USDS.approve(address(EUSDS), type(uint256).max);
+        require(USDS.approve(address(EUSDS), type(uint256).max));
         // Approve WETH for COW Protocol for user1
-        WETH.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+        require(WETH.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max));
 
         vm.stopPrank();
 
@@ -362,10 +348,10 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Approve USDS spending by eUSDS for user2
         vm.startPrank(user2);
-        USDS.approve(address(EUSDS), type(uint256).max);
+        require(USDS.approve(address(EUSDS), type(uint256).max));
 
         // Approve WETH for COW Protocol for user2
-        WETH.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+        require(WETH.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max));
 
         vm.stopPrank();
 
@@ -375,9 +361,9 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
 
         // Approve WETH spending by eWETH for user2
         vm.startPrank(user3);
-        WETH.approve(address(EWETH), type(uint256).max);
+        require(WETH.approve(address(EWETH), type(uint256).max));
         // Approve USDS for COW Protocol for user3
-        USDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max);
+        require(USDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max));
 
         vm.stopPrank();
 
