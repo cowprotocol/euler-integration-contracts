@@ -418,6 +418,8 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             userPrivateKey: privateKey2 // Use wrong private key to create invalid digest to sign
         });
 
+        // typecast is safe because the string is constant
+        // forge-lint: disable-next-line(unsafe-typecast)
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, bytes32("invalid digest"));
         bytes memory invalidPermitSignature = abi.encodePacked(r, s, v);
 
