@@ -277,6 +277,9 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         // Verify the new collateral vault is enabled
         assertTrue(EVC.isCollateralEnabled(account, address(EWBTC)), "EWBTC vault should be enabled");
+
+        assertFalse(EVC.isAccountOperatorAuthorized(owner, address(collateralSwapWrapper)), "Wrapper should not be operator after settlement");
+        assertFalse(EVC.isAccountOperatorAuthorized(account, address(collateralSwapWrapper)), "Wrapper should not be operator after settlement");
     }
 
     function test_CollateralSwapWrapper_Permit_MainAccount() external {
@@ -407,17 +410,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         vm.prank(user);
         vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, user));
         collateralSwapWrapper.wrappedSettle(settleData, wrapperData);
-    }
-
-    /// @notice Test validateWrapperData function
-    function test_CollateralSwapWrapper_ValidateWrapperData() external view {
-        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(user, account);
-
-        bytes memory signature = new bytes(0);
-        bytes memory wrapperData = abi.encode(params, signature);
-
-        // Should not revert for valid wrapper data
-        collateralSwapWrapper.validateWrapperData(wrapperData);
     }
 
     /// @notice Test that the wrapper can handle being called three times in the same chain
