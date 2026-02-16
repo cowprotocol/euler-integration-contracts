@@ -74,14 +74,21 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         );
     }
 
-    /// @notice Encode wrapper data with length prefix
-    function _encodeWrapperData(CowEvcCollateralSwapWrapper.CollateralSwapParams memory params, bytes memory signature)
-        internal
-        pure
-        returns (bytes memory)
-    {
-        bytes memory wrapperData = abi.encode(params, signature);
-        return abi.encodePacked(uint16(wrapperData.length), wrapperData);
+    /// @notice Encode collateral swap wrapper data with length prefix
+    /// @dev Combines encoding params+signature and adding length prefix
+    function _encodeCollateralSwapWrapperData(
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params,
+        bytes memory signature
+    ) internal pure returns (bytes memory) {
+        return encodeWrapperData(abi.encode(params, signature));
+    }
+
+    /// @notice Encode settlement data for ICowSettlement.settle call
+    function _encodeSettleData(SettlementData memory settlement) internal pure returns (bytes memory) {
+        return abi.encodeCall(
+            ICowSettlement.settle,
+            (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
+        );
     }
 
     /// @notice Setup user approvals for collateral swap on subaccount
@@ -219,7 +226,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             // Permit flow: create signature
 
             bytes memory permitSignature = _createPermitSignatureFor(params, userPrivateKey);
-            wrapperData = _encodeWrapperData(params, permitSignature);
+            wrapperData = _encodeCollateralSwapWrapperData(params, permitSignature);
 
             vm.startPrank(owner);
             // The vault relayer contract also needs to be approved so spend funds
@@ -247,14 +254,11 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             vm.prank(owner);
             COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
 
-            wrapperData = _encodeWrapperData(params, new bytes(0));
+            wrapperData = _encodeCollateralSwapWrapperData(params, new bytes(0));
         }
 
         // Encode settlement data
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
-        );
+        bytes memory settleData = _encodeSettleData(settlement);
 
         // Expect event emission
         vm.expectEmit();
@@ -376,11 +380,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         );
 
         // Encode settlement and wrapper data
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
-        );
-        bytes memory wrapperData = _encodeWrapperData(params, invalidPermitSignature);
+        bytes memory settleData = _encodeSettleData(settlement);
+        bytes memory wrapperData = _encodeCollateralSwapWrapperData(params, invalidPermitSignature);
 
         // Execute wrapped settlement - should revert with EVC_NotAuthorized due to invalid signature
         vm.expectRevert(abi.encodeWithSignature("EVC_NotAuthorized()"));
@@ -575,10 +576,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         settlement.interactions[1][2] = getDepositInteraction(EUSDS, 1000 ether);
 
         // Encode settlement data
-        bytes memory settleData = abi.encodeCall(
-            ICowSettlement.settle,
-            (settlement.tokens, settlement.clearingPrices, settlement.trades, settlement.interactions)
-        );
+        bytes memory settleData = _encodeSettleData(settlement);
 
         // Chain wrapper data
         bytes[] memory wrapperDatas = new bytes[](3);

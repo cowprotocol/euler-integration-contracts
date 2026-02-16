@@ -44,13 +44,22 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         });
     }
 
-    /// @notice Encode wrapper data with length prefix
+    /// @notice Encode wrapper data
     function _encodeWrapperData(CowEvcCollateralSwapWrapper.CollateralSwapParams memory params, bytes memory signature)
         internal
         pure
         returns (bytes memory)
     {
-        bytes memory wrapperData = abi.encode(params, signature);
+        return abi.encode(params, signature);
+    }
+
+    /// @notice Encode wrapper data with length prefix for single chained wrapper
+    /// @dev Combines encoding params+signature and adding length prefix
+    function _encodeSingleChainedWrapperData(
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params,
+        bytes memory signature
+    ) internal pure returns (bytes memory) {
+        bytes memory wrapperData = _encodeWrapperData(params, signature);
         return abi.encodePacked(uint16(wrapperData.length), wrapperData);
     }
 
@@ -62,7 +71,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
     {
         // A permit settlement is triggered by having signature data in `wrapperData`. 
         // For unit testing, we can just use 65 bytes of "zero" signtaure since we're not actually verifying it here.
-        wrapperData = _encodeWrapperData(_getDefaultParams(), new bytes(65));
+        wrapperData = _encodeSingleChainedWrapperData(_getDefaultParams(), new bytes(65));
         settleData = _getEmptySettleData();
     }
 
@@ -75,7 +84,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
 
         // A pre-hash settlement is triggered by having 0-length signature data in `wrapperData`.
-        wrapperData = _encodeWrapperData(params, new bytes(0));
+        wrapperData = _encodeSingleChainedWrapperData(params, new bytes(0));
         settleData = _getEmptySettleData();
         hash = CowEvcCollateralSwapWrapper(address(wrapper)).getApprovalHash(params);
     }
