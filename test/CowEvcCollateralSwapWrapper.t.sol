@@ -580,5 +580,10 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             Constants.ONE_PERCENT / 10000,
             "Account 3 should have some USDS collateral"
         );
+
+        // Verify the new collateral vault is enabled for all accounts
+        assertTrue(EVC.isCollateralEnabled(account, address(EWETH)), "Account 1 should have WETH vault enabled");
+        assertTrue(EVC.isCollateralEnabled(account2, address(EWETH)), "Account 2 should have WETH vault enabled");
+        assertTrue(EVC.isCollateralEnabled(account3, address(EUSDS)), "Account 3 should have USDS vault enabled");
     }
 }
