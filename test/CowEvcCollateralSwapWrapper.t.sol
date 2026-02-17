@@ -274,14 +274,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Operator authorizations should have been revoked (only actually used by pre-approve flow)
         assertFalse(
             EVC.isAccountOperatorAuthorized(owner, address(collateralSwapWrapper)),
-            "Wrapper should not be operator after settlement"
-        );
-        assertFalse(
-            EVC.isAccountOperatorAuthorized(account, address(collateralSwapWrapper)),
-            "Wrapper should not be operator after settlement"
-        );
-        assertFalse(
-            EVC.isAccountOperatorAuthorized(owner, address(collateralSwapWrapper)),
             "Wrapper should not be operator for the owner after settlement"
         );
         assertFalse(
