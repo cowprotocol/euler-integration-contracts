@@ -156,9 +156,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         r.interactions[1][0] = getWithdrawInteraction(sellVaultToken, sellAmount);
 
         // Swap underlying assets
-        uint256 swapAmount = sellAmount * 0.999 ether / 1 ether;
         r.interactions[1][1] =
-            getSwapInteraction(IERC20(sellVaultToken.asset()), IERC20(buyVaultToken.asset()), swapAmount);
+            getSwapInteraction(IERC20(sellVaultToken.asset()), IERC20(buyVaultToken.asset()), sellAmount);
 
         // Deposit to buy vault (transfer underlying to vault)
         uint256 buyUnderlyingAmount = sellAmount * r.clearingPrices[0] / milkSwap.prices(buyVaultToken.asset());
