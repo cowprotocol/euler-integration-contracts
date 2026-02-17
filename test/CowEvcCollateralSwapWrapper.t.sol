@@ -179,8 +179,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     ///         - Permit flow (userPrivateKey != 0): Creates ECDSA signature on-the-fly
     ///         - PreApprove flow (userPrivateKey == 0): Uses pre-approved hash mechanism
     ///      5. For PreApprove, further branches on owner==account:
-    ///         - Main account: Inline setup (approve + set hash + set operator)
-    ///         - Subaccount: Uses _setupSubaccountAuthorizations helper
+    ///         - Main account or subaccount: approve + set pre-approve hash + set operator
     ///      6. Executes the wrapped settlement through the wrapper
     ///      7. Verifies: correct balance changes + EWBTC collateral enabled
     ///
@@ -224,34 +223,33 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             bytes memory permitSignature = _createPermitSignatureFor(params, userPrivateKey);
             wrapperData = _encodeCollateralSwapWrapperData(params, permitSignature);
 
-            vm.startPrank(owner);
-            // The vault relayer contract also needs to be approved so spend funds
-            require(EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max));
-
+            vm.prank(owner);
             // normally a EIP-712 signature would be created for the CoW order here, but
             // to simplify tests, we use a pre approved hash
             COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
-            vm.stopPrank();
         } else {
             // PreApprove flow: setup authorizations
-            if (owner == account) {
-                // Main account: inline setup (less calls are needed)
-                vm.startPrank(owner);
-                require(EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max));
-                bytes32 hash = collateralSwapWrapper.getApprovalHash(params);
-                collateralSwapWrapper.setPreApprovedHash(hash, true);
-                EVC.setAccountOperator(params.account, address(collateralSwapWrapper), true);
-                vm.stopPrank();
-            } else {
-                // Subaccount: use helper shared by other tests
-                _setupSubaccountAuthorizations(params);
-            }
+            // They are the same whether the subaccount or main account is used
+            vm.startPrank(owner);
 
-            vm.prank(owner);
+            // Set wrapper as operator for the subaccount
+            EVC.setAccountOperator(params.account, address(collateralSwapWrapper), true);
+
+            // pre approve hash on collateral swap wrapper
+            bytes32 hash = collateralSwapWrapper.getApprovalHash(params);
+            collateralSwapWrapper.setPreApprovedHash(hash, true);
+
+            // pre approve on CoW setltement order
             COW_SETTLEMENT.setPreSignature(settlement.orderUid, true);
+            vm.stopPrank();
 
             wrapperData = _encodeCollateralSwapWrapperData(params, new bytes(0));
         }
+
+        // The vault relayer contract also needs to be approved so spend funds no matter what case
+        vm.startPrank(owner);
+        require(EUSDS.approve(COW_SETTLEMENT.vaultRelayer(), type(uint256).max));
+        vm.stopPrank();
 
         bytes memory settleData = _encodeSettleData(settlement);
 
