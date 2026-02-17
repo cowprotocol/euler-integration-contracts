@@ -167,6 +167,25 @@ contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
     /*//////////////////////////////////////////////////////////////
                     WRAPPED SETTLE TESTS
     //////////////////////////////////////////////////////////////*/
+    function test_WrappedSettle_PreApprovedHashRevertsIfDeadlineExceeded() public {
+        CowEvcOpenPositionWrapper.OpenPositionParams memory params = _getDefaultParams();
+        params.deadline = block.timestamp - 1; // Deadline in the past
+
+        bytes32 hash = CowEvcOpenPositionWrapper(address(wrapper)).getApprovalHash(params);
+        vm.prank(OWNER);
+        wrapper.setPreApprovedHash(hash, true);
+
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
+
+        vm.prank(SOLVER);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CowEvcBaseWrapper.OperationDeadlineExceeded.selector, params.deadline, block.timestamp
+            )
+        );
+        wrapper.wrappedSettle(settleData, wrapperData);
+    }
 
     /*//////////////////////////////////////////////////////////////
                     EDGE CASE TESTS
