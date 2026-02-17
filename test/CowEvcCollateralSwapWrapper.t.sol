@@ -346,8 +346,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     /// @notice Test that the wrapper can handle being called three times in the same chain
     /// @dev Two users close positions in the same direction (long USDS), one user closes opposite (long WETH)
     function test_CollateralSwapWrapper_ThreeUsers_TwoSameOneOpposite() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
         // Setup User1: Long USDS (USDS collateral, WETH debt). 1 ETH debt
         setupLeveragedPositionFor({
             owner: user,
