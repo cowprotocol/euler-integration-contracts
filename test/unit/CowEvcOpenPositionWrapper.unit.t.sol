@@ -47,7 +47,7 @@ contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
         return abi.encodePacked(uint16(wrapperData.length), wrapperData);
     }
 
-    function _prepareSuccessfulPermitSettlement()
+    function _prepareSuccessfulPermitFlow()
         internal
         view
         override
@@ -59,7 +59,7 @@ contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
         settleData = _getEmptySettleData();
     }
 
-    function _prepareSuccessfulPreSignSettlement()
+    function _prepareSuccessfulPreApproveFlow()
         internal
         view
         override

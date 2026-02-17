@@ -42,7 +42,7 @@ abstract contract UnitTestBase is Test {
     /// @dev Returns everything needed to execute a successful settlement with permit signature
     /// @return settleData The encoded settle() call data
     /// @return wrapperData The encoded wrapper data with signature
-    function _prepareSuccessfulPermitSettlement()
+    function _prepareSuccessfulPermitFlow()
         internal
         virtual
         returns (bytes memory settleData, bytes memory wrapperData);
@@ -52,7 +52,7 @@ abstract contract UnitTestBase is Test {
     /// @return settleData The encoded settle() call data
     /// @return wrapperData The encoded wrapper data (empty signature)
     /// @return hash The pre-approved hash that was set on the contract
-    function _prepareSuccessfulPreSignSettlement()
+    function _prepareSuccessfulPreApproveFlow()
         internal
         virtual
         returns (bytes memory settleData, bytes memory wrapperData, bytes32 hash);
@@ -119,14 +119,14 @@ abstract contract UnitTestBase is Test {
     }
 
     function test_WrappedSettle_WithPermitSignature() public {
-        (bytes memory settleData, bytes memory wrapperData) = _prepareSuccessfulPermitSettlement();
+        (bytes memory settleData, bytes memory wrapperData) = _prepareSuccessfulPermitFlow();
 
         vm.prank(SOLVER);
         wrapper.wrappedSettle(settleData, wrapperData);
     }
 
     function test_WrappedSettle_WithPreApprovedHash() public {
-        (bytes memory settleData, bytes memory wrapperData, bytes32 hash) = _prepareSuccessfulPreSignSettlement();
+        (bytes memory settleData, bytes memory wrapperData, bytes32 hash) = _prepareSuccessfulPreApproveFlow();
 
         // Explicitly pre-approve the hash
         vm.prank(OWNER);
@@ -139,7 +139,7 @@ abstract contract UnitTestBase is Test {
     }
 
     function test_WrappedSettle_RevertsOnTamperedSignature() public {
-        (bytes memory settleData, bytes memory wrapperData) = _prepareSuccessfulPermitSettlement();
+        (bytes memory settleData, bytes memory wrapperData) = _prepareSuccessfulPermitFlow();
 
         vm.mockCallRevert(address(mockEvc), 0, abi.encodeWithSelector(IEVC.permit.selector), "permit failure");
 
@@ -160,7 +160,7 @@ abstract contract UnitTestBase is Test {
     }
 
     function test_ValidateWrapperData_Valid() public {
-        (, bytes memory wrapperData,) = _prepareSuccessfulPreSignSettlement();
+        (, bytes memory wrapperData,) = _prepareSuccessfulPreApproveFlow();
 
         // Should not revert for valid wrapper data
         wrapper.validateWrapperData(Bytes.slice(wrapperData, 2)); // Skip the length prefix to get to the actual wrapper data expected by validateWrapperData

@@ -61,7 +61,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         return abi.encodePacked(uint16(wrapperData.length), wrapperData);
     }
 
-    function _prepareSuccessfulPermitSettlement()
+    function _prepareSuccessfulPermitFlow()
         internal
         override
         returns (bytes memory settleData, bytes memory wrapperData)
@@ -78,7 +78,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         deal(address(mockDebtAsset), inbox, 1);
     }
 
-    function _prepareSuccessfulPreSignSettlement()
+    function _prepareSuccessfulPreApproveFlow()
         internal
         override
         returns (bytes memory settleData, bytes memory wrapperData, bytes32 hash)

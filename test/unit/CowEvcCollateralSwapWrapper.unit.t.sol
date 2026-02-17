@@ -64,7 +64,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         return abi.encodePacked(uint16(wrapperData.length), wrapperData);
     }
 
-    function _prepareSuccessfulPermitSettlement()
+    function _prepareSuccessfulPermitFlow()
         internal
         view
         override
@@ -76,7 +76,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         settleData = _getEmptySettleData();
     }
 
-    function _prepareSuccessfulPreSignSettlement()
+    function _prepareSuccessfulPreApproveFlow()
         internal
         view
         override
@@ -254,7 +254,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
 
         // The call should succeed - there's no validation preventing 0 amount transfers
         vm.prank(SOLVER);
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
             params.owner, params.account, params.fromVault, params.toVault, 0, 0
         );
@@ -281,7 +281,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         // With different owner/account, a transfer of 0 tokens should be attempted
         // This should succeed as transferring 0 tokens is typically allowed
         vm.prank(SOLVER);
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
             params.owner, params.account, params.fromVault, params.toVault, 0, 0
         );
@@ -308,7 +308,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         // No validation prevents swapping from/to the same vault
         // Transaction should succeed but accomplishes nothing economically useful
         vm.prank(SOLVER);
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
             params.owner, params.account, params.fromVault, params.fromVault, DEFAULT_SWAP_AMOUNT, 0
         );

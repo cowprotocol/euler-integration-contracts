@@ -6,6 +6,8 @@ import {EthereumVaultConnector} from "ethereum-vault-connector/EthereumVaultConn
 
 import {ECDSA} from "openzeppelin/utils/cryptography/ECDSA.sol";
 
+import {Constants} from "./Constants.sol";
+
 // Vendored and minimized from Euler's Ethereum Vault Connector repo with minor modifications:
 // - Only used SignerECDSA (don't need any other other permit logic)
 // - Modified Solidity version
@@ -13,9 +15,6 @@ import {ECDSA} from "openzeppelin/utils/cryptography/ECDSA.sol";
 // <https://github.com/euler-xyz/ethereum-vault-connector/blob/34bb788288a0eb0fbba06bc370cb8ca3dd42614e/test/unit/EthereumVaultConnector/Permit.t.sol#L68>
 
 abstract contract EIP712 {
-    bytes32 internal constant _TYPE_HASH =
-        keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
-
     bytes32 internal immutable HASHED_NAME;
     string private _name;
     string private _nameFallback;
@@ -84,7 +83,7 @@ contract SignerECDSA is EIP712, Test {
     }
 
     function _buildDomainSeparator() internal view override returns (bytes32) {
-        return keccak256(abi.encode(_TYPE_HASH, HASHED_NAME, block.chainid, address(EVC)));
+        return keccak256(abi.encode(Constants.EIP712_DOMAIN_TYPE_HASH, HASHED_NAME, block.chainid, address(EVC)));
     }
 
     function signPermit(
