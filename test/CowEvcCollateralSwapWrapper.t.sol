@@ -349,7 +349,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     }
 
     /// @notice Test that the wrapper can handle being called three times in the same chain
-    /// @dev Two users swap USDS→WETH, one user swaps WETH→USDS
+    /// @dev Two users swap USDS→WETH, one user swaps WETH→USDS. All of them have WBTC debt (1 BTC = 100,000 USDS)
     /// User1+User2 swap eUSDS→eWETH (sell 700 + 300 = 1000 eUSDS, need 0.2 + 0.2 = 0.4 eWETH), User3 swaps eWETH→eUSDS (sell 0.8 eWETH, needs 2000 eUSDS).
     /// Coincidence of wants: User3 provides 0.8 eWETH, User1+User2 need 0.4 eWETH → surplus of 0.4 eWETH. User1+User2 provide 1000 eUSDS, User3 needs 2000 eUSDS → deficit of 1000 eUSDS.
     /// We withdraw 0.4 WETH from vault, swap to 1000 USDS (at rate 2500 USD/ETH), and deposit into eUSDS vault to cover the deficit and balance the trades.
