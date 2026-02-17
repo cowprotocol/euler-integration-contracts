@@ -15,6 +15,15 @@ import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 import {MilkSwap} from "./MilkSwap.sol";
 
 abstract contract CowBaseTest is Test {
+    struct SettlementData {
+        bytes orderUid;
+        GPv2Order.Data orderData;
+        address[] tokens;
+        uint256[] clearingPrices;
+        ICowSettlement.Trade[] trades;
+        ICowSettlement.Interaction[][3] interactions;
+    }
+
     uint256 mainnetFork;
     uint256 constant BLOCK_NUMBER = 22546006;
     string forkRpcUrl = vm.envOr("FORK_RPC_URL", string(""));

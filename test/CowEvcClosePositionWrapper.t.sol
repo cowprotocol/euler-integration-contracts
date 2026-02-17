@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 
-import {GPv2Order} from "cow/libraries/GPv2Order.sol";
-
 import {IEVault, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcClosePositionWrapper} from "../src/CowEvcClosePositionWrapper.sol";
@@ -11,13 +9,15 @@ import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 import {Inbox} from "../src/Inbox.sol";
 
 import {CowBaseTest} from "./helpers/CowBaseTest.sol";
-import {SignerECDSA} from "./helpers/SignerECDSA.sol";
+import {EvcPermitSigner} from "./helpers/EvcPermitSigner.sol";
+
+import {Constants} from "./helpers/Constants.sol";
 
 /// @title E2E Test for CowEvcClosePositionWrapper
 /// @notice Tests the full flow of closing a leveraged position using the new wrapper contract
 contract CowEvcClosePositionWrapperTest is CowBaseTest {
     CowEvcClosePositionWrapper public closePositionWrapper;
-    SignerECDSA internal ecdsa;
+    EvcPermitSigner internal ecdsa;
 
     uint256 constant USDS_MARGIN = 3000e18;
     uint256 constant DEFAULT_SELL_AMOUNT = 2900 ether; // would repay all debt by a large margin
@@ -41,19 +41,10 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         allowList.addSolver(address(closePositionWrapper));
         vm.stopPrank();
 
-        ecdsa = new SignerECDSA(EVC);
+        ecdsa = new EvcPermitSigner(EVC);
 
         // Setup user with USDS
         deal(address(USDS), user, 10000e18);
-    }
-
-    struct SettlementData {
-        bytes orderUid;
-        GPv2Order.Data orderData;
-        address[] tokens;
-        uint256[] clearingPrices;
-        ICowSettlement.Trade[] trades;
-        ICowSettlement.Interaction[][3] interactions;
     }
 
     /// @notice Create default ClosePositionParams for testing
@@ -373,7 +364,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             // the amount of ether *actually sold* should be very close to.
             // While 2900 EUSDS is pulled out of the wallet, only 2800 (1.12 ETH * $2500) would be spent, and the rest returned to the account.
             collateralBeforeAccount - 2800 ether,
-            0.01 ether,
+            Constants.ONE_PERCENT,
             "User should have used approximately 2500 EUSDS to repay after closing"
         );
         assertEq(EUSDS.balanceOf(user), collateralBefore, "User main account balance should not have changed");
@@ -489,6 +480,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
     /// @notice Test that the wrapper can handle being called three times in the same chain
     /// @dev Two users close positions in the same direction (long USDS), one user closes opposite (long WETH)
+    /// User1+User2 close USDS positions (sell eUSDS for WETH, need 1.001 + 3.003 = 4.004 WETH), User3 closes WETH position (sell eWETH for USDS, needs 5005 USDS).
+    /// Coincidence of wants: User3 provides eWETH worth ~2.002 WETH, User1+User2 provide eUSDS worth ~10010 USDS. After satisfying User3's 5005 USDS need,
+    /// we have ~5000 USDS surplus. We swap this 5000 USDS → ~2 WETH to cover the remaining WETH needed for User1+User2 (assumed rate: 2500 USD/ETH).
     function test_ClosePositionWrapper_ThreeUsers_TwoSameOneOpposite() external {
         // Setup User1: Long USDS (USDS collateral, WETH debt). ~1 ETH debt
         setupLeveragedPositionFor({

@@ -2,12 +2,15 @@
 pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
+import {Constants} from "../../helpers/Constants.sol";
 
 /// @title MockEVC
 /// @notice Mock implementation of EVC for unit testing
 contract MockEVC {
     mapping(address => mapping(address => bool)) public operators;
     mapping(address => uint256) public nonces;
+    address public onBehalfOf;
+    bool public shouldVerifySignatures = false;
     uint256 public operatorMask = 0;
 
     error InvalidSignature();
@@ -16,14 +19,13 @@ contract MockEVC {
         "Permit(address signer,address sender,uint256 nonceNamespace,uint256 nonce,uint256 deadline,uint256 value,bytes data)"
     );
 
-    bytes32 private constant DOMAIN_TYPE_HASH =
-        keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
-
     bytes32 private immutable DOMAIN_SEPARATOR;
 
     constructor() {
         DOMAIN_SEPARATOR = keccak256(
-            abi.encode(DOMAIN_TYPE_HASH, keccak256("Ethereum Vault Connector"), block.chainid, address(this))
+            abi.encode(
+                Constants.EIP712_DOMAIN_TYPE_HASH, keccak256("Ethereum Vault Connector"), block.chainid, address(this)
+            )
         );
     }
 
@@ -56,7 +58,13 @@ contract MockEVC {
     function batch(IEVC.BatchItem[] calldata items) external returns (IEVC.BatchItemResult[] memory) {
         // Execute each item
         for (uint256 i = 0; i < items.length; i++) {
+            // Set onBehalfOf to the item's onBehalfOfAccount for the duration of the call
+            onBehalfOf = items[i].onBehalfOfAccount;
+
             (bool success, bytes memory reason) = items[i].targetContract.call(items[i].data);
+
+            // reset onBehalfOf
+            onBehalfOf = address(0);
 
             if (!success) {
                 assembly ("memory-safe") {
@@ -69,6 +77,10 @@ contract MockEVC {
     }
 
     function permit(address, address, uint256, uint256, uint256, uint256, bytes memory, bytes memory) external view {}
+
+    function getCurrentOnBehalfOfAccount(address) external view returns (address, bool) {
+        return (onBehalfOf, false);
+    }
 
     fallback() external {
         revert("Mock EVC does not implement the called function");

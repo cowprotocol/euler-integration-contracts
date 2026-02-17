@@ -4,7 +4,7 @@
 [submodule "lib/cow"]
 	path = lib/cow
 	url = https://github.com/cowprotocol/contracts
-	branch = feat/wrapper
+	branch = main
 [submodule "lib/euler-vault-kit"]
 	path = lib/euler-vault-kit
 	url = https://github.com/euler-xyz/euler-vault-kit
@@ -13,4 +13,4 @@
 	url = https://github.com/euler-xyz/ethereum-vault-connector
 [submodule "lib/openzeppelin-contracts"]
 	path = lib/openzeppelin-contracts
-	url = https://github.com/openzeppelin/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts

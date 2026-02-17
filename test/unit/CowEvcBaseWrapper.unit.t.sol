@@ -286,6 +286,20 @@ contract CowEvcBaseWrapperTest is Test {
         wrapper.invokeEvc(settleData, wrapperData, new bytes(0), params, new bytes(0));
     }
 
+    function test_InvokeEvc_RevertsIfHashNotPreApproved() public {
+        MockEvcBaseWrapper.TestParams memory params =
+            MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: 150});
+        bytes memory wrapperData = abi.encode(params, new bytes(0));
+
+        bytes memory settleData = "";
+        // Don't pre-approve the hash - expect revert
+
+        vm.expectRevert(
+            abi.encodeWithSelector(PreApprovedHashes.HashNotApproved.selector, OWNER, wrapper.getApprovalHash(params))
+        );
+        wrapper.invokeEvc(settleData, wrapperData, new bytes(0), params, new bytes(0));
+    }
+
     // NOTE: We have to use a bunch of separate tests here because `vm.expectCall` works across
     // the entire test, and we need to check many different conditions.
     function test_SetAccountOperator_NoCallsWhenMaskIsZero() public {

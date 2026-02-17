@@ -5,14 +5,17 @@ import {Test} from "forge-std/Test.sol";
 
 import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
-import {ICowSettlement} from "../../src/CowWrapper.sol";
+import {ICowSettlement, CowWrapper} from "../../src/CowWrapper.sol";
 import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
+import {EmptyWrapper} from "../EmptyWrapper.sol";
 import {IEVC} from "evc/EthereumVaultConnector.sol";
+import {Bytes} from "openzeppelin-contracts/contracts/utils/Bytes.sol";
 
 abstract contract UnitTestBase is Test {
     MockEVC public mockEvc;
     MockCowSettlement public mockSettlement;
     MockCowAuthentication public mockAuth;
+    EmptyWrapper public emptyWrapper;
 
     CowEvcBaseWrapper public wrapper;
 
@@ -26,10 +29,29 @@ abstract contract UnitTestBase is Test {
         mockAuth = new MockCowAuthentication();
         mockSettlement = new MockCowSettlement(address(mockAuth));
         mockEvc = new MockEVC();
+        emptyWrapper = new EmptyWrapper(ICowSettlement(address(mockSettlement)));
 
         // Set solver as authenticated
         mockAuth.setSolver(SOLVER, true);
+
+        vm.label(OWNER, "OWNER");
+        vm.label(ACCOUNT, "ACCOUNT");
     }
+
+    /// @dev A generic function that prepares the state and returns the data
+    /// needed for calling `wrapper.wrappedSettle` and executing through the
+    /// *permit* flow. This allows us to write generic tests that work for all
+    /// wrapper implementations.
+    function _prepareSuccessfulPermitFlow() internal virtual returns (bytes memory settleData, bytes memory wrapperData);
+
+    /// @dev A generic function that prepares the state and returns the data
+    /// needed for calling `wrapper.wrappedSettle` and executing through the
+    /// *pre-sign* flow. This allows us to write generic tests that work for all
+    /// wrapper implementations.
+    function _prepareSuccessfulPreApproveFlow()
+        internal
+        virtual
+        returns (bytes memory settleData, bytes memory wrapperData, bytes32 hash);
 
     /// @notice Helper to get the decoded IEVC.BatchItem[] and params hash from a call to `encodePermitData`
     function _decodePermitData(bytes memory permitData)
@@ -81,6 +103,48 @@ abstract contract UnitTestBase is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                    WRAPPED SETTLE TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_WrappedSettle_OnlySolver() public {
+        bytes memory settleData = "";
+        bytes memory wrapperData = hex"0000";
+
+        vm.expectRevert(abi.encodeWithSelector(CowWrapper.NotASolver.selector, address(this)));
+        wrapper.wrappedSettle(settleData, wrapperData);
+    }
+
+    function test_WrappedSettle_WithPermitSignature() public {
+        (bytes memory settleData, bytes memory wrapperData) = _prepareSuccessfulPermitFlow();
+
+        vm.prank(SOLVER);
+        wrapper.wrappedSettle(settleData, wrapperData);
+    }
+
+    function test_WrappedSettle_WithPreApprovedHash() public {
+        (bytes memory settleData, bytes memory wrapperData, bytes32 hash) = _prepareSuccessfulPreApproveFlow();
+
+        // Explicitly pre-approve the hash
+        vm.prank(OWNER);
+        wrapper.setPreApprovedHash(hash, true);
+
+        vm.prank(SOLVER);
+        wrapper.wrappedSettle(settleData, wrapperData);
+
+        assertFalse(wrapper.isHashPreApproved(OWNER, hash), "Hash should be consumed");
+    }
+
+    function test_WrappedSettle_RevertsOnTamperedSignature() public {
+        (bytes memory settleData, bytes memory wrapperData) = _prepareSuccessfulPermitFlow();
+
+        vm.mockCallRevert(address(mockEvc), 0, abi.encodeWithSelector(IEVC.permit.selector), "permit failure");
+
+        vm.prank(SOLVER);
+        vm.expectRevert("permit failure");
+        wrapper.wrappedSettle(settleData, wrapperData);
+    }
+
+    /*//////////////////////////////////////////////////////////////
                     PARSE WRAPPER DATA TESTS
     //////////////////////////////////////////////////////////////*/
 
@@ -89,5 +153,12 @@ abstract contract UnitTestBase is Test {
         bytes memory malformedData = hex"deadbeef";
         vm.expectRevert(new bytes(0));
         wrapper.validateWrapperData(malformedData);
+    }
+
+    function test_ValidateWrapperData_Valid() public {
+        (, bytes memory wrapperData,) = _prepareSuccessfulPreApproveFlow();
+
+        // Should not revert for valid wrapper data
+        wrapper.validateWrapperData(Bytes.slice(wrapperData, 2)); // Skip the length prefix to get to the actual wrapper data expected by validateWrapperData
     }
 }
