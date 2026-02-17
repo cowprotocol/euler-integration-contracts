@@ -195,7 +195,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             ownerAccount: account,
             collateralVault: EUSDS,
             borrowVault: EWETH,
-            collateralAmount: collateralAmount + borrowAmount * 2500e18 / 0.99e18,
+            collateralAmount: collateralAmount + borrowAmount * 2500,
             borrowAmount: borrowAmount
         });
 
@@ -283,7 +283,14 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             EVC.isAccountOperatorAuthorized(account, address(collateralSwapWrapper)),
             "Wrapper should not be operator after settlement"
         );
-    }
+        assertFalse(
+            EVC.isAccountOperatorAuthorized(owner, address(collateralSwapWrapper)),
+            "Wrapper should not be operator for the owner after settlement"
+        );
+        assertFalse(
+            EVC.isAccountOperatorAuthorized(account, address(collateralSwapWrapper)),
+            "Wrapper should not be operator for the subaccount after settlement"
+        );
 
     function test_CollateralSwapWrapper_Permit_MainAccount() external {
         _testCollateralSwapFlow(user, user, privateKey);
@@ -346,8 +353,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     /// @notice Test that the wrapper can handle being called three times in the same chain
     /// @dev Two users close positions in the same direction (long USDS), one user closes opposite (long WETH)
     function test_CollateralSwapWrapper_ThreeUsers_TwoSameOneOpposite() external {
-        vm.skip(bytes(forkRpcUrl).length == 0);
-
         // Setup User1: Long USDS (USDS collateral, WETH debt). 1 ETH debt
         setupLeveragedPositionFor({
             owner: user,
@@ -368,7 +373,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             borrowAmount: 3 ether
         });
 
-        // Setup User3: Long WBTC (WETH collateral, WBTC debt). 2 ETH debt
+        // Setup User3: Long WBTC (WBTC collateral, WETH debt). 2 ETH debt
         setupLeveragedPositionFor({
             owner: user3,
             ownerAccount: account3,
@@ -550,7 +555,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         assertApproxEqRel(
             IERC4626(EUSDS).convertToAssets(EUSDS.balanceOf(account)),
             3250 ether,
-            0.01 ether,
+            ONE_PERCENT,
             "Account 1 should have less USDS collateral"
         );
         assertApproxEqRel(
