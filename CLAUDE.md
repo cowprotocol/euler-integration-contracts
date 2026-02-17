@@ -44,7 +44,7 @@ This repository contains **Euler-CoW Protocol integration contracts** that enabl
 
 - **Euler Vault Kit** (`lib/euler-vault-kit`): ERC4626 vault implementation with borrowing
 - **Ethereum Vault Connector (EVC)** (`lib/evc`): Batch transaction coordinator with account checking
-- **CoW Protocol**: DEX aggregator settlement contracts (minimal vendored types in `src/vendor/` and `test/helpers/`)
+- **CoW Protocol**: DEX aggregator settlement contracts (minimal vendored types in `src/CowWrapper.sol` and `test/helpers/`)
 
 ## Development Commands
 
