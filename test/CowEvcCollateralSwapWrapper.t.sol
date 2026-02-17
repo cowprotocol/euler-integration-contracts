@@ -366,7 +366,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             borrowAmount: 3 ether
         });
 
-        // Setup User3: Long WBTC (WETH collateral, WBTC debt). 2 ETH debt
+        // Setup User3: Long WBTC (WBTC collateral, WETH debt). 2 ETH debt
         setupLeveragedPositionFor({
             owner: user3,
             ownerAccount: account3,
