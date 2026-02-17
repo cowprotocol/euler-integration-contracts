@@ -6,8 +6,6 @@ import {EthereumVaultConnector} from "ethereum-vault-connector/EthereumVaultConn
 
 import {ECDSA} from "openzeppelin/utils/cryptography/ECDSA.sol";
 
-import {Constants} from "./Constants.sol";
-
 // Vendored and minimized from Euler's Ethereum Vault Connector repo with minor modifications:
 // - Only used SignerECDSA (don't need any other other permit logic)
 // - Modified Solidity version
