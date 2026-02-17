@@ -13,9 +13,6 @@ import {ECDSA} from "openzeppelin/utils/cryptography/ECDSA.sol";
 // <https://github.com/euler-xyz/ethereum-vault-connector/blob/34bb788288a0eb0fbba06bc370cb8ca3dd42614e/test/unit/EthereumVaultConnector/Permit.t.sol#L68>
 
 abstract contract EIP712 {
-    bytes32 internal constant _TYPE_HASH =
-        keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
-
     bytes32 internal immutable HASHED_NAME;
     string private _name;
     string private _nameFallback;
@@ -67,9 +64,12 @@ abstract contract EIP712 {
     }
 }
 
-contract SignerECDSA is EIP712, Test {
+contract EvcPermitSigner is EIP712, Test {
     EthereumVaultConnector private immutable EVC;
     uint256 private privateKey;
+
+    bytes32 internal constant EVC_DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
 
     bytes32 internal constant PERMIT_TYPEHASH = keccak256(
         "Permit(address signer,address sender,uint256 nonceNamespace,uint256 nonce,uint256 deadline,uint256 value,bytes data)"
@@ -84,7 +84,7 @@ contract SignerECDSA is EIP712, Test {
     }
 
     function _buildDomainSeparator() internal view override returns (bytes32) {
-        return keccak256(abi.encode(_TYPE_HASH, HASHED_NAME, block.chainid, address(EVC)));
+        return keccak256(abi.encode(EVC_DOMAIN_TYPEHASH, HASHED_NAME, block.chainid, address(EVC)));
     }
 
     function signPermit(

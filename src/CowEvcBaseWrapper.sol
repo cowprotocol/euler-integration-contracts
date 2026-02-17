@@ -16,7 +16,7 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
     /// @dev The EIP-712 domain type hash used for computing the domain
     /// separator.
-    bytes32 internal constant DOMAIN_TYPE_HASH =
+    bytes32 public constant DOMAIN_TYPE_HASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
 
     /// @dev The marker value for a sell order for computing the order struct

@@ -3,6 +3,8 @@ pragma solidity ^0.8;
 
 import {IERC20, IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 
+import {MockEVC} from "./MockEVC.sol";
+
 /// @title MockERC20
 /// @notice Mock ERC20 token for unit testing
 contract MockERC20 is IERC20 {
@@ -24,19 +26,19 @@ contract MockERC20 is IERC20 {
         totalSupply += amount;
     }
 
-    function approve(address spender, uint256 amount) external override returns (bool) {
+    function approve(address spender, uint256 amount) external virtual override returns (bool) {
         allowance[msg.sender][spender] = amount;
         return true;
     }
 
-    function transfer(address to, uint256 amount) external override returns (bool) {
+    function transfer(address to, uint256 amount) external virtual override returns (bool) {
         require(balanceOf[msg.sender] >= amount, "ERC20Mock: insufficient balance");
         balanceOf[msg.sender] -= amount;
         balanceOf[to] += amount;
         return true;
     }
 
-    function transferFrom(address from, address to, uint256 amount) external override returns (bool) {
+    function transferFrom(address from, address to, uint256 amount) external virtual override returns (bool) {
         if (allowance[from][msg.sender] != type(uint256).max) {
             require(allowance[from][msg.sender] >= amount, "ERC20Mock: insufficient allowance");
             allowance[from][msg.sender] -= amount;
@@ -52,9 +54,13 @@ contract MockERC20 is IERC20 {
     /// @notice Mock ERC4626 vault for unit testing
     contract MockVault is IERC4626, MockERC20 {
         address public immutable ASSET_ADDRESS;
+        MockEVC public immutable EVC;
 
-        constructor(address _asset, string memory _name, string memory _symbol) MockERC20(_name, _symbol) {
+        constructor(MockEVC _evc, address _asset, string memory _name, string memory _symbol)
+            MockERC20(_name, _symbol)
+        {
             ASSET_ADDRESS = _asset;
+            EVC = _evc;
         }
 
         function asset() external view override returns (address) {
@@ -130,6 +136,41 @@ contract MockERC20 is IERC20 {
             balanceOf[receiver] += shares;
             return shares;
         }
+
+        function approve(address spender, uint256 amount) external override returns (bool) {
+            address sender = msg.sender;
+            if (sender == address(EVC)) {
+                (sender,) = EVC.getCurrentOnBehalfOfAccount(address(0));
+            }
+            allowance[sender][spender] = amount;
+            return true;
+        }
+
+        function transfer(address to, uint256 amount) external override returns (bool) {
+            address sender = msg.sender;
+            if (sender == address(EVC)) {
+                (sender,) = EVC.getCurrentOnBehalfOfAccount(address(0));
+            }
+            require(balanceOf[sender] >= amount, "ERC20Mock: insufficient balance");
+            balanceOf[sender] -= amount;
+            balanceOf[to] += amount;
+            return true;
+        }
+
+        function transferFrom(address from, address to, uint256 amount) external override returns (bool) {
+            address spender = msg.sender;
+            if (spender == address(EVC)) {
+                (spender,) = EVC.getCurrentOnBehalfOfAccount(address(0));
+            }
+            if (allowance[from][spender] != type(uint256).max) {
+                require(allowance[from][spender] >= amount, "ERC20Mock: insufficient allowance");
+                allowance[from][spender] -= amount;
+            }
+            require(balanceOf[from] >= amount, "ERC20Mock: insufficient balance");
+            balanceOf[from] -= amount;
+            balanceOf[to] += amount;
+            return true;
+        }
     }
 
     /// @title MockBorrowVault
@@ -139,7 +180,9 @@ contract MockERC20 is IERC20 {
         uint256 public repayAmount;
         bool public repayAllWasCalled;
 
-        constructor(address _asset, string memory _name, string memory _symbol) MockVault(_asset, _name, _symbol) {}
+        constructor(MockEVC _evc, address _asset, string memory _name, string memory _symbol)
+            MockVault(_evc, _asset, _name, _symbol)
+        {}
 
         function setDebt(address account, uint256 amount) external {
             debts[account] = amount;

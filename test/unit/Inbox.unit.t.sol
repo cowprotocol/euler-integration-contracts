@@ -7,6 +7,7 @@ import {Inbox, InboxLibrary} from "../../src/Inbox.sol";
 import {InboxFactory} from "../../src/InboxFactory.sol";
 import {MockCowSettlement, MockCowAuthentication} from "./mocks/MockCowProtocol.sol";
 import {MockERC20, MockBorrowVault} from "./mocks/MockERC20AndVaults.sol";
+import {MockEVC} from "./mocks/MockEVC.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 
 contract InboxUnitTest is Test {
@@ -48,7 +49,7 @@ contract InboxUnitTest is Test {
         mockAuth = new MockCowAuthentication();
         mockSettlement = new MockCowSettlement(address(mockAuth));
         mockToken = new MockERC20("Mock Token", "MOCK");
-        mockVault = new MockBorrowVault(address(mockToken), "Mock Vault", "mMOCK");
+        mockVault = new MockBorrowVault(new MockEVC(), address(mockToken), "Mock Vault", "mMOCK");
 
         inboxFactory = new InboxFactory(address(mockSettlement));
         inbox = Inbox(inboxFactory.getInbox(BENEFICIARY, ACCOUNT));

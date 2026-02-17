@@ -1,22 +1,20 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 
-import {GPv2Order} from "cow/libraries/GPv2Order.sol";
-
 import {IEVault, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
 import {CowEvcOpenPositionWrapper} from "../src/CowEvcOpenPositionWrapper.sol";
 import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
-import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
+import {IGPv2AllowListAuthentication} from "./helpers/IGPv2AllowListAuthentication.sol";
 
 import {CowBaseTest} from "./helpers/CowBaseTest.sol";
-import {SignerECDSA} from "./helpers/SignerECDSA.sol";
+import {EvcPermitSigner} from "./helpers/EvcPermitSigner.sol";
 
 /// @title E2E Test for CowEvcOpenPositionWrapper
 /// @notice Tests the full flow of opening a leveraged position using the new wrapper contract
 contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     CowEvcOpenPositionWrapper public openPositionWrapper;
-    SignerECDSA internal ecdsa;
+    EvcPermitSigner internal ecdsa;
 
     uint256 constant USDS_MARGIN = 5000e18;
     uint256 constant DEFAULT_BORROW_AMOUNT = 1e18;
@@ -31,25 +29,16 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         wrapper = openPositionWrapper;
 
         // Add wrapper as a solver
-        GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
+        IGPv2AllowListAuthentication allowList = IGPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
         address manager = allowList.manager();
         vm.startPrank(manager);
         allowList.addSolver(address(openPositionWrapper));
         vm.stopPrank();
 
-        ecdsa = new SignerECDSA(EVC);
+        ecdsa = new EvcPermitSigner(EVC);
 
         // Setup user with USDS
         deal(address(USDS), user, 10000e18);
-    }
-
-    struct SettlementData {
-        bytes orderUid;
-        GPv2Order.Data orderData;
-        address[] tokens;
-        uint256[] clearingPrices;
-        ICowSettlement.Trade[] trades;
-        ICowSettlement.Interaction[][3] interactions;
     }
 
     /// @notice Create default OpenPositionParams for testing

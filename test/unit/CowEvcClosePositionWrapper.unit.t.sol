@@ -4,11 +4,11 @@ pragma solidity ^0.8;
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {CowEvcClosePositionWrapper} from "../../src/CowEvcClosePositionWrapper.sol";
 import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
-import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
 import {MockERC20, MockVault, MockBorrowVault} from "./mocks/MockERC20AndVaults.sol";
 import {UnitTestBase} from "./UnitTestBase.sol";
 import {IERC20, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {Constants} from "../helpers/Constants.sol";
 
 // this is required because foundry doesn't have a cheatcode for override any transient storage.
 contract TestableClosePositionWrapper is CowEvcClosePositionWrapper {
@@ -61,15 +61,38 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         return abi.encodePacked(uint16(wrapperData.length), wrapperData);
     }
 
-    /// @notice Setup pre-approved hash flow
-    function _setupPreApprovedHash(CowEvcClosePositionWrapper.ClosePositionParams memory params)
+    function _prepareSuccessfulPermitFlow()
         internal
-        returns (bytes32)
+        override
+        returns (bytes memory settleData, bytes memory wrapperData)
     {
-        bytes32 hash = CowEvcClosePositionWrapper(address(wrapper)).getApprovalHash(params);
-        vm.prank(params.owner);
-        wrapper.setPreApprovedHash(hash, true);
-        return hash;
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+
+        // A permit settlement is triggered by having signature data in `wrapperData`.
+        // For unit testing, we can just use 65 bytes of "zero" signtaure since we're not actually verifying it here.
+        wrapperData = _encodeSingleChainedWrapperData(params, new bytes(65));
+        settleData = _getEmptySettleData();
+
+        // Put funds in the inbox so the repayment doesn't revert
+        address inbox = CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account);
+        deal(address(mockDebtAsset), inbox, 1);
+    }
+
+    function _prepareSuccessfulPreApproveFlow()
+        internal
+        override
+        returns (bytes memory settleData, bytes memory wrapperData, bytes32 hash)
+    {
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+
+        // A pre-hash settlement is triggered by having 0-length signature data in `wrapperData`.
+        wrapperData = _encodeSingleChainedWrapperData(params, new bytes(0));
+        settleData = _getEmptySettleData();
+        hash = CowEvcClosePositionWrapper(address(wrapper)).getApprovalHash(params);
+
+        // Put funds in the inbox so the repayment doesn't revert
+        address inbox = CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account);
+        deal(address(mockDebtAsset), inbox, 1);
     }
 
     function setUp() public override {
@@ -77,8 +100,8 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
 
         mockCollateralAsset = new MockERC20("Mock Asset Collateral", "MOCKCOLL");
         mockDebtAsset = new MockERC20("Mock Asset Debt", "MOCKDEBT");
-        mockCollateralVault = new MockVault(address(mockCollateralAsset), "Mock Collateral", "mCOL");
-        mockBorrowVault = new MockBorrowVault(address(mockDebtAsset), "Mock Borrow", "mBOR");
+        mockCollateralVault = new MockVault(mockEvc, address(mockCollateralAsset), "Mock Collateral", "mCOL");
+        mockBorrowVault = new MockBorrowVault(mockEvc, address(mockDebtAsset), "Mock Borrow", "mBOR");
 
         wrapper = CowEvcBaseWrapper(
             new TestableClosePositionWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)))
@@ -92,7 +115,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
     function test_Constructor_SetsDomainSeparator() public view {
         bytes32 expectedDomainSeparator = keccak256(
             abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                Constants.EIP712_DOMAIN_TYPE_HASH,
                 keccak256("CowEvcClosePositionWrapper"),
                 keccak256("1"),
                 block.chainid,
@@ -100,18 +123,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
             )
         );
         assertEq(wrapper.DOMAIN_SEPARATOR(), expectedDomainSeparator, "DOMAIN_SEPARATOR incorrect");
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                    PARSE WRAPPER DATA TESTS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_ValidateWrapperData_Valid() public view {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
-
-        bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
-
-        wrapper.validateWrapperData(wrapperData);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -286,102 +297,13 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
                     WRAPPED SETTLE TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_WrappedSettle_OnlySolver() public {
-        bytes memory settleData = "";
-        bytes memory wrapperData = hex"0000";
-
-        vm.expectRevert(abi.encodeWithSignature("NotASolver(address)", address(this)));
-        wrapper.wrappedSettle(settleData, wrapperData);
-    }
-
-    function test_WrappedSettle_WithPermitSignature() public {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = CowEvcClosePositionWrapper.ClosePositionParams({
-            owner: OWNER,
-            account: ACCOUNT,
-            deadline: block.timestamp + 1 hours,
-            borrowVault: address(mockBorrowVault),
-            collateralVault: address(mockCollateralVault),
-            collateralAmount: 0
-        });
-
-        bytes memory signature = new bytes(65);
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory chainedWrapperData = _encodeSingleChainedWrapperData(params, signature);
-
-        // put funds in the inbox so it doesn't revert
-        deal(
-            address(mockDebtAsset),
-            CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account),
-            1
-        );
-
-        // Since there is no debt, all swap result (1 wei) is excess. We still call `repay` with 0 amount because it keeps the logic simpler
-        vm.expectCall(address(mockBorrowVault), abi.encodeCall(IBorrowing.repay, (0, ACCOUNT)));
-
-        vm.prank(SOLVER);
-        wrapper.wrappedSettle(settleData, chainedWrapperData);
-    }
-
-    function test_WrappedSettle_WithPreApprovedHash() public {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
-
-        bytes32 hash = _setupPreApprovedHash(params);
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory chainedWrapperData = _encodeSingleChainedWrapperData(params, new bytes(0));
-
-        // put funds in the inbox so it doesn't revert
-        deal(
-            address(mockDebtAsset),
-            CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account),
-            1
-        );
-
-        // Since there is no debt, all swap result (1 wei) is excess. We still call `repay` with 0 amount because it keeps the logic simpler
-        vm.expectCall(address(mockBorrowVault), abi.encodeCall(IBorrowing.repay, (0, ACCOUNT)));
-
-        vm.prank(SOLVER);
-        wrapper.wrappedSettle(settleData, chainedWrapperData);
-
-        assertFalse(wrapper.isHashPreApproved(OWNER, hash), "Hash should be consumed");
-    }
-
-    function test_WrappedSettle_RevertsIfHashNotPreApproved() public {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
-
-        // Calculate hash but DO NOT pre-approve it
-        bytes32 hash = CowEvcClosePositionWrapper(address(wrapper)).getApprovalHash(params);
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory chainedWrapperData = _encodeSingleChainedWrapperData(params, new bytes(0)); // Empty signature triggers pre-approved hash flow
-
-        // Expect revert with HashNotApproved error
-        vm.prank(SOLVER);
-        vm.expectRevert(abi.encodeWithSelector(PreApprovedHashes.HashNotApproved.selector, OWNER, hash));
-        wrapper.wrappedSettle(settleData, chainedWrapperData);
-    }
-
-    function test_WrappedSettle_RevertsOnTamperedSignature() public {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
-
-        bytes memory settleData = _getEmptySettleData();
-        bytes memory chainedWrapperData = _encodeSingleChainedWrapperData(
-            params, hex"0000000000000000000000000000000000000000000000000000000000000000"
-        );
-
-        vm.mockCallRevert(address(mockEvc), 0, abi.encodeWithSelector(IEVC.permit.selector), "permit failure");
-
-        // Expect revert with ECDSA error when permit fails
-        vm.prank(SOLVER);
-        vm.expectRevert("permit failure");
-        wrapper.wrappedSettle(settleData, chainedWrapperData);
-    }
-
     function test_WrappedSettle_PreApprovedHashRevertsIfDeadlineExceeded() public {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
         params.deadline = block.timestamp - 1; // Past deadline
 
-        _setupPreApprovedHash(params);
+        bytes32 hash = CowEvcClosePositionWrapper(address(wrapper)).getApprovalHash(params);
+        vm.prank(params.owner);
+        wrapper.setPreApprovedHash(hash, true);
 
         bytes memory settleData = _getEmptySettleData();
         bytes memory chainedWrapperData = _encodeSingleChainedWrapperData(params, new bytes(0));
