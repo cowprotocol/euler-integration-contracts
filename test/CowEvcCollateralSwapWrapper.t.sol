@@ -195,7 +195,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             ownerAccount: account,
             collateralVault: EUSDS,
             borrowVault: EWETH,
-            collateralAmount: collateralAmount + borrowAmount * 2500e18 / 0.99e18,
+            collateralAmount: collateralAmount + borrowAmount * 2500,
             borrowAmount: borrowAmount
         });
 
