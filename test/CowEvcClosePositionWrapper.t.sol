@@ -11,6 +11,8 @@ import {Inbox} from "../src/Inbox.sol";
 import {CowBaseTest} from "./helpers/CowBaseTest.sol";
 import {SignerECDSA} from "./helpers/SignerECDSA.sol";
 
+import {Constants} from "./helpers/Constants.sol";
+
 /// @title E2E Test for CowEvcClosePositionWrapper
 /// @notice Tests the full flow of closing a leveraged position using the new wrapper contract
 contract CowEvcClosePositionWrapperTest is CowBaseTest {
@@ -362,7 +364,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
             // the amount of ether *actually sold* should be very close to.
             // While 2900 EUSDS is pulled out of the wallet, only 2800 (1.12 ETH * $2500) would be spent, and the rest returned to the account.
             collateralBeforeAccount - 2800 ether,
-            0.01 ether,
+            Constants.ONE_PERCENT,
             "User should have used approximately 2500 EUSDS to repay after closing"
         );
         assertEq(EUSDS.balanceOf(user), collateralBefore, "User main account balance should not have changed");
@@ -530,7 +532,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         assertApproxEqAbs(
             EWETH.convertToAssets(EWETH.balanceOf(account3)),
             3 ether,
-            0.01 ether,
+            Constants.ONE_PERCENT,
             "User3 should have some EWETH collateral before closing"
         );
 
@@ -666,22 +668,22 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         assertEq(EUSDS.debtOf(account3), 0, "User3 should have no USDS debt after closing");
 
         // confirm the amounts after repayment
-        assertApproxEqAbs(
+        assertApproxEqRel(
             EUSDS.convertToAssets(EUSDS.balanceOf(account)),
             5500 ether - 2502.5 ether,
-            1 ether,
+            Constants.ONE_PERCENT,
             "User1 should have some EUSDS collateral after closing"
         );
-        assertApproxEqAbs(
+        assertApproxEqRel(
             EUSDS.convertToAssets(EUSDS.balanceOf(account2)),
             12000 ether - 7507.5 ether,
-            1 ether,
+            Constants.ONE_PERCENT,
             "User2 should have some EUSDS collateral after closing"
         );
-        assertApproxEqAbs(
+        assertApproxEqRel(
             EWETH.convertToAssets(EWETH.balanceOf(account3)),
             3 ether - 2 ether,
-            0.01 ether,
+            Constants.ONE_PERCENT,
             "User3 should have some EWETH collateral after closing"
         );
     }

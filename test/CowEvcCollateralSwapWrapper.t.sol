@@ -10,6 +10,8 @@ import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 import {CowBaseTest} from "./helpers/CowBaseTest.sol";
 import {SignerECDSA} from "./helpers/SignerECDSA.sol";
 
+import {Constants} from "./helpers/Constants.sol";
+
 /// @title E2E Test for CowEvcCollateralSwapWrapper
 /// @notice Tests the full flow of swapping collateral between vaults
 contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
@@ -291,6 +293,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             EVC.isAccountOperatorAuthorized(account, address(collateralSwapWrapper)),
             "Wrapper should not be operator for the subaccount after settlement"
         );
+    }
 
     function test_CollateralSwapWrapper_Permit_MainAccount() external {
         _testCollateralSwapFlow(user, user, privateKey);
@@ -392,19 +395,19 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         assertApproxEqRel(
             EUSDS.convertToAssets(EUSDS.balanceOf(account)),
             3750 ether,
-            0.01 ether,
+            Constants.ONE_PERCENT,
             "Account 1 should have USDS collateral"
         );
         assertApproxEqRel(
             EUSDS.convertToAssets(EUSDS.balanceOf(account2)),
             12500 ether,
-            0.01 ether,
+            Constants.ONE_PERCENT,
             "Account 2 should have USDS collateral"
         );
         assertApproxEqRel(
             EWBTC.convertToAssets(EWBTC.balanceOf(account3)),
             0.075e8,
-            0.01 ether,
+            Constants.ONE_PERCENT,
             "Account 3 should have WBTC collateral"
         );
 
@@ -458,7 +461,9 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         settlement.clearingPrices = new uint256[](2);
         settlement.clearingPrices[0] = 1 ether; // eUSDS price
-        settlement.clearingPrices[1] = 100000 ether * 1e10; // eWBTC price
+
+        // WBTC (and the corresponding eWBTC token) uses 8 decimals
+        settlement.clearingPrices[1] = 100000e8; // eWBTC price
 
         settlement.trades = new ICowSettlement.Trade[](3);
         bytes[] memory orderIds = new bytes[](3);
@@ -555,19 +560,19 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         assertApproxEqRel(
             IERC4626(EUSDS).convertToAssets(EUSDS.balanceOf(account)),
             3250 ether,
-            ONE_PERCENT,
+            Constants.ONE_PERCENT,
             "Account 1 should have less USDS collateral"
         );
         assertApproxEqRel(
             IERC4626(EUSDS).convertToAssets(EUSDS.balanceOf(account2)),
             12000 ether,
-            0.01 ether,
+            Constants.ONE_PERCENT,
             "Account 2 should have less USDS collateral"
         );
-        assertApproxEqRel(EWBTC.balanceOf(account3), 0.05e8, 0.01 ether, "Account 3 should have less WBTC collateral");
+        assertApproxEqRel(EWBTC.balanceOf(account3), 0.05e8, Constants.ONE_PERCENT, "Account 3 should have less WBTC collateral");
 
         // Verify new collaterals
-        assertApproxEqRel(EWBTC.balanceOf(account), 0.005e8, 0.01 ether, "Account 1 should have some WBTC collateral");
+        assertApproxEqRel(EWBTC.balanceOf(account), 0.005e8, Constants.ONE_PERCENT, "Account 1 should have some WBTC collateral");
         assertEq(EWBTC.balanceOf(account2), 0.005e8, "Account 2 should have some WBTC collateral");
         assertEq(EUSDS.balanceOf(account3), 2000 ether, "Account 3 should have some USDS collateral");
     }
