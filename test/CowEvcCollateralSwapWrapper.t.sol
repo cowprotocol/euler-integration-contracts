@@ -550,7 +550,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         assertApproxEqRel(
             IERC4626(EUSDS).convertToAssets(EUSDS.balanceOf(account)),
             3250 ether,
-            0.01 ether,
+            ONE_PERCENT,
             "Account 1 should have less USDS collateral"
         );
         assertApproxEqRel(
