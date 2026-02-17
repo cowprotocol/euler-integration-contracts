@@ -91,7 +91,8 @@ forge snapshot
 
 **Test Helpers**:
 - `MilkSwap.sol`: Simple test DEX for simulating swaps in settlements
-- `GPv2Order.sol`, `GPv2Trade.sol`: Vendored CoW Protocol order and trade libraries
+- `GPv2Order.sol`: Vendored CoW Protocol order library (struct definitions, constants, and helper functions)
+- `IGPv2AllowListAuthentication.sol`: Interface for CoW Protocol authentication contract
 - `EvcPermitSigner.sol`: EVC permit signature utilities for tests
 
 ### Writing CoW Protocol Settlement Tests
