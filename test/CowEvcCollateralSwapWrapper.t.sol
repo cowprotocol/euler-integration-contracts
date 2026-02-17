@@ -395,6 +395,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         assertEq(EWBTC.debtOf(account3), 0.03e8, "Account 3 should have WBTC debt");
 
         // Verify collaterals
+        // We subtract 1 because the way tokens are converted to debt has small rounding errors.
         assertEq(
             EUSDS.convertToAssets(EUSDS.balanceOf(account)),
             3000 ether - 1,
@@ -559,6 +560,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Verify original collaterals
         assertEq(EUSDS.convertToAssets(EUSDS.balanceOf(account)), 2700 ether, "Account 1 should have USDS collateral");
         assertEq(EUSDS.convertToAssets(EUSDS.balanceOf(account2)), 8300 ether, "Account 2 should have USDS collateral");
+        // This one has small rounding error so subtract 1
         assertEq(
             EWETH.convertToAssets(EWETH.balanceOf(account3)), 1.2 ether - 1, "Account 3 should have WETH collateral"
         );
@@ -571,10 +573,11 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         assertEq(
             EWETH.convertToAssets(EWETH.balanceOf(account2)), 0.28 ether, "Account 2 should have some WETH collateral"
         );
+        // For some reason account3 has a tiny bit larger of a rounding error
         assertApproxEqRel(
             EUSDS.convertToAssets(EUSDS.balanceOf(account3)),
             2000 ether - 1,
-            Constants.ONE_PERCENT,
+            Constants.ONE_PERCENT / 10000,
             "Account 3 should have some USDS collateral"
         );
     }
