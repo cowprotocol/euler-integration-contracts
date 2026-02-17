@@ -38,20 +38,19 @@ abstract contract UnitTestBase is Test {
         vm.label(ACCOUNT, "ACCOUNT");
     }
 
-    /// @notice Prepare settlement data for permit-based authorization flow
-    /// @dev Returns everything needed to execute a successful settlement with permit signature
-    /// @return settleData The encoded settle() call data
-    /// @return wrapperData The encoded wrapper data with signature
+    /// @dev A generic function that prepares the state and returns the data
+    /// needed for calling `wrapper.wrappedSettle` and executing through the
+    /// *permit* flow. This allows us to write generic tests that work for all
+    /// wrapper implementations.
     function _prepareSuccessfulPermitSettlement()
         internal
         virtual
         returns (bytes memory settleData, bytes memory wrapperData);
 
-    /// @notice Prepare settlement data for pre-approved hash authorization flow
-    /// @dev Returns everything needed to execute a successful settlement with pre-approved hash
-    /// @return settleData The encoded settle() call data
-    /// @return wrapperData The encoded wrapper data (empty signature)
-    /// @return hash The pre-approved hash that was set on the contract
+    /// @dev A generic function that prepares the state and returns the data
+    /// needed for calling `wrapper.wrappedSettle` and executing through the
+    /// *pre-sign* flow. This allows us to write generic tests that work for all
+    /// wrapper implementations.
     function _prepareSuccessfulPreSignSettlement()
         internal
         virtual
