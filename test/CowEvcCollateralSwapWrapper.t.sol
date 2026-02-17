@@ -178,10 +178,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     ///      4. Routes to either Permit or PreApprove authorization based on userPrivateKey:
     ///         - Permit flow (userPrivateKey != 0): Creates ECDSA signature on-the-fly
     ///         - PreApprove flow (userPrivateKey == 0): Uses pre-approved hash mechanism
-    ///      5. For PreApprove, further branches on owner==account:
-    ///         - Main account or subaccount: approve + set pre-approve hash + set operator
-    ///      6. Executes the wrapped settlement through the wrapper
-    ///      7. Verifies: correct balance changes + EWBTC collateral enabled
+    ///      5. Executes the wrapped settlement through the wrapper
+    ///      6. Verifies: correct balance changes + EWBTC collateral enabled
     ///
     /// @param owner The owner/signer of the position
     /// @param account The account that holds the position (owner for main account, different for subaccount)
@@ -352,7 +350,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
     /// @notice Test that the wrapper can handle being called three times in the same chain
     /// @dev Two users swap USDS→WETH, one user swaps WETH→USDS
-    /// User1+User2 swap eUSDS→eWETH (sell 500 + 500 = 1000 eUSDS, need 0.2 + 0.2 = 0.4 eWETH), User3 swaps eWETH→eUSDS (sell 0.8 eWETH, needs 2000 eUSDS).
+    /// User1+User2 swap eUSDS→eWETH (sell 700 + 300 = 1000 eUSDS, need 0.2 + 0.2 = 0.4 eWETH), User3 swaps eWETH→eUSDS (sell 0.8 eWETH, needs 2000 eUSDS).
     /// Coincidence of wants: User3 provides 0.8 eWETH, User1+User2 need 0.4 eWETH → surplus of 0.4 eWETH. User1+User2 provide 1000 eUSDS, User3 needs 2000 eUSDS → deficit of 1000 eUSDS.
     /// We withdraw 0.4 WETH from vault, swap to 1000 USDS (at rate 2500 USD/ETH), and deposit into eUSDS vault to cover the deficit and balance the trades.
     function test_CollateralSwapWrapper_ThreeUsers_TwoSameOneOpposite() external {
@@ -367,7 +365,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             ownerAccount: account,
             collateralVault: EUSDS,
             borrowVault: EWBTC,
-            collateralAmount: 3750 ether,
+            collateralAmount: 3000 ether,
             borrowAmount: 0.02e8
         });
 
@@ -377,11 +375,11 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             ownerAccount: account2,
             collateralVault: EUSDS,
             borrowVault: EWBTC,
-            collateralAmount: 12500 ether,
+            collateralAmount: 9000 ether,
             borrowAmount: 0.06e8
         });
 
-        // Setup User3: Long WETH (WETH collateral, WBTC debt). 0.04 WBTC debt
+        // Setup User3: Long WETH (WETH collateral, WBTC debt). 0.03 WBTC debt
         setupLeveragedPositionFor({
             owner: user3,
             ownerAccount: account3,
@@ -399,13 +397,13 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         // Verify collaterals
         assertEq(
             EUSDS.convertToAssets(EUSDS.balanceOf(account)),
-            3750 ether - 1,
+            3000 ether - 1,
             //Constants.ONE_PERCENT,
             "Account 1 should have USDS collateral"
         );
         assertEq(
             EUSDS.convertToAssets(EUSDS.balanceOf(account2)),
-            12500 ether - 1,
+            9000 ether - 1,
             //Constants.ONE_PERCENT,
             "Account 2 should have USDS collateral"
         );
@@ -427,8 +425,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 deadline: block.timestamp + 1 hours,
                 fromVault: address(EUSDS),
                 toVault: address(EWETH),
-                fromAmount: 500 ether,
-                toAmount: 0.195 ether
+                fromAmount: EUSDS.convertToShares(300 ether),
+                toAmount: 0.118 ether
             });
 
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params2 =
@@ -438,8 +436,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 deadline: block.timestamp + 1 hours,
                 fromVault: address(EUSDS),
                 toVault: address(EWETH),
-                fromAmount: 500 ether,
-                toAmount: 0.195 ether
+                fromAmount: EUSDS.convertToShares(700 ether),
+                toAmount: EWETH.convertToShares(0.278 ether)
             });
 
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params3 =
@@ -449,8 +447,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 deadline: block.timestamp + 1 hours,
                 fromVault: address(EWETH),
                 toVault: address(EUSDS),
-                fromAmount: 0.8 ether,
-                toAmount: 1950 ether
+                fromAmount: EWETH.convertToShares(0.8 ether),
+                toAmount: EUSDS.convertToShares(1950 ether)
             });
 
         // Create permit signatures for all users
@@ -489,7 +487,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             validTo: validTo,
             owner: user2,
             receiver: account2,
-            isBuy: true
+            isBuy: false
         });
         (settlement.trades[2],, orderIds[2]) = setupCowOrder({
             tokens: tokens,
@@ -500,7 +498,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             validTo: validTo,
             owner: user3,
             receiver: account3,
-            isBuy: true
+            isBuy: false
         });
 
         // Setup interactions
@@ -559,30 +557,25 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         assertEq(EWBTC.debtOf(account3), 0.03e8, "Account 3 should have WBTC debt");
 
         // Verify original collaterals
-        assertApproxEqRel(
-            EUSDS.convertToAssets(EUSDS.balanceOf(account)),
-            3250 ether,
-            Constants.ONE_PERCENT,
-            "Account 1 should have less USDS collateral"
-        );
-        assertApproxEqRel(
-            EUSDS.convertToAssets(EUSDS.balanceOf(account2)),
-            12000 ether,
-            Constants.ONE_PERCENT,
-            "Account 2 should have less USDS collateral"
-        );
-        assertApproxEqRel(
-            EWETH.convertToAssets(EWETH.balanceOf(account3)),
-            1.2 ether,
-            Constants.ONE_PERCENT,
-            "Account 3 should have less WETH collateral"
+        assertEq(EUSDS.convertToAssets(EUSDS.balanceOf(account)), 2700 ether, "Account 1 should have USDS collateral");
+        assertEq(EUSDS.convertToAssets(EUSDS.balanceOf(account2)), 8300 ether, "Account 2 should have USDS collateral");
+        assertEq(
+            EWETH.convertToAssets(EWETH.balanceOf(account3)), 1.2 ether - 1, "Account 3 should have WETH collateral"
         );
 
         // Verify new collaterals
-        assertApproxEqRel(
-            EWETH.balanceOf(account), 0.2 ether, Constants.ONE_PERCENT * 2, "Account 1 should have some WETH collateral"
+        // account 1 is the only type=SELL order. It sold exactly
+        assertEq(
+            EWETH.convertToAssets(EWETH.balanceOf(account)), 0.12 ether, "Account 1 should have some WETH collateral"
         );
-        assertEq(EWETH.balanceOf(account2), 0.195 ether, "Account 2 should have some WETH collateral");
-        assertEq(EUSDS.balanceOf(account3), 1950 ether, "Account 3 should have some USDS collateral");
+        assertEq(
+            EWETH.convertToAssets(EWETH.balanceOf(account2)), 0.28 ether, "Account 2 should have some WETH collateral"
+        );
+        assertApproxEqRel(
+            EUSDS.convertToAssets(EUSDS.balanceOf(account3)),
+            2000 ether - 1,
+            Constants.ONE_PERCENT,
+            "Account 3 should have some USDS collateral"
+        );
     }
 }
