@@ -283,7 +283,14 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             EVC.isAccountOperatorAuthorized(account, address(collateralSwapWrapper)),
             "Wrapper should not be operator after settlement"
         );
-    }
+        assertFalse(
+            EVC.isAccountOperatorAuthorized(owner, address(collateralSwapWrapper)),
+            "Wrapper should not be operator for the owner after settlement"
+        );
+        assertFalse(
+            EVC.isAccountOperatorAuthorized(account, address(collateralSwapWrapper)),
+            "Wrapper should not be operator for the subaccount after settlement"
+        );
 
     function test_CollateralSwapWrapper_Permit_MainAccount() external {
         _testCollateralSwapFlow(user, user, privateKey);
