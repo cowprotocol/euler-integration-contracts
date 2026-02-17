@@ -8,13 +8,13 @@ import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
 import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 
 import {CowBaseTest} from "./helpers/CowBaseTest.sol";
-import {SignerECDSA} from "./helpers/SignerECDSA.sol";
+import {EvcPermitSigner} from "./helpers/EvcPermitSigner.sol";
 
 /// @title E2E Test for CowEvcOpenPositionWrapper
 /// @notice Tests the full flow of opening a leveraged position using the new wrapper contract
 contract CowEvcOpenPositionWrapperTest is CowBaseTest {
     CowEvcOpenPositionWrapper public openPositionWrapper;
-    SignerECDSA internal ecdsa;
+    EvcPermitSigner internal ecdsa;
 
     uint256 constant USDS_MARGIN = 5000e18;
     uint256 constant DEFAULT_BORROW_AMOUNT = 1e18;
@@ -35,7 +35,7 @@ contract CowEvcOpenPositionWrapperTest is CowBaseTest {
         allowList.addSolver(address(openPositionWrapper));
         vm.stopPrank();
 
-        ecdsa = new SignerECDSA(EVC);
+        ecdsa = new EvcPermitSigner(EVC);
 
         // Setup user with USDS
         deal(address(USDS), user, 10000e18);

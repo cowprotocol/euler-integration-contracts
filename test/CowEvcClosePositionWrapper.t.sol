@@ -9,7 +9,7 @@ import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
 import {Inbox} from "../src/Inbox.sol";
 
 import {CowBaseTest} from "./helpers/CowBaseTest.sol";
-import {SignerECDSA} from "./helpers/SignerECDSA.sol";
+import {EvcPermitSigner} from "./helpers/EvcPermitSigner.sol";
 
 import {Constants} from "./helpers/Constants.sol";
 
@@ -17,7 +17,7 @@ import {Constants} from "./helpers/Constants.sol";
 /// @notice Tests the full flow of closing a leveraged position using the new wrapper contract
 contract CowEvcClosePositionWrapperTest is CowBaseTest {
     CowEvcClosePositionWrapper public closePositionWrapper;
-    SignerECDSA internal ecdsa;
+    EvcPermitSigner internal ecdsa;
 
     uint256 constant USDS_MARGIN = 3000e18;
     uint256 constant DEFAULT_SELL_AMOUNT = 2900 ether; // would repay all debt by a large margin
@@ -41,7 +41,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         allowList.addSolver(address(closePositionWrapper));
         vm.stopPrank();
 
-        ecdsa = new SignerECDSA(EVC);
+        ecdsa = new EvcPermitSigner(EVC);
 
         // Setup user with USDS
         deal(address(USDS), user, 10000e18);
