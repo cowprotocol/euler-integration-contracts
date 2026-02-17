@@ -535,7 +535,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         assertApproxEqAbs(
             EWETH.convertToAssets(EWETH.balanceOf(account3)),
             3 ether,
-            Constants.ONE_PERCENT,
+            0.01 ether,
             "User3 should have some EWETH collateral before closing"
         );
 
@@ -671,22 +671,22 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         assertEq(EUSDS.debtOf(account3), 0, "User3 should have no USDS debt after closing");
 
         // confirm the amounts after repayment
-        assertApproxEqRel(
+        assertApproxEqAbs(
             EUSDS.convertToAssets(EUSDS.balanceOf(account)),
             5500 ether - 2502.5 ether,
-            Constants.ONE_PERCENT,
+            1 ether,
             "User1 should have some EUSDS collateral after closing"
         );
-        assertApproxEqRel(
+        assertApproxEqAbs(
             EUSDS.convertToAssets(EUSDS.balanceOf(account2)),
             12000 ether - 7507.5 ether,
-            Constants.ONE_PERCENT,
+            1 ether,
             "User2 should have some EUSDS collateral after closing"
         );
-        assertApproxEqRel(
+        assertApproxEqAbs(
             EWETH.convertToAssets(EWETH.balanceOf(account3)),
             3 ether - 2 ether,
-            Constants.ONE_PERCENT,
+            0.01 ether,
             "User3 should have some EWETH collateral after closing"
         );
     }
