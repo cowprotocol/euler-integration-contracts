@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 
-import {GPv2Order} from "cow/libraries/GPv2Order.sol";
-import {IERC20 as CowERC20} from "cow/interfaces/IERC20.sol";
+import {GPv2Order} from "./GPv2Order.sol";
 
 import {EthereumVaultConnector} from "evc/EthereumVaultConnector.sol";
 import {Test} from "forge-std/Test.sol";
 import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol";
 
-import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
+import {IGPv2AllowListAuthentication} from "./IGPv2AllowListAuthentication.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
 import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 
@@ -75,7 +74,7 @@ abstract contract CowBaseTest is Test {
         account3 = address(uint160(user3) ^ 1);
 
         // Add test contract as solver so we can call wrappedSettle directly
-        GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
+        IGPv2AllowListAuthentication allowList = IGPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
         address manager = allowList.manager();
         // vm.deal(address(manager), 1e18);
         vm.startPrank(manager);
@@ -240,8 +239,8 @@ abstract contract CowBaseTest is Test {
 
         // Extract order from trade (manually applying GPv2Trade.extractOrder logic)
         order = GPv2Order.Data({
-            sellToken: CowERC20(tokens[trade.sellTokenIndex]),
-            buyToken: CowERC20(tokens[trade.buyTokenIndex]),
+            sellToken: tokens[trade.sellTokenIndex],
+            buyToken: tokens[trade.buyTokenIndex],
             receiver: trade.receiver,
             sellAmount: trade.sellAmount,
             buyAmount: trade.buyAmount,
@@ -284,8 +283,8 @@ abstract contract CowBaseTest is Test {
         }
 
         order = GPv2Order.Data({
-            sellToken: CowERC20(tokens[sellTokenIndex]),
-            buyToken: CowERC20(tokens[buyTokenIndex]),
+            sellToken: tokens[sellTokenIndex],
+            buyToken: tokens[buyTokenIndex],
             receiver: receiver,
             sellAmount: sellAmount,
             buyAmount: buyAmount,
