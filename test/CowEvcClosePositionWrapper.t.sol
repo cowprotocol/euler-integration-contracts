@@ -5,7 +5,7 @@ import {IEVault, IBorrowing, IERC20} from "euler-vault-kit/src/EVault/IEVault.so
 
 import {CowEvcClosePositionWrapper} from "../src/CowEvcClosePositionWrapper.sol";
 import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
-import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
+import {IGPv2AllowListAuthentication} from "./helpers/IGPv2AllowListAuthentication.sol";
 import {Inbox} from "../src/Inbox.sol";
 
 import {CowBaseTest} from "./helpers/CowBaseTest.sol";
@@ -35,7 +35,7 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
         wrapper = closePositionWrapper;
 
         // Add wrapper as a solver
-        GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
+        IGPv2AllowListAuthentication allowList = IGPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
         address manager = allowList.manager();
         vm.startPrank(manager);
         allowList.addSolver(address(closePositionWrapper));

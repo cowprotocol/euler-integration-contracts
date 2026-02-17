@@ -5,7 +5,7 @@ import {IEVault, IERC4626, IERC20} from "euler-vault-kit/src/EVault/IEVault.sol"
 
 import {CowEvcCollateralSwapWrapper} from "../src/CowEvcCollateralSwapWrapper.sol";
 import {ICowSettlement, CowWrapper} from "../src/CowWrapper.sol";
-import {GPv2AllowListAuthentication} from "cow/GPv2AllowListAuthentication.sol";
+import {IGPv2AllowListAuthentication} from "./helpers/IGPv2AllowListAuthentication.sol";
 
 import {CowBaseTest} from "./helpers/CowBaseTest.sol";
 import {EvcPermitSigner} from "./helpers/EvcPermitSigner.sol";
@@ -29,7 +29,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         wrapper = collateralSwapWrapper;
 
         // Add wrapper as a solver
-        GPv2AllowListAuthentication allowList = GPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
+        IGPv2AllowListAuthentication allowList = IGPv2AllowListAuthentication(address(COW_SETTLEMENT.authenticator()));
         address manager = allowList.manager();
         vm.startPrank(manager);
         allowList.addSolver(address(collateralSwapWrapper));

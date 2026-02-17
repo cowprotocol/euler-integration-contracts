@@ -44,7 +44,7 @@ This repository contains **Euler-CoW Protocol integration contracts** that enabl
 
 - **Euler Vault Kit** (`lib/euler-vault-kit`): ERC4626 vault implementation with borrowing
 - **Ethereum Vault Connector (EVC)** (`lib/evc`): Batch transaction coordinator with account checking
-- **CoW Protocol** (`lib/cow`): DEX aggregator settlement contracts and order libraries
+- **CoW Protocol**: DEX aggregator settlement contracts (minimal vendored types in `src/vendor/` and `test/helpers/`)
 
 ## Development Commands
 
@@ -91,9 +91,8 @@ forge snapshot
 
 **Test Helpers**:
 - `MilkSwap.sol`: Simple test DEX for simulating swaps in settlements
-- `GPv2OrderHelper.sol`: Utilities for constructing CoW Protocol orders
-- `SignerECDSA.sol`: ECDSA signature utilities for tests
-- `EmptyWrapper.sol`: Minimal wrapper for testing wrapper chaining
+- `GPv2Order.sol`, `GPv2Trade.sol`: Vendored CoW Protocol order and trade libraries
+- `EvcPermitSigner.sol`: EVC permit signature utilities for tests
 
 ### Writing CoW Protocol Settlement Tests
 
@@ -204,7 +203,6 @@ This approach is more concise and maintains consistency with the existing codeba
 ## Remappings
 
 Key import remappings:
-- `cow/` → CoW Protocol contracts (`lib/cow/src/contracts`)
 - `evc/` → Ethereum Vault Connector (`lib/euler-vault-kit/lib/ethereum-vault-connector/src/`)
 - `euler-vault-kit/` → Euler vault implementation
 - `openzeppelin/` → OpenZeppelin contracts (via EVC dependency)
