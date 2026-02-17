@@ -42,11 +42,8 @@ abstract contract UnitTestBase is Test {
     /// needed for calling `wrapper.wrappedSettle` and executing through the
     /// *permit* flow. This allows us to write generic tests that work for all
     /// wrapper implementations.
-    function _prepareSuccessfulPermitFlow()
-        internal
-        virtual
-        returns (bytes memory settleData, bytes memory wrapperData);
-    
+    function _prepareSuccessfulPermitFlow() internal virtual returns (bytes memory settleData, bytes memory wrapperData);
+
     /// @dev A generic function that prepares the state and returns the data
     /// needed for calling `wrapper.wrappedSettle` and executing through the
     /// *pre-sign* flow. This allows us to write generic tests that work for all

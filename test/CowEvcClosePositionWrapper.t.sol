@@ -480,6 +480,9 @@ contract CowEvcClosePositionWrapperTest is CowBaseTest {
 
     /// @notice Test that the wrapper can handle being called three times in the same chain
     /// @dev Two users close positions in the same direction (long USDS), one user closes opposite (long WETH)
+    /// User1+User2 close USDS positions (sell eUSDS for WETH, need 1.001 + 3.003 = 4.004 WETH), User3 closes WETH position (sell eWETH for USDS, needs 5005 USDS).
+    /// Coincidence of wants: User3 provides eWETH worth ~2.002 WETH, User1+User2 provide eUSDS worth ~10010 USDS. After satisfying User3's 5005 USDS need,
+    /// we have ~5000 USDS surplus. We swap this 5000 USDS → ~2 WETH to cover the remaining WETH needed for User1+User2 (assumed rate: 2500 USD/ETH).
     function test_ClosePositionWrapper_ThreeUsers_TwoSameOneOpposite() external {
         // Setup User1: Long USDS (USDS collateral, WETH debt). ~1 ETH debt
         setupLeveragedPositionFor({
