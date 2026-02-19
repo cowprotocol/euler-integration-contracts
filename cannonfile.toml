@@ -1,0 +1,97 @@
+#:schema https://raw.githubusercontent.com/usecannon/cannon/refs/heads/dev/packages/lsp/src/schema.json
+
+# This is a Cannon package configuration. Learn more about the syntax and options here:
+# https://usecannon.com/learn/cannonfile
+
+name = "cow-euler-integration"
+version = "1.0.0"
+
+# Set the package reference for the settlement contract. [var.pkg]
+[var.pkg]
+cowSettlementPkg = "cow-settlement:2.0.2"
+evcPkg = "ethereum-vault-connector:1.0.1"
+
+[pull.cow]
+source = "<%= settings.cowSettlementPkg %>"
+
+[pull.evc]
+source = "<%= settings.evcPkg %>"
+
+# The cannon package for the EVC is only provided for the local network (not the currently deploying package)
+# Instruct cannon to pull the local network package since we only need it for local network builds. The actual EVC address
+# for each network should be overridden by the omnibus package.
+chainId = 13370
+
+# These are various settings that we may want to override. The salt is the default for the original deployment
+# Of this contract, and cow settlement address is interpolated from the above imported cow package.
+[var.main]
+salt = "0x0000000000000000000000000000000000000000000000000000000000000001"
+cowSettlement = "<%= cow.Settlement.address %>"
+
+# When deploying, override this setting with the correct EVC address from https://evc.wtf/docs/contracts/deployment-addresses
+evc = "<%= evc.EthereumVaultConnector.address %>"
+
+# This is where we actually deploy the contracts.
+[deploy.OpenPositionWrapper]
+# The name of the contract in Solidity
+artifact = "CowEvcOpenPositionWrapper"
+# Enables deployment using arachnid create2 proxy
+create2 = true
+# In the case that the contract already exists at the requested address, continue without error, since anyone
+# can deploy it and in this case its not harmful.
+ifExists = "continue"
+# Set the salt for the create2 contract deployment
+salt = "<%= settings.salt %>"
+# Set the constructor argument (the CoW Settlement address)
+args = ["<%= settings.evc %>", "<%= settings.cowSettlement %>"]
+
+# This is where we actually deploy the contracts.
+[deploy.ClosePositionWrapper]
+# The name of the contract in Solidity
+artifact = "CowEvcClosePositionWrapper"
+# Enables deployment using arachnid create2 proxy
+create2 = true
+# In the case that the contract already exists at the requested address, continue without error, since anyone
+# can deploy it and in this case its not harmful.
+ifExists = "continue"
+# Set the salt for the create2 contract deployment
+salt = "<%= settings.salt %>"
+# Set the constructor argument (the CoW Settlement address)
+args = ["<%= settings.evc %>", "<%= settings.cowSettlement %>"]
+
+# This is where we actually deploy the contracts.
+[deploy.CollateralSwapWrapper]
+# The name of the contract in Solidity
+artifact = "CowEvcCollateralSwapWrapper"
+# Enables deployment using arachnid create2 proxy
+create2 = true
+# In the case that the contract already exists at the requested address, continue without error, since anyone
+# can deploy it and in this case its not harmful.
+ifExists = "continue"
+# Set the salt for the create2 contract deployment
+salt = "<%= settings.salt %>"
+# Set the constructor argument (the CoW Settlement address)
+args = ["<%= settings.evc %>", "<%= settings.cowSettlement %>"]
+
+# these wrappers need to be authorized as a solver for them to interact with the settlement contract.
+# Therefore, the next transactions need to be executed by the authorizor safe.
+[invoke.authorizeOpenWrapper]
+target = ["cow.Authenticator"]
+
+fromCall.func = "manager"
+func = "addSolver"
+args = ["<%= contracts.OpenPositionWrapper.address %>"]
+
+[invoke.authorizeCloseWrapper]
+target = ["cow.Authenticator"]
+
+fromCall.func = "manager"
+func = "addSolver"
+args = ["<%= contracts.ClosePositionWrapper.address %>"]
+
+[invoke.authorizeSwapCollateralWrapper]
+target = ["cow.Authenticator"]
+
+fromCall.func = "manager"
+func = "addSolver"
+args = ["<%= contracts.CollateralSwapWrapper.address %>"]
