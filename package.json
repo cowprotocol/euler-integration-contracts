@@ -5,7 +5,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "record-cannon": "pnpm cannon inspect cow-euler-integration:latest --chain-id 13370 --out deploy-json > cannon/deploy.json && pnpm cannon inspect cow-euler-integration:latest --chain-id 13370 --out misc-json > cannon/misc.json"
+    "build": "pnpm build:cannon",
+    "build:cannon": "pnpm cannon build --wipe",
+    "cannon:publish": "pnpm cannon publish cow-euler-integration --chain-id 13370 --registry-chain-id 10 && pnpm cannon:record",
+    "cannon:record": "pnpm cannon inspect cow-euler-integration:latest --chain-id 13370 --out deploy-json > cannon/deploy.json && pnpm cannon inspect cow-euler-integration:latest --chain-id 13370 --out misc-json > cannon/misc.json"
   },
   "keywords": [],
   "author": "",
