@@ -26,10 +26,10 @@ chainId = 13370
 # Of this contract, and cow settlement address is interpolated from the above imported cow package.
 [var.main]
 salt = "0x0000000000000000000000000000000000000000000000000000000000000001"
-cowSettlement = "<%= cow.Settlement.address %>"
+cowSettlementAddress = "<%= cow.Settlement.address %>"
 
 # When deploying, override this setting with the correct EVC address from https://evc.wtf/docs/contracts/deployment-addresses
-evc = "<%= evc.EthereumVaultConnector.address %>"
+evcAddress = "<%= evc.EthereumVaultConnector.address %>"
 
 # This is where we actually deploy the contracts.
 [deploy.OpenPositionWrapper]
@@ -40,10 +40,8 @@ create2 = true
 # In the case that the contract already exists at the requested address, continue without error, since anyone
 # can deploy it and in this case its not harmful.
 ifExists = "continue"
-# Set the salt for the create2 contract deployment
 salt = "<%= settings.salt %>"
-# Set the constructor argument (the CoW Settlement address)
-args = ["<%= settings.evc %>", "<%= settings.cowSettlement %>"]
+args = ["<%= settings.evcAddress %>", "<%= settings.cowSettlementAddress %>"]
 
 # This is where we actually deploy the contracts.
 [deploy.ClosePositionWrapper]
@@ -54,10 +52,8 @@ create2 = true
 # In the case that the contract already exists at the requested address, continue without error, since anyone
 # can deploy it and in this case its not harmful.
 ifExists = "continue"
-# Set the salt for the create2 contract deployment
 salt = "<%= settings.salt %>"
-# Set the constructor argument (the CoW Settlement address)
-args = ["<%= settings.evc %>", "<%= settings.cowSettlement %>"]
+args = ["<%= settings.evcAddress %>", "<%= settings.cowSettlementAddress %>"]
 
 # This is where we actually deploy the contracts.
 [deploy.CollateralSwapWrapper]
@@ -68,10 +64,8 @@ create2 = true
 # In the case that the contract already exists at the requested address, continue without error, since anyone
 # can deploy it and in this case its not harmful.
 ifExists = "continue"
-# Set the salt for the create2 contract deployment
 salt = "<%= settings.salt %>"
-# Set the constructor argument (the CoW Settlement address)
-args = ["<%= settings.evc %>", "<%= settings.cowSettlement %>"]
+args = ["<%= settings.evcAddress %>", "<%= settings.cowSettlementAddress %>"]
 
 # these wrappers need to be authorized as a solver for them to interact with the settlement contract.
 # Therefore, the next transactions need to be executed by the authorizor safe.
