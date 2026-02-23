@@ -25,7 +25,7 @@ chainId = 13370
 # These are various settings that we may want to override. The salt is the default for the original deployment
 # Of this contract, and cow settlement address is interpolated from the above imported cow package.
 [var.main]
-salt = "0x0000000000000000000000000000000000000000000000000000000000000001"
+salt = "0x0000000000000000000000000000000000000000000000000000000000000000"
 cowSettlementAddress = "<%= cow.Settlement.address %>"
 
 # When deploying, override this setting with the correct EVC address from https://evc.wtf/docs/contracts/deployment-addresses
