@@ -31,7 +31,6 @@ Wrappers are smart contracts that add custom logic around [CoW Protocol settleme
 - **Authorization Mechanisms**: Supports two authorization flows:
   - **EVC Permit Flow**: Users sign a [permit message](https://evc.wtf/docs/concepts/internals/permit/) for one-time authorization with the EVC
   - **Pre-Approved Hash Flow**: Users pre-approve operation hashes on-chain (useful for EIP-7702 wallets)
-- **Parameter Hashing**: Uses EIP-712 to securely hash parameters and verify user intent
 - **Account Health Checks**: Leverages EVC's automatic account status checks at batch conclusion
 
 ## The Wrappers
