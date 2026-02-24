@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  build-cannon:
+  verify-cannon-record:
     strategy:
       matrix:
         node-version: [20.x]
@@ -24,10 +24,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install
       - run: pnpm cannon:record
-      - name: Verify no unexpected changes from record-cannon
+      - name: Verify no unexpected changes from cannon:record
         run: |
           if ! git diff --quiet; then
-            echo "Error: Please run `pnpm record-cannon` to sync the repository state with the published cannon package"
+            echo "Error: Please run `pnpm cannon:record` to sync the repository state with the published cannon package"
             git diff
             exit 1
           fi
