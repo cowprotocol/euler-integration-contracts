@@ -1,0 +1,73 @@
+#:schema https://raw.githubusercontent.com/usecannon/cannon/refs/heads/dev/packages/lsp/src/schema.json
+
+# This is a Cannon package configuration. Learn more about the syntax and options here:
+# https://usecannon.com/learn/cannonfile
+
+name = "cow-euler-integration"
+version = "1.0.0"
+
+# Set the package reference for the settlement contract. [var.pkg]
+[var.pkg]
+cowSettlementPkg = "cow-settlement:2.0.2"
+evcPkg = "ethereum-vault-connector:1.0.1"
+
+[pull.cow]
+source = "<%= settings.cowSettlementPkg %>"
+
+[pull.evc]
+source = "<%= settings.evcPkg %>"
+
+# The cannon package for the EVC is only provided for the local network (not the currently deploying package)
+# Instruct cannon to pull the local network package since we only need it for local network builds. The actual EVC address
+# for each network should be overridden by the omnibus package.
+chainId = 13370
+
+[var.main]
+salt = "0x0000000000000000000000000000000000000000000000000000000000000000"
+cowSettlementAddress = "<%= cow.Settlement.address %>"
+
+# When deploying, override this setting with the correct EVC address from https://evc.wtf/docs/contracts/deployment-addresses
+evcAddress = "<%= evc.EthereumVaultConnector.address %>"
+
+[deploy.OpenPositionWrapper]
+artifact = "CowEvcOpenPositionWrapper"
+create2 = true
+ifExists = "continue"
+salt = "<%= settings.salt %>"
+args = ["<%= settings.evcAddress %>", "<%= settings.cowSettlementAddress %>"]
+
+[deploy.ClosePositionWrapper]
+artifact = "CowEvcClosePositionWrapper"
+create2 = true
+ifExists = "continue"
+salt = "<%= settings.salt %>"
+args = ["<%= settings.evcAddress %>", "<%= settings.cowSettlementAddress %>"]
+
+[deploy.CollateralSwapWrapper]
+artifact = "CowEvcCollateralSwapWrapper"
+create2 = true
+ifExists = "continue"
+salt = "<%= settings.salt %>"
+args = ["<%= settings.evcAddress %>", "<%= settings.cowSettlementAddress %>"]
+
+# Authorise these wrappers as a solvers
+[invoke.authorizeOpenWrapper]
+target = ["cow.Authenticator"]
+
+fromCall.func = "manager"
+func = "addSolver"
+args = ["<%= contracts.OpenPositionWrapper.address %>"]
+
+[invoke.authorizeCloseWrapper]
+target = ["cow.Authenticator"]
+
+fromCall.func = "manager"
+func = "addSolver"
+args = ["<%= contracts.ClosePositionWrapper.address %>"]
+
+[invoke.authorizeSwapCollateralWrapper]
+target = ["cow.Authenticator"]
+
+fromCall.func = "manager"
+func = "addSolver"
+args = ["<%= contracts.CollateralSwapWrapper.address %>"]
