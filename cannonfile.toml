@@ -22,8 +22,6 @@ source = "<%= settings.evcPkg %>"
 # for each network should be overridden by the omnibus package.
 chainId = 13370
 
-# These are various settings that we may want to override. The salt is the default for the original deployment
-# Of this contract, and cow settlement address is interpolated from the above imported cow package.
 [var.main]
 salt = "0x0000000000000000000000000000000000000000000000000000000000000000"
 cowSettlementAddress = "<%= cow.Settlement.address %>"
@@ -31,38 +29,23 @@ cowSettlementAddress = "<%= cow.Settlement.address %>"
 # When deploying, override this setting with the correct EVC address from https://evc.wtf/docs/contracts/deployment-addresses
 evcAddress = "<%= evc.EthereumVaultConnector.address %>"
 
-# This is where we actually deploy the contracts.
 [deploy.OpenPositionWrapper]
-# The name of the contract in Solidity
 artifact = "CowEvcOpenPositionWrapper"
-# Enables deployment using arachnid create2 proxy
 create2 = true
-# In the case that the contract already exists at the requested address, continue without error, since anyone
-# can deploy it and in this case its not harmful.
 ifExists = "continue"
 salt = "<%= settings.salt %>"
 args = ["<%= settings.evcAddress %>", "<%= settings.cowSettlementAddress %>"]
 
-# This is where we actually deploy the contracts.
 [deploy.ClosePositionWrapper]
-# The name of the contract in Solidity
 artifact = "CowEvcClosePositionWrapper"
-# Enables deployment using arachnid create2 proxy
 create2 = true
-# In the case that the contract already exists at the requested address, continue without error, since anyone
-# can deploy it and in this case its not harmful.
 ifExists = "continue"
 salt = "<%= settings.salt %>"
 args = ["<%= settings.evcAddress %>", "<%= settings.cowSettlementAddress %>"]
 
-# This is where we actually deploy the contracts.
 [deploy.CollateralSwapWrapper]
-# The name of the contract in Solidity
 artifact = "CowEvcCollateralSwapWrapper"
-# Enables deployment using arachnid create2 proxy
 create2 = true
-# In the case that the contract already exists at the requested address, continue without error, since anyone
-# can deploy it and in this case its not harmful.
 ifExists = "continue"
 salt = "<%= settings.salt %>"
 args = ["<%= settings.evcAddress %>", "<%= settings.cowSettlementAddress %>"]
