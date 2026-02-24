@@ -50,8 +50,7 @@ ifExists = "continue"
 salt = "<%= settings.salt %>"
 args = ["<%= settings.evcAddress %>", "<%= settings.cowSettlementAddress %>"]
 
-# these wrappers need to be authorized as a solver for them to interact with the settlement contract.
-# Therefore, the next transactions need to be executed by the authorizor safe.
+# Authorise these wrappers as a solvers
 [invoke.authorizeOpenWrapper]
 target = ["cow.Authenticator"]
 
