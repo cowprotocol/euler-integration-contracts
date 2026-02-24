@@ -74,12 +74,12 @@ There are two different ways a user can authorize their order.
 
 Users provide an EIP-712 EVC.permit signature of the data returned by `getPermitData(params)` authorizing a specific operation.
 
-Additionally, the user signs a [EIP-712 order with CoW](https://docs.cow.fi/cow-protocol/reference/core/signing-schemes#eip-712) (in the case of the close position wrapper, its a EIP-1271 order with the same signing).
+Additionally, the user signs an order on CoW protocol. As this flow is intended to be off-chain first, the CoW order can be signed with either an [EIP-712 CoW signature](https://docs.cow.fi/cow-protocol/reference/core/signing-schemes#eip-712) or an equivalent mechanism for specific wrappers.
 
 The full flow is:
 
 1. User's browser creates the `params` for the wrapper and the trade they want to execute
-2. If any approvals are required for the trade to succeed, the user needs to sign an on-chain transaction for these (see the specific section for the wrapper being executed),
+2. If any approvals are required for the trade to succeed, the user needs to sign a one-time on-chain transaction for these (see the specific section for the wrapper being executed),
 3. User's browser calls `getPermitData()` view function on the wrapper to get the `data` field that needs to be signed for the given params.
 4. User's signer signs 
 5. User's browser generates the corresponding CoW order to `params`

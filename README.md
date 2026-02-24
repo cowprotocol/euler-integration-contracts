@@ -1,6 +1,6 @@
 # Euler-CoW Protocol Integration Contracts
 
-Smart contracts enabling leveraged position management through CoW Protocol settlements combined with Ethereum Vault Connector (EVC) operations.
+This repository hosts smart contracts enabling leveraged position management through CoW Protocol settlements combined with Ethereum Vault Connector (EVC) operations. It also serves as the initial implementation of [Generalized Wrappers](https://docs.cow.fi/cow-protocol/concepts/order-types/wrappers), a new framework for extending the CoW settlement contract.
 
 ## Documentation
 
