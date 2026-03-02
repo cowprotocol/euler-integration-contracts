@@ -79,6 +79,23 @@ contract CowWrapperTest is Test {
         wrapper1.wrappedSettle(settleData, wrapperData);
     }
 
+    function test_next_RevertsWhenNextWrapperReturnsNoMagic() public {
+        bytes memory settleData = abi.encodePacked(_createSimpleSettleData(1), hex"");
+        bytes memory secondCallWrapperData = abi.encodePacked(uint16(3), hex"098765");
+        bytes memory wrapperData = abi.encodePacked(uint16(2), hex"1234", address(wrapper2), secondCallWrapperData);
+
+        // Mock wrapper2 to return incorrect value
+        vm.mockCall(
+            address(wrapper2),
+            ICowWrapper.wrappedSettle.selector,
+            hex"12345678" // Not the expected magic value
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(CowWrapper.InvalidNextWrapper.selector, address(wrapper2)));
+        vm.prank(solver);
+        wrapper1.wrappedSettle(settleData, wrapperData);
+    }
+
     function test_wrappedSettle_RevertsWithNotASolver() public {
         bytes memory settleData = _createSimpleSettleData(0);
         address notASolver = makeAddr("notASolver");
@@ -173,7 +190,10 @@ contract CowWrapperTest is Test {
         vm.expectCall(address(mockSettlement), 0, settleData, 1);
 
         vm.prank(solver);
-        wrapper1.wrappedSettle(settleData, wrapperData);
+        require(
+            wrapper1.wrappedSettle(settleData, wrapperData) == ICowWrapper.wrappedSettle.selector,
+            "Expected return selector"
+        );
     }
 
     function test_wrappedSettle_SucceedsWithMaximumLengthWrapperData() public {
@@ -194,7 +214,10 @@ contract CowWrapperTest is Test {
         vm.expectCall(address(mockSettlement), 0, settleData, 1);
 
         vm.prank(solver);
-        wrapper1.wrappedSettle(settleData, wrapperData);
+        require(
+            wrapper1.wrappedSettle(settleData, wrapperData) == ICowWrapper.wrappedSettle.selector,
+            "Expected return selector"
+        );
     }
 
     function test_wrappedSettle_RevertsWhenDataShorterThanIndicated() public {
@@ -228,7 +251,10 @@ contract CowWrapperTest is Test {
         vm.expectCall(address(wrapper2), 0, abi.encodePacked(ICowWrapper.wrappedSettle.selector), 1);
 
         vm.prank(solver);
-        wrapper1.wrappedSettle(settleData, wrapperData);
+        require(
+            wrapper1.wrappedSettle(settleData, wrapperData) == ICowWrapper.wrappedSettle.selector,
+            "Expected return selector"
+        );
     }
 
     function test_wrappedSettle_RevertsWithInsufficientLengthData() public {

@@ -103,7 +103,8 @@ interface ICowWrapper {
     ///        Example: [0x0005][0xAABBCCDDEE][0x1234...ABCD][0x0003][0x112233]
     ///                 ↑len   ↑data         ↑next wrapper  ↑len   ↑data (final, no next address)
     ///
-    function wrappedSettle(bytes calldata settleData, bytes calldata chainedWrapperData) external;
+    /// @return Magic value to ensure the target was a wrapper and executed code.
+    function wrappedSettle(bytes calldata settleData, bytes calldata chainedWrapperData) external returns (bytes4);
 
     /// @notice Confirms validity of wrapper-specific data
     /// @dev Used by CowWrapperHelpers to validate wrapper data before execution. Reverts if the wrapper data is not valid for some reason.
@@ -128,6 +129,10 @@ abstract contract CowWrapper is ICowWrapper {
     /// @param invalidSettleData The invalid settle data that was provided
     error InvalidSettleData(bytes invalidSettleData);
 
+    /// @notice Thrown when the next wrapper in the chain does not return the expected selector
+    /// @param invalidNextWrapper The address of the next wrapper that returned an invalid response
+    error InvalidNextWrapper(address invalidNextWrapper);
+
     /// @notice The settlement contract
     ICowSettlement public immutable SETTLEMENT;
 
@@ -143,7 +148,7 @@ abstract contract CowWrapper is ICowWrapper {
     }
 
     /// @inheritdoc ICowWrapper
-    function wrappedSettle(bytes calldata settleData, bytes calldata chainedWrapperData) external {
+    function wrappedSettle(bytes calldata settleData, bytes calldata chainedWrapperData) external returns (bytes4) {
         // Revert if not a valid solver
         require(AUTHENTICATOR.isSolver(msg.sender), NotASolver(msg.sender));
 
@@ -157,6 +162,8 @@ abstract contract CowWrapper is ICowWrapper {
         _wrap(
             settleData, chainedWrapperData[2:remainingWrapperDataStart], chainedWrapperData[remainingWrapperDataStart:]
         );
+
+        return ICowWrapper.wrappedSettle.selector;
     }
 
     /// @inheritdoc ICowWrapper
@@ -201,7 +208,15 @@ abstract contract CowWrapper is ICowWrapper {
             remainingWrapperData = remainingWrapperData[20:];
 
             // More wrapper data remains - call the next wrapper in the chain
-            CowWrapper(nextWrapper).wrappedSettle(settleData, remainingWrapperData);
+            (bool success, bytes memory returnData) =
+                nextWrapper.call(abi.encodeCall(ICowWrapper.wrappedSettle, (settleData, remainingWrapperData)));
+            if (!success) {
+                // Bubble up the revert reason from the next wrapper
+                assembly ("memory-safe") {
+                    revert(add(returnData, 0x20), mload(returnData))
+                }
+            }
+            require(bytes4(returnData) == ICowWrapper.wrappedSettle.selector, InvalidNextWrapper(nextWrapper));
         }
     }
 }
