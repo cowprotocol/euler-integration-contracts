@@ -197,8 +197,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             ownerAccount: account,
             collateralVault: EUSDS,
             borrowVault: EWETH,
-            collateralAmount: DEFAULT_SWAP_AMOUNT,
-            borrowAmount: DEFAULT_SWAP_AMOUNT / 2500 * 5 / 3 // around 150% c-ratio
+            collateralAmount: EUSDS.convertToAssets(DEFAULT_SWAP_AMOUNT) + 1,
+            borrowAmount: DEFAULT_SWAP_AMOUNT / 2500 / 2 // around 150% c-ratio
         });
 
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(owner, account);

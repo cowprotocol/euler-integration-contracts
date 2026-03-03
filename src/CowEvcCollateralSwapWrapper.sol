@@ -52,7 +52,7 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         )
         .length;
 
-        MAX_BATCH_OPERATIONS = 3;
+        MAX_BATCH_OPERATIONS = 4;
 
         PARAMS_TYPE_HASH = keccak256(
             "CollateralSwapParams(address owner,address account,uint256 deadline,address fromVault,address toVault,uint256 fromAmount,uint256 toAmount,bool disableSourceCollateral)"

@@ -87,8 +87,10 @@ contract Inbox is IERC1271 {
             // prefixing the type hash `(1 + 12) * 32 = 416` bytes to hash.
             // <https://github.com/ethereum/EIPs/blob/master/EIPS/eip-712.md#rationale-for-encodedata>
             assembly {
+                let originalLength := mload(orderData)
                 mstore(orderData, typeHash)
                 structHash := keccak256(orderData, 416)
+                mstore(orderData, originalLength)
             }
 
             bytes32 settlementDomainSeparator = SETTLEMENT_DOMAIN_SEPARATOR;
