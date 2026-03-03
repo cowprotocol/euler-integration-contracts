@@ -202,6 +202,8 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
         Inbox inbox = _getInbox(params.owner, params.account);
         inbox.callApprove(params.collateralVault, VAULT_RELAYER, type(uint256).max);
 
+        uint256 swapBeforeResultBalance = borrowAsset.balanceOf(address(inbox));
+
         // Use CowWrapper's _internalSettle to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
         _next(settleData, remainingWrapperData);
@@ -211,7 +213,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
         uint256 swapSourceBalance = IERC20(params.collateralVault).balanceOf(address(inbox));
         uint256 swapResultBalance = borrowAsset.balanceOf(address(inbox));
 
-        if (swapResultBalance == 0) {
+        if (swapResultBalance - swapBeforeResultBalance == 0) {
             revert NoSwapOutput(address(inbox));
         }
 

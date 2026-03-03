@@ -61,6 +61,25 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         return abi.encodePacked(uint16(wrapperData.length), wrapperData);
     }
 
+    /// @notice Creates settle data that includes an interaction to deposit tokens to a given address using vm.deal
+    /// Useful for the close position wrapper which actually checks the received amount of tokens
+    function _getSettleDataWithSwapOutput(address dest, address token, uint256 amount) internal returns (bytes memory) {
+        deal(token, address(mockSettlement), amount);
+        ICowSettlement.Interaction[] memory dealCallInteractions = new ICowSettlement.Interaction[](1);
+        dealCallInteractions[0] = ICowSettlement.Interaction({
+            target: address(token), value: 0, callData: abi.encodeCall(IERC20.transfer, (dest, amount))
+        });
+        return abi.encodeCall(
+            ICowSettlement.settle,
+            (
+                new address[](0),
+                new uint256[](0),
+                new ICowSettlement.Trade[](0),
+                [new ICowSettlement.Interaction[](0), new ICowSettlement.Interaction[](0), dealCallInteractions]
+            )
+        );
+    }
+
     function _prepareSuccessfulPermitFlow()
         internal
         override
@@ -68,14 +87,12 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
     {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
+        address inbox = CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account);
+
         // A permit settlement is triggered by having signature data in `wrapperData`.
         // For unit testing, we can just use 65 bytes of "zero" signtaure since we're not actually verifying it here.
         wrapperData = _encodeSingleChainedWrapperData(params, new bytes(65));
-        settleData = _getEmptySettleData();
-
-        // Put funds in the inbox so the repayment doesn't revert
-        address inbox = CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account);
-        deal(address(mockDebtAsset), inbox, 1);
+        settleData = _getSettleDataWithSwapOutput(inbox, address(mockDebtAsset), 1);
     }
 
     function _prepareSuccessfulPreApproveFlow()
@@ -85,14 +102,13 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
     {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
+        address inbox = CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account);
+
         // A pre-hash settlement is triggered by having 0-length signature data in `wrapperData`.
         wrapperData = _encodeSingleChainedWrapperData(params, new bytes(0));
-        settleData = _getEmptySettleData();
-        hash = CowEvcClosePositionWrapper(address(wrapper)).getApprovalHash(params);
+        settleData = _getSettleDataWithSwapOutput(inbox, address(mockDebtAsset), 1);
 
-        // Put funds in the inbox so the repayment doesn't revert
-        address inbox = CowEvcClosePositionWrapper(address(wrapper)).getInbox(params.owner, params.account);
-        deal(address(mockDebtAsset), inbox, 1);
+        hash = CowEvcClosePositionWrapper(address(wrapper)).getApprovalHash(params);
     }
 
     function setUp() public override {
@@ -197,6 +213,11 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
                 abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
             );
 
+        // Mint some swap output tokens to ensure the difference is actually being calculated
+        (address inbox,) =
+            CowEvcClosePositionWrapper(address(wrapper)).getInboxAddressAndDomainSeparator(params.owner, params.account);
+        mockBorrowVault.mint(inbox, 1);
+
         vm.expectRevert(
             abi.encodeWithSelector(
                 CowEvcClosePositionWrapper.NoSwapOutput.selector,
@@ -224,7 +245,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         // Give  some collateral vault tokens (what it would received previously from transferring from the user in the EVC.permit)
         mockCollateralVault.mint(inbox, 5000e18);
 
-        bytes memory settleData = _getEmptySettleData();
+        bytes memory settleData = _getSettleDataWithSwapOutput(inbox, address(mockDebtAsset), 1);
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
         bytes memory remainingWrapperData = "";
 
@@ -232,9 +253,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
             .setExpectedEvcInternalSettleCall(
                 abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
             );
-
-        // put funds in the inbox so it doesn't revert
-        deal(address(mockDebtAsset), inbox, 1);
 
         assertEq(mockCollateralVault.balanceOf(ACCOUNT), 0, "Account should have no funds before settlement");
 
@@ -268,7 +286,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         (address inbox,) =
             CowEvcClosePositionWrapper(address(wrapper)).getInboxAddressAndDomainSeparator(params.owner, params.account);
 
-        bytes memory settleData = _getEmptySettleData();
+        bytes memory settleData = _getSettleDataWithSwapOutput(inbox, address(mockDebtAsset), swapResult);
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
         bytes memory remainingWrapperData = "";
 
@@ -276,9 +294,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
             .setExpectedEvcInternalSettleCall(
                 abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
             );
-
-        // Give inbox the swap result
-        deal(address(mockDebtAsset), inbox, swapResult);
 
         // Expect repay to be called with the swap result amount
         vm.expectCall(address(mockBorrowVault), abi.encodeCall(IBorrowing.repay, (swapResult, ACCOUNT)));
@@ -343,7 +358,7 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         (address inbox,) =
             CowEvcClosePositionWrapper(address(wrapper)).getInboxAddressAndDomainSeparator(params.owner, params.account);
 
-        bytes memory settleData = _getEmptySettleData();
+        bytes memory settleData = _getSettleDataWithSwapOutput(inbox, address(mockDebtAsset), swapResult);
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(0));
         bytes memory remainingWrapperData = "";
 
@@ -351,9 +366,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
             .setExpectedEvcInternalSettleCall(
                 abi.encodeCall(wrapper.evcInternalSettle, (settleData, wrapperData, remainingWrapperData))
             );
-
-        // Simulate swap result: inbox has more debt asset than needed
-        deal(address(mockDebtAsset), inbox, swapResult);
 
         assertEq(mockDebtAsset.balanceOf(OWNER), 0, "Owner does not have any funds before settlement");
 
