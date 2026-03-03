@@ -5,6 +5,7 @@ import {IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/interfaces/IERC20.sol";
 import {IERC1271} from "openzeppelin-contracts/contracts/interfaces/IERC1271.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ECDSA} from "openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
 import {ICowSettlement} from "./CowWrapper.sol";
 
 /// @dev Collection of EIP-712 type hashes. These hashes match those used by the CoW settlement contract.
@@ -114,23 +115,7 @@ contract Inbox is IERC1271 {
             }
         }
 
-        bytes calldata signature = signatureData[:65];
-
-        bytes32 r;
-        bytes32 s;
-        uint8 v;
-
-        // NOTE: Use assembly to efficiently decode signature data.
-        assembly ("memory-safe") {
-            // r = uint256(signature[0:32])
-            r := calldataload(signature.offset)
-            // s = uint256(signature[32:64])
-            s := calldataload(add(signature.offset, 32))
-            // v = uint8(signature[64])
-            v := shr(248, calldataload(add(signature.offset, 64)))
-        }
-
-        address signer = ecrecover(inboxOrderDigest, v, r, s);
+        address signer = ECDSA.recoverCalldata(inboxOrderDigest, signatureData[:65]);
         require(signer == BENEFICIARY, Unauthorized(signer));
 
         return IERC1271.isValidSignature.selector;
