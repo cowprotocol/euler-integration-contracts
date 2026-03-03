@@ -54,7 +54,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             fromVault: address(EUSDS),
             toVault: address(EWBTC),
             fromAmount: DEFAULT_SWAP_AMOUNT,
-            toAmount: DEFAULT_BUY_AMOUNT
+            toAmount: DEFAULT_BUY_AMOUNT,
+            disableSourceCollateral: false
         });
     }
 
@@ -183,8 +184,11 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     ///
     /// @param owner The owner/signer of the position
     /// @param account The account that holds the position (owner for main account, different for subaccount)
+    /// @param disableCollateral Whether to disable the source collateral
     /// @param userPrivateKey Private key for permit signature. If set to 0, uses the pre-approved authentication flow
-    function _testCollateralSwapFlow(address owner, address account, uint256 userPrivateKey) internal {
+    function _testCollateralSwapFlow(address owner, address account, uint256 userPrivateKey, bool disableCollateral)
+        internal
+    {
         uint256 borrowAmount = 0.5e18; // Borrow 0.5 WETH
         uint256 collateralAmount = 1000e18;
 
@@ -193,11 +197,12 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             ownerAccount: account,
             collateralVault: EUSDS,
             borrowVault: EWETH,
-            collateralAmount: collateralAmount + borrowAmount * 2500,
-            borrowAmount: borrowAmount
+            collateralAmount: DEFAULT_SWAP_AMOUNT,
+            borrowAmount: DEFAULT_SWAP_AMOUNT / 2500 * 5 / 3 // around 150% c-ratio
         });
 
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(owner, account);
+        params.disableSourceCollateral = disableCollateral;
 
         SettlementData memory settlement = prepareCollateralSwapSettlement({
             owner: owner,
@@ -253,23 +258,33 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         vm.expectEmit();
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
-            params.owner, params.account, params.fromVault, params.toVault, params.fromAmount, params.toAmount
+            params.owner,
+            params.account,
+            params.fromVault,
+            params.toVault,
+            params.fromAmount,
+            params.toAmount,
+            params.disableSourceCollateral
         );
 
         CowWrapper(address(collateralSwapWrapper)).wrappedSettle(settleData, wrapperData);
 
         // Verify the collateral was swapped successfully
-        assertEq(
-            EUSDS.balanceOf(account),
-            fromVaultBalanceBefore - DEFAULT_SWAP_AMOUNT,
-            "Account should have less EUSDS after swap"
-        );
+        assertEq(EUSDS.balanceOf(account), 0, "Account should have less EUSDS after swap");
         assertApproxEqAbs(
             EWBTC.balanceOf(account), toVaultBalanceBefore + DEFAULT_BUY_AMOUNT, 1, "Account should have received EWBTC"
         );
 
         // Verify the new collateral vault is enabled
         assertTrue(EVC.isCollateralEnabled(account, address(EWBTC)), "EWBTC vault should be enabled");
+
+        if (disableCollateral) {
+            // If the test case is with disableCollateral=true, verify the old collateral vault is disabled
+            assertFalse(EVC.isCollateralEnabled(account, address(EUSDS)), "EUSDS vault should be disabled");
+        } else {
+            // Otherwise, it should still be enabled
+            assertTrue(EVC.isCollateralEnabled(account, address(EUSDS)), "EUSDS vault should still be enabled");
+        }
 
         // Operator authorizations should have been revoked (only actually used by pre-approve flow)
         assertFalse(
@@ -283,19 +298,27 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     }
 
     function test_CollateralSwapWrapper_Permit_MainAccount() external {
-        _testCollateralSwapFlow(user, user, privateKey);
+        _testCollateralSwapFlow(user, user, privateKey, false);
     }
 
     function test_CollateralSwapWrapper_Permit_Subaccount() external {
-        _testCollateralSwapFlow(user, account, privateKey);
+        _testCollateralSwapFlow(user, account, privateKey, false);
     }
 
     function test_CollateralSwapWrapper_PreApprove_MainAccount() external {
-        _testCollateralSwapFlow(user, user, 0);
+        _testCollateralSwapFlow(user, user, 0, false);
     }
 
     function test_CollateralSwapWrapper_PreApprove_Subaccount() external {
-        _testCollateralSwapFlow(user, account, 0);
+        _testCollateralSwapFlow(user, account, 0, false);
+    }
+
+    function test_CollateralSwapWrapper_PreApprove_MainAccount_DisableSourceCollateral() external {
+        _testCollateralSwapFlow(user, user, 0, true);
+    }
+
+    function test_CollateralSwapWrapper_PreApprove_Subaccount_DisableSourceCollateral() external {
+        _testCollateralSwapFlow(user, account, 0, true);
     }
 
     /// @notice Test that invalid signature causes the transaction to revert
@@ -419,7 +442,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 fromVault: address(EUSDS),
                 toVault: address(EWETH),
                 fromAmount: EUSDS.convertToShares(300 ether),
-                toAmount: 0.118 ether
+                toAmount: 0.118 ether,
+                disableSourceCollateral: false
             });
 
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params2 =
@@ -430,7 +454,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 fromVault: address(EUSDS),
                 toVault: address(EWETH),
                 fromAmount: EUSDS.convertToShares(700 ether),
-                toAmount: EWETH.convertToShares(0.278 ether)
+                toAmount: EWETH.convertToShares(0.278 ether),
+                disableSourceCollateral: false
             });
 
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params3 =
@@ -441,7 +466,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 fromVault: address(EWETH),
                 toVault: address(EUSDS),
                 fromAmount: EWETH.convertToShares(0.8 ether),
-                toAmount: EUSDS.convertToShares(1950 ether)
+                toAmount: EUSDS.convertToShares(1950 ether),
+                disableSourceCollateral: false
             });
 
         // Create permit signatures for all users
