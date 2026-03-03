@@ -20,15 +20,6 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     bytes32 public constant DOMAIN_TYPE_HASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
 
-    /// @dev The marker value for a sell order for computing the order struct
-    /// hash. This allows the EIP-712 compatible wallets to display a
-    /// descriptive string for the order kind (instead of 0 or 1).
-    bytes32 internal constant KIND_SELL = keccak256("sell");
-
-    /// @dev The OrderKind marker value for a buy order for computing the order
-    /// struct hash.
-    bytes32 internal constant KIND_BUY = keccak256("buy");
-
     /// @dev Used by EIP-712 signing to prevent signatures from being replayed
     bytes32 public immutable DOMAIN_SEPARATOR;
 
