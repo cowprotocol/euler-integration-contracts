@@ -200,6 +200,12 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
         uint256 debtAmount = IBorrowing(params.borrowVault).debtOf(params.account);
 
         Inbox inbox = _getInbox(params.owner, params.account);
+
+        // Approve spending of collateral for the settlement contract. The funds are pulled through the Vault Relayer.
+        // We set an infinite approval here because it is the most gas-efficient overall option. Setting a limited approval would be preferred,
+        // but we don't know how much funds the settlement contract will take to perform the swap. Additionally, setting a one-time approval is not really possible
+        // because we don't know if the params.collateralVault has been traded before.
+        // Considering the established high-trust of the CoW settlement contract, the infinite approval here is low risk.
         inbox.callApprove(params.collateralVault, VAULT_RELAYER, type(uint256).max);
 
         uint256 swapBeforeResultBalance = borrowAsset.balanceOf(address(inbox));
