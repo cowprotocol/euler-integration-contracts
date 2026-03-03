@@ -41,7 +41,6 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
             fromAmount: DEFAULT_SWAP_AMOUNT,
-            toAmount: 0,
             disableSourceCollateral: false
         });
     }
@@ -331,7 +330,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         vm.prank(SOLVER);
         vm.expectEmit();
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
-            params.owner, params.account, params.fromVault, params.toVault, 0, 0, false
+            params.owner, params.account, params.fromVault, params.toVault, 0, false
         );
         wrapper.wrappedSettle(settleData, wrapperData);
     }
@@ -358,7 +357,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         vm.prank(SOLVER);
         vm.expectEmit();
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
-            params.owner, params.account, params.fromVault, params.toVault, 0, 0, false
+            params.owner, params.account, params.fromVault, params.toVault, 0, false
         );
         wrapper.wrappedSettle(settleData, wrapperData);
     }
@@ -385,7 +384,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         vm.prank(SOLVER);
         vm.expectEmit();
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
-            params.owner, params.account, params.fromVault, params.fromVault, DEFAULT_SWAP_AMOUNT, 0, false
+            params.owner, params.account, params.fromVault, params.fromVault, DEFAULT_SWAP_AMOUNT, false
         );
         wrapper.wrappedSettle(settleData, wrapperData);
     }

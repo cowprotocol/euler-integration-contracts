@@ -34,14 +34,13 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
     /// @param fromVault The vault from which collateral is being swapped
     /// @param toVault The vault to which collateral is being swapped
     /// @param fromAmount The amount of collateral being swapped from the fromVault as specified in the CollateralSwapParams. This may differ from the actual swapped amount.
-    /// @param toAmount The amount of collateral being swapped to the toVault as specified in the CollateralSwapParams. This may differ from the actual swapped amount.
+    /// @param disableSourceCollateral The flag from the CollateralSwapParams indicating whether the source collateral was disabled after the swap
     event CowEvcCollateralSwapped(
         address indexed owner,
         address account,
         address indexed fromVault,
         address indexed toVault,
         uint256 fromAmount,
-        uint256 toAmount,
         bool disableSourceCollateral
     );
 
@@ -57,7 +56,6 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
                 fromVault: address(0),
                 toVault: address(0),
                 fromAmount: 0,
-                toAmount: 0,
                 disableSourceCollateral: false
             })
         )
@@ -66,7 +64,7 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         MAX_BATCH_OPERATIONS = 4;
 
         PARAMS_TYPE_HASH = keccak256(
-            "CollateralSwapParams(address owner,address account,uint256 deadline,address fromVault,address toVault,uint256 fromAmount,uint256 toAmount,bool disableSourceCollateral)"
+            "CollateralSwapParams(address owner,address account,uint256 deadline,address fromVault,address toVault,uint256 fromAmount,bool disableSourceCollateral)"
         );
     }
 
@@ -95,9 +93,6 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
 
         /// @dev The amount of fromVault traded in. Same as `sellAmount` in the CoW order
         uint256 fromAmount;
-
-        /// @dev The amount of toVault traded out. Same as `buyAmount` in the CoW order
-        uint256 toAmount;
 
         /// @dev A flag to indicate whether the old collateral should be disabled after the swap. If true, the wrapper will additionally call `disableCollateral` on the source vault after the swap.
         bool disableSourceCollateral;
@@ -212,7 +207,6 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
             params.fromVault,
             params.toVault,
             params.fromAmount,
-            params.toAmount,
             params.disableSourceCollateral
         );
     }

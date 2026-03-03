@@ -54,7 +54,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             fromVault: address(EUSDS),
             toVault: address(EWBTC),
             fromAmount: DEFAULT_SWAP_AMOUNT,
-            toAmount: DEFAULT_BUY_AMOUNT,
             disableSourceCollateral: false
         });
     }
@@ -263,7 +262,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             params.fromVault,
             params.toVault,
             params.fromAmount,
-            params.toAmount,
             params.disableSourceCollateral
         );
 
@@ -442,7 +440,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 fromVault: address(EUSDS),
                 toVault: address(EWETH),
                 fromAmount: EUSDS.convertToShares(300 ether),
-                toAmount: 0.118 ether,
                 disableSourceCollateral: false
             });
 
@@ -454,7 +451,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 fromVault: address(EUSDS),
                 toVault: address(EWETH),
                 fromAmount: EUSDS.convertToShares(700 ether),
-                toAmount: EWETH.convertToShares(0.278 ether),
                 disableSourceCollateral: false
             });
 
@@ -466,7 +462,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
                 fromVault: address(EWETH),
                 toVault: address(EUSDS),
                 fromAmount: EWETH.convertToShares(0.8 ether),
-                toAmount: EUSDS.convertToShares(1950 ether),
                 disableSourceCollateral: false
             });
 
@@ -491,7 +486,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             sellTokenIndex: 2, // eUSDS
             buyTokenIndex: 3, // eWETH
             sellAmount: params1.fromAmount,
-            buyAmount: params1.toAmount,
+            buyAmount: 0.118 ether,
             validTo: validTo,
             owner: user,
             receiver: account,
@@ -502,7 +497,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             sellTokenIndex: 2, // eUSDS
             buyTokenIndex: 3, // eWETH
             sellAmount: params2.fromAmount,
-            buyAmount: params2.toAmount,
+            buyAmount: EWETH.convertToShares(0.278 ether),
             validTo: validTo,
             owner: user2,
             receiver: account2,
@@ -513,7 +508,7 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             sellTokenIndex: 3, // eWETH
             buyTokenIndex: 2, // eUSDS
             sellAmount: params3.fromAmount,
-            buyAmount: params3.toAmount,
+            buyAmount: EUSDS.convertToShares(1950 ether),
             validTo: validTo,
             owner: user3,
             receiver: account3,
