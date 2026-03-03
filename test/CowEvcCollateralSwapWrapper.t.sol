@@ -188,9 +188,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
     function _testCollateralSwapFlow(address owner, address account, uint256 userPrivateKey, bool disableCollateral)
         internal
     {
-        uint256 borrowAmount = 0.5e18; // Borrow 0.5 WETH
-        uint256 collateralAmount = 1000e18;
-
         setupLeveragedPositionFor({
             owner: owner,
             ownerAccount: account,
@@ -213,7 +210,6 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
         });
 
         // Record balances before swap
-        uint256 fromVaultBalanceBefore = EUSDS.balanceOf(account);
         uint256 toVaultBalanceBefore = EWBTC.balanceOf(account);
 
         bytes memory wrapperData;

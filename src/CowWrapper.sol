@@ -217,6 +217,9 @@ abstract contract CowWrapper is ICowWrapper {
                     revert(add(returnData, 0x20), mload(returnData))
                 }
             }
+
+            // casting to 'bytes4' is safe because the bytes that are returned by the next wrapper should always be the same specific value
+            // forge-lint: disable-next-line(unsafe-typecast)
             require(bytes4(returnData) == ICowWrapper.wrappedSettle.selector, InvalidNextWrapper(nextWrapper));
         }
     }

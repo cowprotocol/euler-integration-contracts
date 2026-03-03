@@ -230,7 +230,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         );
     }
 
-    function test_EncodePermitData_IsCorrectDisableCollateral() public {
+    function test_EncodePermitData_IsCorrectDisableCollateral() public view {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
         params.account = OWNER;
         params.disableSourceCollateral = true;
@@ -264,7 +264,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         );
     }
 
-    function test_EncodePermitData_IsCorrectDifferentOwnerAccountDisableCollateral() public {
+    function test_EncodePermitData_IsCorrectDifferentOwnerAccountDisableCollateral() public view {
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
         params.disableSourceCollateral = true;
 
