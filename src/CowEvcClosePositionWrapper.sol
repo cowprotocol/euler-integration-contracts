@@ -41,7 +41,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Close Position";
 
-    /// @dev Emitted when a position is closed or reduced in size via this wrapper
+    /// @dev Emitted when a position is closed or reduced in size via this wrapper. Note that `repaidAmount` and `leftoverAmount` are based on the actual swap output, unlike other wrappers.
     /// @param owner The owner of the account that was closed
     /// @param account The subaccount that was closed
     /// @param borrowVault The vault of the borrowed asset

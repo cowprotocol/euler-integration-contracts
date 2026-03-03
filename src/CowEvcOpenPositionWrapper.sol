@@ -27,7 +27,14 @@ contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Open Position";
 
-    /// @dev Emitted when a position is opened via this wrapper
+    /// @dev Emitted when a position is opened via this wrapper. Note that *all* these values are simply the OpenPositionParams values, and no the actual trade amounts.
+    /// For actual trade amounts, see the `Settlement` event emitted by the settlement contract in the same transaction.
+    /// @param owner The owner specified in the OpenPositionParams
+    /// @param account The subaccount specified in the OpenPositionParams
+    /// @param collateralVault The collateral vault specified in the OpenPositionParams
+    /// @param borrowVault The borrow vault specified in the OpenPositionParams
+    /// @param collateralAmount The amount of collateral deposited into the vault (as specified in the OpenPositionParams)
+    /// @param borrowAmount The amount of debt taken out (as specified in the OpenPositionParams)
     event CowEvcPositionOpened(
         address indexed owner,
         address account,
