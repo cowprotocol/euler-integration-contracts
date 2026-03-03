@@ -33,7 +33,6 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
     address immutable VAULT_RELAYER;
 
     error NoSwapOutput(address inboxForSwap);
-    error InsufficientDebt(uint256 expectedMinDebt, uint256 actualDebt);
     error UnexpectedRepayResult(uint256 expectedRepayAmount, uint256 actualRepaidAmount);
 
     /// @dev The EIP-712 domain name used for computing the domain separator.
