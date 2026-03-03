@@ -23,6 +23,10 @@ import {Inbox} from "./Inbox.sol";
 /// Due to the potential side effects of multiple orders executing in a single settlement, do not attempt to execute a new close position on the same subaccount until it either expires or is settled.
 /// If the position will be fully closed, the CoW order should be of type GPv2Order.KIND_BUY to prevent excess repay asset from being sent to the contract, leaving excess dust in the user.
 /// Leave a small buffer for interest accumulation, and any dust on the buy side will be returned to the owner's wallet.
+/// @dev When using the pre-approved hash flow (empty signature), this function will
+/// revoke operator access for both `owner` and `account` after execution completes.
+/// Integrations relying on persistent operator authorization MUST re-grant access
+/// before the next operation.
 contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
     using SafeERC20 for IERC20;
 

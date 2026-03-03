@@ -13,6 +13,10 @@ import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
 ///      1. Enabling new collateral vault
 ///      2. Transfering collateral from EVC subaccount to main account (if using subaccount)
 ///      3. Executing the settlement contract to swap collateral (new collateral is deposited directly into user's account)
+/// @dev When using the pre-approved hash flow (empty signature), this function will
+/// revoke operator access for both `owner` and `account` after execution completes.
+/// Integrations relying on persistent operator authorization MUST re-grant access
+/// before the next operation.
 contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
     /// @dev The EIP-712 domain name used for computing the domain separator.
     bytes32 constant DOMAIN_NAME = keccak256("CowEvcCollateralSwapWrapper");

@@ -17,6 +17,10 @@ import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
 /// @dev The settle call by this order should be performing the necessary swap
 /// from IERC20(borrowVault.asset()) -> collateralVault. See below for more information
 /// on how to set the CoW order params.
+/// @dev When using the pre-approved hash flow (empty signature), this function will
+/// revoke operator access for both `owner` and `account` after execution completes.
+/// Integrations relying on persistent operator authorization MUST re-grant access
+/// before the next operation.
 contract CowEvcOpenPositionWrapper is CowEvcBaseWrapper {
     /// @dev The EIP-712 domain name used for computing the domain separator.
     bytes32 constant DOMAIN_NAME = keccak256("CowEvcOpenPositionWrapper");
