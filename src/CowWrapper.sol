@@ -89,7 +89,8 @@ interface ICowWrapper {
     /// @dev SECURITY: `settleData` is NOT guaranteed to remain unchanged through the wrapper chain.
     ///      Intermediate wrappers could modify it before passing it along. Do not rely on
     ///      `settleData` validation for security-critical checks.
-    /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data
+    /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data. This data is not validated in terms of its relation to the wrapper data,
+    /// so it assumed that off-chain processes will enforce the correct construction.
     /// @param chainedWrapperData Encoded wrapper chain with the following format:
     ///        Structure: [uint16 len1][bytes data1][address wrapper2][uint16 len2][bytes data2][address wrapper3]...
     ///
