@@ -10,8 +10,12 @@ import {ICowSettlement} from "./CowWrapper.sol";
 
 /// @dev Collection of EIP-712 type hashes. These hashes match those used by the CoW settlement contract.
 library InboxLibrary {
+    /// @dev The EIP-712 type hash for the domain separator used in the CoW settlement contract. We intentionally hardcode this here to prevent an unnecessary external call at Inbox deployment time.
+    /// Tests are used to verify it matches up with the expected value from production.
     bytes32 internal constant DOMAIN_TYPE_HASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    
+    /// @dev The EIP-712 type hash for the order struct used in the CoW settlement contract. Similar to DOMAIN_TYPE_HASH, it is intentionally hardcoded here.
     bytes32 internal constant ORDER_TYPE_HASH = keccak256(
         "Order(address sellToken,address buyToken,address receiver,uint256 sellAmount,uint256 buyAmount,uint32 validTo,bytes32 appData,uint256 feeAmount,string kind,bool partiallyFillable,string sellTokenBalance,string buyTokenBalance)"
     );
