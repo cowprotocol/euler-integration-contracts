@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 
 import {Inbox, InboxLibrary} from "../../src/Inbox.sol";
 import {InboxFactory} from "../../src/InboxFactory.sol";
+import {Errors} from "../../src/Errors.sol";
 import {MockCowSettlement, MockCowAuthentication} from "./mocks/MockCowProtocol.sol";
 import {MockERC20, MockBorrowVault} from "./mocks/MockERC20AndVaults.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
@@ -21,7 +22,7 @@ contract InboxUnitTest is Test {
     uint256 immutable BENEFICIARY_PRIVATE_KEY;
 
     address immutable BENEFICIARY;
-    address immutable ACCOUNT = makeAddr("account");
+    address immutable ACCOUNT;
     address immutable RECIPIENT = makeAddr("recipient");
     address immutable OTHER_USER = makeAddr("other user");
 
@@ -43,6 +44,7 @@ contract InboxUnitTest is Test {
 
     constructor() {
         (BENEFICIARY, BENEFICIARY_PRIVATE_KEY) = makeAddrAndKey("beneficiary");
+        ACCOUNT = address(uint160(BENEFICIARY) + 1); // Must be a subaccount of BENEFICIARY, so we add 1 to the address to get a valid subaccount address
     }
 
     function setUp() public {
@@ -114,7 +116,16 @@ contract InboxUnitTest is Test {
         assertEq(inboxFactory.getInboxCreationCode(), type(Inbox).creationCode, "Creation code does not match");
     }
 
-    function testFuzz_InboxFactory_ViewFunctionReturnsCorrectValues(address beneficiary, address account) public {
+    function test_InboxFactory_GetInboxControlledByOwner() public {
+        address unrelatedAccount = makeAddr("unrelated account");
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.SubaccountMustBeControlledByOwner.selector, unrelatedAccount, BENEFICIARY)
+        );
+        inboxFactory.getInbox(BENEFICIARY, unrelatedAccount);
+    }
+
+    function testFuzz_InboxFactory_ViewFunctionReturnsCorrectValues(address beneficiary, uint8 subaccount) public {
+        address account = address(uint160(beneficiary) ^ subaccount);
         (address computedAddress, bytes32 domainSeparator) =
             inboxFactory.getInboxAddressAndDomainSeparator(beneficiary, account);
 
@@ -128,7 +139,7 @@ contract InboxUnitTest is Test {
 
     // ============== getInbox Tests ==============
     function test_InboxFactory_GetInbox_ReturnsNewInboxForNewSubaccount() external {
-        address newSubaccount = makeAddr("new subaccount");
+        address newSubaccount = address(uint160(BENEFICIARY) + 2); // Another valid subaccount of BENEFICIARY, different from ACCOUNT used in setup
         address newInboxAddress = inboxFactory.getInbox(BENEFICIARY, newSubaccount);
 
         assertTrue(newInboxAddress.code.length > 0, "Inbox not deployed");

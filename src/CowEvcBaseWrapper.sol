@@ -5,6 +5,7 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 
 import {CowWrapper, ICowSettlement} from "./CowWrapper.sol";
 import {PreApprovedHashes} from "./PreApprovedHashes.sol";
+import {Errors} from "./Errors.sol";
 
 /// @title CowEvcBaseWrapper
 /// @notice Shared components for implementing Euler wrappers.
@@ -51,9 +52,6 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
 
     /// @dev Indicates that the pre-approved hash is no longer able to be executed because the block timestamp is too old
     error OperationDeadlineExceeded(uint256 validToTimestamp, uint256 currentTimestamp);
-
-    /// @dev Indicates that a user attempted to interact with an account that is not their own
-    error SubaccountMustBeControlledByOwner(address subaccount, address owner);
 
     /// @dev Indicates that the EVC called `evcInternalSettle` in an invalid way
     error InvalidCallback();
@@ -175,7 +173,10 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         // Subaccounts in the EVC can be any account that shares the highest 19 bits as the owner.
         // Here we verify that the subaccount address has been specified is, in fact, a subaccount of the owner.
         // Otherwise its concievably possible that a transfer could happen between an owner with an unauthorized subaccount.
-        require(bytes19(bytes20(owner)) == bytes19(bytes20(account)), SubaccountMustBeControlledByOwner(account, owner));
+        require(
+            bytes19(bytes20(owner)) == bytes19(bytes20(account)),
+            Errors.SubaccountMustBeControlledByOwner(account, owner)
+        );
 
         // There are 2 ways that this contract can validate user operations: 1) the user pre-approves a hash with an on-chain call and grants this contract ability to operate on the user's behalf, or 2) they issue a signature which can be used to call EVC.permit()
         // The choice of the flow is based on whether `signature` has length zero. If so, then we use the hash approval flow (1).

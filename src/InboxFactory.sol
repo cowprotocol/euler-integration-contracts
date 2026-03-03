@@ -3,6 +3,7 @@ pragma solidity ^0.8;
 
 import {Create2} from "openzeppelin-contracts/contracts/utils/Create2.sol";
 import {Inbox, InboxLibrary} from "./Inbox.sol";
+import {Errors} from "./Errors.sol";
 
 /// @title InboxFactory
 /// @notice Mixin contract for managing Inbox contract creation and address computation
@@ -73,6 +74,10 @@ contract InboxFactory {
     /// @param subaccount The subaccount address
     /// @return The Inbox contract instance
     function _getInbox(address owner, address subaccount) internal returns (Inbox) {
+        require(
+            bytes19(bytes20(owner)) == bytes19(bytes20(subaccount)),
+            Errors.SubaccountMustBeControlledByOwner(subaccount, owner)
+        );
         (address expectedAddress, bytes memory creationCode, bytes32 salt) = _getInboxAddress(owner, subaccount);
 
         if (expectedAddress.code.length == 0) {

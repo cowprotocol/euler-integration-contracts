@@ -9,6 +9,7 @@ import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
 
 import {CowEvcBaseWrapper, ICowSettlement, IEVC} from "../../src/CowEvcBaseWrapper.sol";
+import {Errors} from "../../src/Errors.sol";
 import {PreApprovedHashes} from "../../src/PreApprovedHashes.sol";
 
 contract ReferenceEIP712 is EIP712 {
@@ -281,9 +282,7 @@ contract CowEvcBaseWrapperTest is Test {
         bytes memory settleData = "";
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                CowEvcBaseWrapper.SubaccountMustBeControlledByOwner.selector, invalidSubaccount, OWNER
-            )
+            abi.encodeWithSelector(Errors.SubaccountMustBeControlledByOwner.selector, invalidSubaccount, OWNER)
         );
         wrapper.invokeEvc(settleData, wrapperData, new bytes(0), params, new bytes(0));
     }
