@@ -45,11 +45,12 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
     string public override name = "Euler EVC - Close Position";
 
     /// @dev Emitted when a position is closed or reduced in size via this wrapper. Note that `repaidAmount` and `leftoverAmount` are based on the actual swap output, unlike other wrappers.
+    /// The collateralAmount is not the actual amount of collateral spent. For actual trade amounts, see the `Settlement` event emitted by the settlement contract in the same transaction.
     /// @param owner The owner of the account that was closed
     /// @param account The subaccount that was closed
     /// @param borrowVault The vault of the borrowed asset
     /// @param collateralVault The collateral asset used to repay
-    /// @param collateralAmount The amount of collateral that was used to repay the debt
+    /// @param collateralAmount The maximum amount of collateral that could be used to repay the debt. Same as the value specified in `ClosePositionParams`.
     /// @param repaidAmount The actual amount of debt repaid
     /// @param leftoverAmount The amount of borrow token (dust) left over after repaying debt, sent back to the owner
     event CowEvcPositionClosed(
