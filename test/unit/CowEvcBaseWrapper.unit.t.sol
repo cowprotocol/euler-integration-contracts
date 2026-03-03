@@ -212,7 +212,7 @@ contract CowEvcBaseWrapperTest is Test {
         wrapper.evcInternalSettle(settleData, hex"", remainingWrapperData);
     }
 
-    function test_UnusedPermitSignature() public {
+    function test_IncorrectPermissionConfiguration() public {
         // Test that providing a signature when no permission is needed reverts
         wrapper.setNeedsPermission(false);
 
@@ -220,7 +220,9 @@ contract CowEvcBaseWrapperTest is Test {
         MockEvcBaseWrapper.TestParams memory params =
             MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: block.timestamp + 100});
 
-        vm.expectRevert(CowEvcBaseWrapper.UnusedPermitSignature.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(CowEvcBaseWrapper.IncorrectPermissionConfiguration.selector, false, false)
+        );
         wrapper.invokeEvc("", abi.encode(params, signature), new bytes(0), params, signature);
     }
 

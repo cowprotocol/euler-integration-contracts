@@ -61,6 +61,8 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that neither `_encodeBatchItemsBefore` nor `_encodeBatchItemsAfter` requested permission, meaning the provided permit signature is unused.
     error UnusedPermitSignature();
 
+    error IncorrectPermissionConfiguration(bool beforePermissionRequested, bool afterPermissionRequested);
+
     /// @dev Used to ensure that the EVC is calling back this contract with the correct data
     bytes32 internal transient expectedEvcInternalSettleCallHash;
 
@@ -193,13 +195,18 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         {
             // add any EVC actions that have to be performed before
             IEVC.BatchItem[] memory partialItems;
-            bool needsPermission;
-            bool permissionRequested = false;
+            bool beforePermissionRequested;
+            bool afterPermissionRequested;
 
-            (partialItems, needsPermission) = _encodeBatchItemsBefore(param);
-            permissionRequested = permissionRequested || needsPermission;
+            (partialItems, beforePermissionRequested) = _encodeBatchItemsBefore(param);
             itemIndex = _addEvcBatchItems(
-                items, partialItems, itemIndex, owner, deadline, needsPermission ? signature : new bytes(0), param
+                items,
+                partialItems,
+                itemIndex,
+                owner,
+                deadline,
+                beforePermissionRequested ? signature : new bytes(0),
+                param
             );
 
             // add the EVC callback to this (which calls settlement)
@@ -212,13 +219,25 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
             });
 
             // add the EVC actions that have to be performed after
-            (partialItems, needsPermission) = _encodeBatchItemsAfter(param);
-            permissionRequested = permissionRequested || needsPermission;
+            (partialItems, afterPermissionRequested) = _encodeBatchItemsAfter(param);
             itemIndex = _addEvcBatchItems(
-                items, partialItems, itemIndex, owner, deadline, needsPermission ? signature : new bytes(0), param
+                items,
+                partialItems,
+                itemIndex,
+                owner,
+                deadline,
+                afterPermissionRequested ? signature : new bytes(0),
+                param
             );
 
-            require(permissionRequested, UnusedPermitSignature());
+            // exactly one of the two encodeBatchItems functions needs to request permission (aka, use the signature or pre-approved hash),
+            // otherwise the signature provided is not actually needed for any of the operations, which would be a security risk.
+            // Conversely, if both of them request permission, its not a security risk, but it's not supported.
+            // So we check that of them requested permission, and if not, we revert.
+            require(
+                beforePermissionRequested != afterPermissionRequested,
+                IncorrectPermissionConfiguration(beforePermissionRequested, afterPermissionRequested)
+            );
         }
 
         // shorten the length of the generated array to its actual length
