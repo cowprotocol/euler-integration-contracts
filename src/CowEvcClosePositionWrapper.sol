@@ -35,6 +35,9 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
     error NoSwapOutput(address inboxForSwap);
     error UnexpectedRepayResult(uint256 expectedRepayAmount, uint256 actualRepaidAmount);
 
+    /// @dev Emitted when the borrowVault's asset is the collateralVault. This case leads to unexpected behavior/reverts, and is not supported for use.
+    error UnsupportedBorrowConfiguration(address borrowVault, address collateralVault);
+
     /// @dev The EIP-712 domain name used for computing the domain separator.
     bytes32 constant DOMAIN_NAME = keccak256("CowEvcClosePositionWrapper");
 
@@ -119,10 +122,24 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
     /// @return signature The signature over the EVC permit data
     function _parseClosePositionParams(bytes calldata wrapperData)
         internal
-        pure
+        view
         returns (ClosePositionParams memory params, bytes memory signature)
     {
         (params, signature) = abi.decode(wrapperData, (ClosePositionParams, bytes));
+    }
+
+    function _parseAndValidateWrapperData(bytes calldata wrapperData)
+        internal
+        view
+        returns (ClosePositionParams memory params, bytes memory signature)
+    {
+        // Validate by attempting to parse the wrapper data
+        // Will revert if the data is malformed
+        (params, signature) = _parseClosePositionParams(wrapperData);
+
+        if (IERC4626(params.borrowVault).asset() == params.collateralVault) {
+            revert UnsupportedBorrowConfiguration(params.borrowVault, params.collateralVault);
+        }
     }
 
     /// @notice Helper function to compute the hash that would need to be approved via `setPreApprovedHash` for the given `ClosePositionParams`
@@ -133,10 +150,10 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
     }
 
     /// @inheritdoc CowWrapper
-    function validateWrapperData(bytes calldata wrapperData) external pure override {
+    function validateWrapperData(bytes calldata wrapperData) external view override {
         // Validate by attempting to parse the wrapper data
         // Will revert if the data is malformed
-        _parseClosePositionParams(wrapperData);
+        _parseAndValidateWrapperData(wrapperData);
     }
 
     /// @notice Called by an offchain process to determine what data should be signed for the permit flow.
@@ -177,7 +194,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
         override
     {
         // Decode wrapper data into ClosePositionParams
-        (ClosePositionParams memory params, bytes memory signature) = _parseClosePositionParams(wrapperData);
+        (ClosePositionParams memory params, bytes memory signature) = _parseAndValidateWrapperData(wrapperData);
 
         _invokeEvc(
             _makeInternalSettleCallbackData(settleData, wrapperData, remainingWrapperData),

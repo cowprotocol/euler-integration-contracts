@@ -7,7 +7,7 @@ import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
 import {MockERC20, MockVault, MockBorrowVault} from "./mocks/MockERC20AndVaults.sol";
 import {UnitTestBase} from "./UnitTestBase.sol";
-import {IERC20, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {IERC20, IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {Constants} from "../helpers/Constants.sol";
 
 // this is required because foundry doesn't have a cheatcode for override any transient storage.
@@ -139,6 +139,32 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
             )
         );
         assertEq(wrapper.DOMAIN_SEPARATOR(), expectedDomainSeparator, "DOMAIN_SEPARATOR incorrect");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    VALIDATE WRAPPER CONFIG TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_ValidateWrapperConfig_RevertsIfBorrowVaultAssetIsCollateralVault() public {
+        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
+
+        bytes memory wrapperData = _encodeWrapperData(params, new bytes(65)); // Signature data can be dummy for this test
+        bytes memory settleData = _getEmptySettleData();
+
+        vm.mockCall(
+            address(mockBorrowVault),
+            abi.encodeWithSelector(IERC4626.asset.selector),
+            abi.encode(address(mockCollateralVault))
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CowEvcClosePositionWrapper.UnsupportedBorrowConfiguration.selector,
+                params.borrowVault,
+                params.collateralVault
+            )
+        );
+        wrapper.validateWrapperData(wrapperData);
     }
 
     /*//////////////////////////////////////////////////////////////
