@@ -28,7 +28,7 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
     string public override name = "Euler EVC - Collateral Swap";
 
     /// @dev Emitted when collateral is swapped via this wrapper. Note that *all* these values are simply the CollateralSwapParams values, and no the actual trade amounts.
-    /// For actual trade amounts, see the `Settlement` event emitted by the settlement contract in the same transaction.
+    /// For actual trade amounts, see the `Trade` event emitted by the settlement contract in the same transaction.
     /// @param owner The owner specified in the CollateralSwapParams
     /// @param account The subaccount specified in the CollateralSwapParams
     /// @param fromVault The vault from which collateral is being swapped
