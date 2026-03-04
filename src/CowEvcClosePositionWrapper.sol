@@ -122,7 +122,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
     /// @return signature The signature over the EVC permit data
     function _parseClosePositionParams(bytes calldata wrapperData)
         internal
-        view
+        pure
         returns (ClosePositionParams memory params, bytes memory signature)
     {
         (params, signature) = abi.decode(wrapperData, (ClosePositionParams, bytes));

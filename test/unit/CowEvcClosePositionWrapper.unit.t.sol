@@ -149,7 +149,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
 
         bytes memory wrapperData = _encodeWrapperData(params, new bytes(65)); // Signature data can be dummy for this test
-        bytes memory settleData = _getEmptySettleData();
 
         vm.mockCall(
             address(mockBorrowVault),
