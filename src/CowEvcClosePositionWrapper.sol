@@ -49,13 +49,14 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
 
     /// @dev Emitted when a position is closed or reduced in size via this wrapper. Note that `repaidAmount` and `leftoverAmount` are based on the actual swap output, unlike other wrappers.
     /// The collateralAmount is not the actual amount of collateral spent. For actual trade amounts, see the `Trade` event emitted by the settlement contract in the same transaction.
+    /// @dev This event can be used to determine whether the loan has been fully repaid or not. If `leftoverAmount > 0`, The loan has definitely been fully repaid. If `leftoverAmount == 0`, the loan has *probably* not been repaid. 
     /// @param owner The owner of the account that was closed
     /// @param account The subaccount that was closed
     /// @param borrowVault The vault of the borrowed asset
     /// @param collateralVault The collateral asset used to repay
     /// @param collateralAmount The maximum amount of collateral that could be used to repay the debt. Same as the value specified in `ClosePositionParams`.
     /// @param repaidAmount The actual amount of debt repaid
-    /// @param leftoverAmount The amount of borrow token (dust) left over after repaying debt, sent back to the owner
+    /// @param leftoverAmount The amount of borrow token (dust) left over after repaying debt, sent back to the owner. This will only be nonzero if the loan was already fully repaid.
     event CowEvcPositionClosed(
         address indexed owner,
         address account,
