@@ -10,7 +10,7 @@ import {UnitTestBase} from "./UnitTestBase.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {FfiUtils} from "./FfiUtils.sol";
 
-import {IERC20, IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
+import {IERC20, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {Constants} from "../helpers/Constants.sol";
 
 // this is required because foundry doesn't have a cheatcode for override any transient storage.
@@ -157,31 +157,6 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
             wrapper.PARAMS_TYPE_HASH(),
             "PARAMS_TYPE_HASH does not match up to params object"
         );
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                    VALIDATE WRAPPER CONFIG TESTS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_ValidateWrapperConfig_RevertsIfBorrowVaultAssetIsCollateralVault() public {
-        CowEvcClosePositionWrapper.ClosePositionParams memory params = _getDefaultParams();
-
-        bytes memory wrapperData = _encodeWrapperData(params, new bytes(65)); // Signature data can be dummy for this test
-
-        vm.mockCall(
-            address(mockBorrowVault),
-            abi.encodeWithSelector(IERC4626.asset.selector),
-            abi.encode(address(mockCollateralVault))
-        );
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                CowEvcClosePositionWrapper.UnsupportedBorrowConfiguration.selector,
-                params.borrowVault,
-                params.collateralVault
-            )
-        );
-        wrapper.validateWrapperData(wrapperData);
     }
 
     /*//////////////////////////////////////////////////////////////
