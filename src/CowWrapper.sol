@@ -193,14 +193,7 @@ abstract contract CowWrapper is ICowWrapper {
             require(bytes4(settleData[:4]) == ICowSettlement.settle.selector, InvalidSettleData(settleData));
 
             // Call the settlement contract directly with the settle data
-            (bool success, bytes memory returnData) = address(SETTLEMENT).call(settleData);
-
-            if (!success) {
-                // Bubble up the revert reason from the settlement contract
-                assembly ("memory-safe") {
-                    revert(add(returnData, 0x20), mload(returnData))
-                }
-            }
+            _callWithBubbleRevert(address(SETTLEMENT), settleData);
         } else {
             // Extract the next wrapper address from the first 20 bytes of wrapperData
             address nextWrapper = address(bytes20(remainingWrapperData[:20]));
@@ -209,18 +202,32 @@ abstract contract CowWrapper is ICowWrapper {
             remainingWrapperData = remainingWrapperData[20:];
 
             // More wrapper data remains - call the next wrapper in the chain
-            (bool success, bytes memory returnData) =
-                nextWrapper.call(abi.encodeCall(ICowWrapper.wrappedSettle, (settleData, remainingWrapperData)));
-            if (!success) {
-                // Bubble up the revert reason from the next wrapper
-                assembly ("memory-safe") {
-                    revert(add(returnData, 0x20), mload(returnData))
-                }
-            }
+            bytes memory returnData = _callWithBubbleRevert(
+                nextWrapper, abi.encodeCall(ICowWrapper.wrappedSettle, (settleData, remainingWrapperData))
+            );
+
+            // To prevent accidentally calling a non-contract or a different contract that is not actually a wrapper,
+            // we verify that "magic bytes" (matching the selector of the wrappedSettle function) are returned.
 
             // casting to 'bytes4' is safe because the bytes that are returned by the next wrapper should always be the same specific value
+            // (if the return is less than 4 bytes, the `require` fails and returns revert, verified in test)
             // forge-lint: disable-next-line(unsafe-typecast)
             require(bytes4(returnData) == ICowWrapper.wrappedSettle.selector, InvalidNextWrapper(nextWrapper));
+        }
+    }
+
+    /// @notice Helper function to bubble the raw revert result of an address().call invocation.
+    /// @param target The contract to call
+    /// @param data The data to send
+    /// @return returnData The return data if it was successful
+    function _callWithBubbleRevert(address target, bytes memory data) internal returns (bytes memory returnData) {
+        bool success;
+        (success, returnData) = target.call(data);
+        if (!success) {
+            // Bubble up the revert reason from the next wrapper. Assembly is unfortunately required to do this.
+            assembly ("memory-safe") {
+                revert(add(returnData, 0x20), mload(returnData))
+            }
         }
     }
 }

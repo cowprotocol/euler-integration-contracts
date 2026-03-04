@@ -81,7 +81,7 @@ contract CowWrapperTest is Test {
         wrapper1.wrappedSettle(settleData, wrapperData);
     }
 
-    function test_next_RevertsWhenNextWrapperReturnsNoMagic() public {
+    function test_next_RevertsWhenNextWrapperReturnsIncorrectMagic(bytes memory returnData) public {
         bytes memory settleData = abi.encodePacked(_createSimpleSettleData(1), hex"");
         bytes memory secondCallWrapperData = abi.encodePacked(uint16(3), hex"098765");
         bytes memory wrapperData = abi.encodePacked(uint16(2), hex"1234", address(wrapper2), secondCallWrapperData);
@@ -90,7 +90,7 @@ contract CowWrapperTest is Test {
         vm.mockCall(
             address(wrapper2),
             ICowWrapper.wrappedSettle.selector,
-            hex"" // Not the expected magic value
+            returnData // Not going to be the expected magic value
         );
 
         vm.expectRevert(abi.encodeWithSelector(CowWrapper.InvalidNextWrapper.selector, address(wrapper2)));
