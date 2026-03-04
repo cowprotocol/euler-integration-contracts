@@ -44,7 +44,7 @@ contract InboxUnitTest is Test {
 
     constructor() {
         (BENEFICIARY, BENEFICIARY_PRIVATE_KEY) = makeAddrAndKey("beneficiary");
-        ACCOUNT = address(uint160(BENEFICIARY) + 1); // Must be a subaccount of BENEFICIARY, so we add 1 to the address to get a valid subaccount address
+        ACCOUNT = address(uint160(BENEFICIARY) ^ 1); // Must be a subaccount of BENEFICIARY, so we xor 1 to the address to get a valid subaccount address
     }
 
     function setUp() public {
