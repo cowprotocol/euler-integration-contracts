@@ -234,16 +234,10 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
 
         // what is the maximum amount of debt that can
         // be repaid from the owner account?
-        uint256 swapSourceBalance = IERC20(params.collateralVault).balanceOf(address(inbox));
         uint256 swapResultBalance = borrowAsset.balanceOf(address(inbox));
 
         if (swapResultBalance - swapBeforeResultBalance == 0) {
             revert NoSwapOutput(address(inbox));
-        }
-
-        // send any source collateral that remains after the swap back to the user's account
-        if (swapSourceBalance > 0) {
-            inbox.callTransfer(params.collateralVault, params.account, swapSourceBalance);
         }
 
         // the amount we will *actually* repay is the same as however much we get from swapping
@@ -263,6 +257,16 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
 
         // we already calculated the amount of debt that was going to be repaid, so this is sanity to ensure we repaid as expected
         require(repaidAmount == repayAmount, UnexpectedRepayResult(repayAmount, repaidAmount));
+
+        // Finally, send any remaining of the source funds back to the source account
+        // We do this last because its possible that the repay asset = the collateral vault token,
+        // so by doing this last, we can naturally avoid 
+        // (We don't officially support this, however, so no explicit test is included to verify this works)
+        uint256 swapSourceBalance = IERC20(params.collateralVault).balanceOf(address(inbox));
+
+        if (swapSourceBalance > 0) {
+            inbox.callTransfer(params.collateralVault, params.account, swapSourceBalance);
+        }
 
         emit CowEvcPositionClosed(
             params.owner,
