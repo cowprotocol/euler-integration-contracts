@@ -119,7 +119,6 @@ contract Inbox is IERC1271 {
             }
         }
 
-        // reverts with ECDSA.ECDSAInvalidSignature if signer == address(0)
         address signer = ECDSA.recoverCalldata(inboxOrderDigest, signatureData[:65]);
         require(signer == BENEFICIARY, Unauthorized(signer));
 
