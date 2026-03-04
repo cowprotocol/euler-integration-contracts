@@ -209,10 +209,10 @@ abstract contract CowWrapper is ICowWrapper {
             // To prevent accidentally calling a non-contract or a different contract that is not actually a wrapper,
             // we verify that "magic bytes" (matching the selector of the wrappedSettle function) are returned.
 
-            // casting to 'bytes4' is safe because the bytes that are returned by the next wrapper should always be the same specific value
-            // (if the return is less than 4 bytes, the `require` fails and returns revert, verified in test)
-            // forge-lint: disable-next-line(unsafe-typecast)
+            // casting to 'bytes32' is safe because the bytes that are returned by the next wrapper should always be the same specific value
+            // (if the return is less than 32 bytes, the `require` fails and returns revert, verified in test)
             require(
+                // forge-lint: disable-next-line(unsafe-typecast)
                 returnData.length == 32 && bytes32(returnData) == bytes32(ICowWrapper.wrappedSettle.selector),
                 InvalidNextWrapper(nextWrapper)
             );
