@@ -81,21 +81,50 @@ contract CowWrapperTest is Test {
         wrapper1.wrappedSettle(settleData, wrapperData);
     }
 
-    function test_next_RevertsWhenNextWrapperReturnsIncorrectMagic(bytes memory returnData) public {
+    function test_next_RevertsWhenNextWrapperReturnsIncorrectMagic() public {
         bytes memory settleData = abi.encodePacked(_createSimpleSettleData(1), hex"");
         bytes memory secondCallWrapperData = abi.encodePacked(uint16(3), hex"098765");
         bytes memory wrapperData = abi.encodePacked(uint16(2), hex"1234", address(wrapper2), secondCallWrapperData);
 
-        // Mock wrapper2 to return incorrect value
+        // There are a few edge cases so test in succession. To reduce code duplication its easiest to run them all here.
+        // Unfortunately its not possible to set explanation text in `expectRevert`, so use the trace to identify the failing case.
+        vm.startPrank(solver);
+
+        // Mock no calldata returned
         vm.mockCall(
             address(wrapper2),
             ICowWrapper.wrappedSettle.selector,
-            returnData // Not going to be the expected magic value
+            "" // Not going to be the expected magic value
         );
-
         vm.expectRevert(abi.encodeWithSelector(CowWrapper.InvalidNextWrapper.selector, address(wrapper2)));
-        vm.prank(solver);
         wrapper1.wrappedSettle(settleData, wrapperData);
+
+        // Mock incorrect bytes4 calldata returned
+        vm.mockCall(
+            address(wrapper2),
+            ICowWrapper.wrappedSettle.selector,
+            "0x12341234" // Same length but not going to be the expected magic value
+        );
+        vm.expectRevert(abi.encodeWithSelector(CowWrapper.InvalidNextWrapper.selector, address(wrapper2)));
+        wrapper1.wrappedSettle(settleData, wrapperData);
+
+        // Mock too long calldata returned + correct first 4 bytes
+        vm.mockCall(
+            address(wrapper2),
+            ICowWrapper.wrappedSettle.selector,
+            abi.encodePacked(ICowWrapper.wrappedSettle.selector, "foobar") // Has magic value for the first 4 bytes, but not after
+        );
+        vm.expectRevert(abi.encodeWithSelector(CowWrapper.InvalidNextWrapper.selector, address(wrapper2)));
+        wrapper1.wrappedSettle(settleData, wrapperData);
+
+        // Last call should not revert (sanity)
+        vm.mockCall(
+            address(wrapper2),
+            ICowWrapper.wrappedSettle.selector,
+            abi.encode(ICowWrapper.wrappedSettle.selector) // Correct magic
+        );
+        wrapper1.wrappedSettle(settleData, wrapperData);
+        vm.stopPrank();
     }
 
     function test_next_BubblesNestedWrapCallRevrt() public {
