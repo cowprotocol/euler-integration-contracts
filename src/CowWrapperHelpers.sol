@@ -13,6 +13,12 @@ contract CowWrapperHelpers {
     /// @param authenticatorContract The authentication contract that rejected the wrapper
     error WrapperNotAuthorized(uint256 wrapperIndex, address unauthorized, address authenticatorContract);
 
+    /// @notice Thrown when the provided wrapper address does not have any deployed bytecode, meaning its an EOA.
+    /// This can happen if you are attempting to call a regular solver rather than an actual wrapper.
+    /// @param wrapperIndex The index of the invalid wrapper in the array
+    /// @param wrapperWithNoCode The address of the target wrapper, which has no code
+    error WrapperHasNoCode(uint256 wrapperIndex, address wrapperWithNoCode);
+
     /// @notice Thrown when a wrapper's validateWrapperData reverts, which is assumed to be due to malformed data
     /// @param wrapperIndex The index of the wrapper with malformed data
     /// @param wrapperError The error returned by the wrapper's validateWrapperData
@@ -22,18 +28,6 @@ contract CowWrapperHelpers {
     /// @param wrapperIndex The index of the wrapper with data that is too long
     /// @param exceedingLength The observed length of the data
     error WrapperDataTooLong(uint256 wrapperIndex, uint256 exceedingLength);
-
-    /// @notice Thrown when the settlement contract is authenticated as a solver
-    /// @dev The settlement contract should not be a solver to prevent direct settlement calls bypassing wrappers
-    /// @param settlementContract The settlement contract address
-    /// @param authenticatorContract The authentication contract that authenticated the settlement as a solver
-    error SettlementContractShouldNotBeSolver(address settlementContract, address authenticatorContract);
-
-    /// @notice Thrown when wrappers in the chain use different settlement contracts
-    /// @param wrapperIndex The index of the wrapper with a mismatched settlement
-    /// @param expectedSettlement The settlement contract used by the first wrapper
-    /// @param actualSettlement The settlement contract used by this wrapper
-    error SettlementMismatch(uint256 wrapperIndex, address expectedSettlement, address actualSettlement);
 
     /// @notice A definition for a single call to a wrapper
     /// @dev This corresponds to the `wrappers` item structure on the CoW Orderbook API
@@ -78,6 +72,8 @@ contract CowWrapperHelpers {
                 WRAPPER_AUTHENTICATOR.isSolver(wrapperCalls[i].target),
                 WrapperNotAuthorized(i, wrapperCalls[i].target, address(WRAPPER_AUTHENTICATOR))
             );
+
+            require(address(wrapperCalls[i].target).code.length > 0, WrapperHasNoCode(i, wrapperCalls[i].target));
 
             // The wrapper data must be parsable
             try ICowWrapper(wrapperCalls[i].target).validateWrapperData(wrapperCalls[i].data) {}
