@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pragma solidity ^0.8;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
 import {stdError} from "forge-std/StdError.sol";
 import {EIP712} from "openzeppelin/utils/cryptography/EIP712.sol";
+import {FfiUtils} from "./FfiUtils.sol";
 
 import {MockEVC} from "./mocks/MockEVC.sol";
 import {MockCowAuthentication, MockCowSettlement} from "./mocks/MockCowProtocol.sol";
@@ -129,6 +130,7 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
 }
 
 contract CowEvcBaseWrapperTest is Test {
+    using FfiUtils for Vm;
     MockEVC public mockEvc;
     MockCowSettlement public mockSettlement;
     MockCowAuthentication public mockAuth;
@@ -270,30 +272,11 @@ contract CowEvcBaseWrapperTest is Test {
         inputs[2] = "collision";
         inputs[3] = "IEVC";
         inputs[4] = "CowEvcBaseWrapper";
-        /// forge-lint: disable-next-line(unsafe-cheatcode)
-        try vm.ffi(inputs) returns (bytes memory result) {
-            assertEq(
-                result,
-                "No colliding method selectors between the two contracts.",
-                "EVC internal settle selector collision"
-            );
-        } catch (bytes memory err) {
-            // We only want to silently ignore this if its because FFI is disabled
-            vm.skip(
-                keccak256(
-                    abi.encodeWithSignature(
-                        "CheatcodeError(string)",
-                        "vm.ffi: FFI is disabled; add the `--ffi` flag to allow tests to call external commands"
-                    )
-                ) == keccak256(err)
-            );
-
-            assembly {
-                // bubble up error. length is at the beginning of the pointer, and the
-                // revert contents 32 bytes after.
-                revert(add(err, 32), mload(err))
-            }
-        }
+        assertEq(
+            vm.ffiOrSkip(inputs),
+            "No colliding method selectors between the two contracts.",
+            "EVC internal settle selector collision"
+        );
     }
 
     function test_WrappedSettle_SubaccountMustBeControlledByOwner() public {

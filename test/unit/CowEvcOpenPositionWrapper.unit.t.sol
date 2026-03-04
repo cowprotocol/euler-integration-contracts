@@ -6,6 +6,9 @@ import {CowEvcOpenPositionWrapper} from "../../src/CowEvcOpenPositionWrapper.sol
 import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
 import {UnitTestBase} from "./UnitTestBase.sol";
+import {Vm} from "forge-std/Vm.sol";
+import {FfiUtils} from "./FfiUtils.sol";
+
 import {IERC4626, IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {Constants} from "../helpers/Constants.sol";
 
@@ -21,6 +24,7 @@ contract TestableOpenPositionWrapper is CowEvcOpenPositionWrapper {
 /// @title Unit tests for CowEvcOpenPositionWrapper
 /// @notice Comprehensive unit tests focusing on isolated functionality testing with mocks
 contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
+    using FfiUtils for Vm;
     uint256 constant DEFAULT_COLLATERAL_AMOUNT = 1000e18;
     uint256 constant DEFAULT_BORROW_AMOUNT = 500e18;
 
@@ -96,6 +100,20 @@ contract CowEvcOpenPositionWrapperUnitTest is UnitTestBase {
             )
         );
         assertEq(wrapper.DOMAIN_SEPARATOR(), expectedDomainSeparator, "DOMAIN_SEPARATOR incorrect");
+    }
+
+    // Uses forge's provided `eip712` function to get the typehash of the actual struct definition and ensure it matches
+    function test_Constructor_CorrectParamsTypeHash() public {
+        string[] memory inputs = new string[](3);
+        inputs[0] = "bash";
+        inputs[1] = "-c";
+        inputs[2] =
+            "forge eip712 --json ./src/CowEvcOpenPositionWrapper.sol | jq -r '.[] | select(.type | startswith(\"OpenPositionParams\")) | .hash'";
+        assertEq(
+            abi.decode(vm.ffiOrSkip(inputs), (bytes32)),
+            wrapper.PARAMS_TYPE_HASH(),
+            "PARAMS_TYPE_HASH does not match up to params object"
+        );
     }
 
     /*//////////////////////////////////////////////////////////////

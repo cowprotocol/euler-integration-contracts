@@ -3,6 +3,9 @@ pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {UnitTestBase} from "./UnitTestBase.sol";
+import {Vm} from "forge-std/Vm.sol";
+import {FfiUtils} from "./FfiUtils.sol";
+
 import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 import {CowEvcCollateralSwapWrapper} from "../../src/CowEvcCollateralSwapWrapper.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
@@ -21,6 +24,7 @@ contract TestableCollateralSwapWrapper is CowEvcCollateralSwapWrapper {
 /// @title Unit tests for CowEvcCollateralSwapWrapper
 /// @notice Comprehensive unit tests focusing on isolated functionality testing with mocks
 contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
+    using FfiUtils for Vm;
     MockERC20 public mockFromAsset;
     MockERC20 public mockToAsset;
     MockVault public mockFromVault;
@@ -124,6 +128,20 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
             )
         );
         assertEq(wrapper.DOMAIN_SEPARATOR(), expectedDomainSeparator, "DOMAIN_SEPARATOR incorrect");
+    }
+
+    // Uses forge's provided `eip712` function to get the typehash of the actual struct definition and ensure it matches
+    function test_Constructor_CorrectParamsTypeHash() public {
+        string[] memory inputs = new string[](3);
+        inputs[0] = "bash";
+        inputs[1] = "-c";
+        inputs[2] =
+            "forge eip712 --json ./src/CowEvcCollateralSwapWrapper.sol | jq -r '.[] | select(.type | startswith(\"CollateralSwapParams\")) | .hash'";
+        assertEq(
+            abi.decode(vm.ffiOrSkip(inputs), (bytes32)),
+            wrapper.PARAMS_TYPE_HASH(),
+            "PARAMS_TYPE_HASH does not match up to params object"
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
