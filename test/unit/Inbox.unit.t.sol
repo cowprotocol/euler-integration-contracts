@@ -92,12 +92,9 @@ contract InboxUnitTest is Test {
     }
 
     function test_Constructor_SetsToActualSettlementContractDomainSeparatorCorrectly() public {
-        // Verifies the computed domain separator in the Inbox matches the hash used by CoW Protocol
-        // https://etherscan.io/address/0x9008D19f58AAbD9eD0D60971565AA8510560ab41#readContract#F2
-        inboxFactory = new InboxFactory(address(0x9008D19f58AAbD9eD0D60971565AA8510560ab41));
         vm.chainId(1);
         inbox = Inbox(inboxFactory.getInbox(BENEFICIARY, ACCOUNT));
-        bytes32 expectedSettlementDomainSeparator = 0xc078f884a2676e1345748b1feace7b0abee5d00ecadb6e574dcdd109a63e8943;
+        bytes32 expectedSettlementDomainSeparator = mockSettlement.domainSeparator();
 
         assertEq(
             inbox.SETTLEMENT_DOMAIN_SEPARATOR(),

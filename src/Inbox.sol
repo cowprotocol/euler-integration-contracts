@@ -54,18 +54,14 @@ contract Inbox is IERC1271 {
     /// @notice The CoW settlement contract address for purposes of signature verification
     address public immutable SETTLEMENT;
 
-    constructor(address executor, address beneficiary, address settlement) {
+    constructor(address executor, address beneficiary, address settlement, bytes32 settlementDomainSeparator) {
         OPERATOR = executor;
         BENEFICIARY = beneficiary;
         SETTLEMENT = settlement;
 
         INBOX_DOMAIN_SEPARATOR = InboxLibrary.computeDomainSeparator(address(this));
 
-        SETTLEMENT_DOMAIN_SEPARATOR = keccak256(
-            abi.encode(
-                InboxLibrary.DOMAIN_TYPE_HASH, keccak256("Gnosis Protocol"), keccak256("v2"), block.chainid, settlement
-            )
-        );
+        SETTLEMENT_DOMAIN_SEPARATOR = settlementDomainSeparator;
     }
 
     /// @notice Implements EIP1271 `isValidSignature`. This function expects a 65 byte RSV signature, followed by the 416 byte CoW order data.
