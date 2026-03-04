@@ -193,11 +193,18 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             ownerAccount: account,
             collateralVault: EUSDS,
             borrowVault: EWETH,
+            // The "+ 1" is rounding error.
             collateralAmount: EUSDS.convertToAssets(DEFAULT_SWAP_AMOUNT) + 1,
             borrowAmount: DEFAULT_SWAP_AMOUNT / 2500 / 2 // around 150% c-ratio
         });
 
         CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _createDefaultParams(owner, account);
+        // the amount we want to swap is enough that we don't need the remaining collateral,
+        // but leaves a bit in the account so we can test the case of remaining collateral being nonzero.
+        // So we leave 100 wei
+        uint256 remainingAmount = 100;
+        params.fromAmount -= remainingAmount;
+
         params.disableSourceCollateral = disableCollateral;
 
         SettlementData memory settlement = prepareCollateralSwapSettlement({
@@ -205,8 +212,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
             account: account,
             sellVaultToken: EUSDS,
             buyVaultToken: EWBTC,
-            sellAmount: DEFAULT_SWAP_AMOUNT,
-            buyAmount: DEFAULT_BUY_AMOUNT
+            sellAmount: params.fromAmount,
+            buyAmount: DEFAULT_BUY_AMOUNT - remainingAmount
         });
 
         // Record balances before swap
@@ -263,8 +270,8 @@ contract CowEvcCollateralSwapWrapperTest is CowBaseTest {
 
         CowWrapper(address(collateralSwapWrapper)).wrappedSettle(settleData, wrapperData);
 
-        // Verify the collateral was swapped successfully
-        assertEq(EUSDS.balanceOf(account), 0, "Account should have less EUSDS after swap");
+        // Verify the collateral was swapped successfully. We should have exactly 5 wei remaining as a result of our swap calculations above
+        assertEq(EUSDS.balanceOf(account), remainingAmount, "Account should have less EUSDS after swap");
         assertApproxEqAbs(
             EWBTC.balanceOf(account), toVaultBalanceBefore + DEFAULT_BUY_AMOUNT, 1, "Account should have received EWBTC"
         );
