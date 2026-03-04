@@ -30,7 +30,8 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
     string public constant CONTRACT_NAME = "MockEvcBaseWrapper";
     string public constant CONTRACT_VERSION = "1";
 
-    bool public needsPermission;
+    bool public needsPermissionBefore;
+    bool public needsPermissionAfter;
 
     constructor(address evc, address cow, uint256 maxBatchOps)
         CowEvcBaseWrapper(evc, ICowSettlement(cow), keccak256(bytes(CONTRACT_NAME)), keccak256(bytes(CONTRACT_VERSION)))
@@ -40,7 +41,7 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
         PARAMS_TYPE_HASH = keccak256("TestParams(address owner,address account,uint256 number)");
 
         // by default set needs permission so we dont get unused permission error
-        needsPermission = true;
+        needsPermissionBefore = true;
         MAX_BATCH_OPERATIONS = maxBatchOps;
     }
 
@@ -52,7 +53,18 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
         returns (IEVC.BatchItem[] memory items, bool _needsPermission)
     {
         // prevent unused variable warning
-        return (new IEVC.BatchItem[](0), needsPermission);
+        return (new IEVC.BatchItem[](0), needsPermissionBefore);
+    }
+
+    function _encodeBatchItemsAfter(ParamsLocation)
+        internal
+        view
+        virtual
+        override
+        returns (IEVC.BatchItem[] memory items, bool _needsPermission)
+    {
+        // prevent unused variable warning
+        return (new IEVC.BatchItem[](0), needsPermissionAfter);
     }
 
     function _evcInternalSettle(bytes calldata settleData, bytes calldata, bytes calldata remainingWrapperData)
@@ -106,8 +118,9 @@ contract MockEvcBaseWrapper is CowEvcBaseWrapper, EIP712 {
         }
     }
 
-    function setNeedsPermission(bool flag) external {
-        needsPermission = flag;
+    function setNeedsPermission(bool beforeFlag, bool afterFlag) external {
+        needsPermissionBefore = beforeFlag;
+        needsPermissionAfter = afterFlag;
     }
 
     function setExpectedEvcInternalSettleCall(bytes memory call) external {
@@ -144,7 +157,7 @@ contract CowEvcBaseWrapperTest is Test {
         mockSettlement = new MockCowSettlement(address(mockAuth));
         mockEvc = new MockEVC();
 
-        wrapper = new MockEvcBaseWrapper(address(mockEvc), address(mockSettlement), 2);
+        wrapper = new MockEvcBaseWrapper(address(mockEvc), address(mockSettlement), 3);
     }
 
     /// @notice Create empty settle data
@@ -213,9 +226,8 @@ contract CowEvcBaseWrapperTest is Test {
         wrapper.evcInternalSettle(settleData, hex"", remainingWrapperData);
     }
 
-    function test_IncorrectPermissionConfiguration() public {
-        // Test that providing a signature when no permission is needed reverts
-        wrapper.setNeedsPermission(false);
+    function test_IncorrectPermissionConfiguration_NeitherSet() public {
+        wrapper.setNeedsPermission(false, false);
 
         bytes memory signature = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
         MockEvcBaseWrapper.TestParams memory params =
@@ -224,6 +236,17 @@ contract CowEvcBaseWrapperTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(CowEvcBaseWrapper.IncorrectPermissionConfiguration.selector, false, false)
         );
+        wrapper.invokeEvc("", abi.encode(params, signature), new bytes(0), params, signature);
+    }
+
+    function test_IncorrectPermissionConfiguration_BothSet() public {
+        wrapper.setNeedsPermission(true, true);
+
+        bytes memory signature = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
+        MockEvcBaseWrapper.TestParams memory params =
+            MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: block.timestamp + 100});
+
+        vm.expectRevert(abi.encodeWithSelector(CowEvcBaseWrapper.IncorrectPermissionConfiguration.selector, true, true));
         wrapper.invokeEvc("", abi.encode(params, signature), new bytes(0), params, signature);
     }
 
@@ -438,7 +461,7 @@ contract CowEvcBaseWrapperTest is Test {
         // Create a wrapper with MAX_BATCH_OPERATIONS set too low
         MockEvcBaseWrapper tightWrapper = new MockEvcBaseWrapper(address(mockEvc), address(mockSettlement), 0);
 
-        tightWrapper.setNeedsPermission(true);
+        tightWrapper.setNeedsPermission(true, false);
 
         MockEvcBaseWrapper.TestParams memory params =
             MockEvcBaseWrapper.TestParams({owner: OWNER, account: ACCOUNT, number: block.timestamp + 100});
