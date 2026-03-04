@@ -2,6 +2,7 @@
 pragma solidity ^0.8;
 
 import {Test} from "forge-std/Test.sol";
+import {ECDSA} from "openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
 
 import {Inbox, InboxLibrary} from "../../src/Inbox.sol";
 import {InboxFactory} from "../../src/InboxFactory.sol";
@@ -353,6 +354,17 @@ contract InboxUnitTest is Test {
         bytes memory signatureData = abi.encodePacked(r, s, v, orderData);
 
         vm.expectRevert(abi.encodeWithSelector(Inbox.Unauthorized.selector, vm.addr(wrongPrivateKey)));
+        inbox.isValidSignature(settlementOrderDigest, signatureData);
+    }
+
+    function test_IsValidSignature_RevertsWithECDSAInvalidSignatureWhenEcrecoverReturnsZero() public {
+        // r=0, s=0, v=27: structurally valid 65-byte signature that causes ecrecover to return address(0)
+        bytes memory orderData = new bytes(384);
+        (bytes32 settlementOrderDigest,) = _getOrderDigests(orderData);
+
+        bytes memory signatureData = abi.encodePacked(bytes32(0), bytes32(0), uint8(27), orderData);
+
+        vm.expectRevert(ECDSA.ECDSAInvalidSignature.selector);
         inbox.isValidSignature(settlementOrderDigest, signatureData);
     }
 
