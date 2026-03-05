@@ -137,7 +137,7 @@ contract InboxUnitTest is Test {
 
     // ============== getInbox Tests ==============
     function test_InboxFactory_GetInbox_ReturnsNewInboxForNewSubaccount() external {
-        address newSubaccount = address(uint160(BENEFICIARY) + 2); // Another valid subaccount of BENEFICIARY, different from ACCOUNT used in setup
+        address newSubaccount = address(uint160(BENEFICIARY) ^ 2); // Another valid subaccount of BENEFICIARY, different from ACCOUNT used in setup
         address newInboxAddress = inboxFactory.getInbox(BENEFICIARY, newSubaccount);
 
         assertTrue(newInboxAddress.code.length > 0, "Inbox not deployed");
