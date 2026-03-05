@@ -22,14 +22,17 @@ import {Inbox} from "./Inbox.sol";
 /// Following this, the Inbox will repay the loan after the settlement returns.
 /// Due to the potential side effects of multiple orders executing in a single settlement, do not attempt to execute a new close position on the same subaccount until it either expires or is settled.
 /// If the position will be fully closed, the CoW order should be of type GPv2Order.KIND_BUY to prevent excess repay asset from being sent to the contract, leaving excess dust in the user.
-/// Leave a small buffer for interest accumulation, and any dust on the buy side will be returned to the owner's wallet.
+/// Furthermore, upon a full repay, leave a small buffer for interest accumulation, as the time between measuring the user's debt and actually executing the repayment with a settlement call will differ.
+/// @dev When using the pre-approved hash flow (empty signature), this function will
+/// revoke operator access for both `owner` and `account` after execution completes.
+/// Integrations relying on persistent operator authorization MUST re-grant access
+/// before the next operation.
 contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
     using SafeERC20 for IERC20;
 
     address immutable VAULT_RELAYER;
 
     error NoSwapOutput(address inboxForSwap);
-    error InsufficientDebt(uint256 expectedMinDebt, uint256 actualDebt);
     error UnexpectedRepayResult(uint256 expectedRepayAmount, uint256 actualRepaidAmount);
 
     /// @dev The EIP-712 domain name used for computing the domain separator.
@@ -41,14 +44,16 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Close Position";
 
-    /// @dev Emitted when a position is closed or reduced in size via this wrapper
+    /// @dev Emitted when a position is closed or reduced in size via this wrapper. Note that `repaidAmount` and `leftoverAmount` are based on the actual swap output, unlike other wrappers.
+    /// The collateralAmount is not the actual amount of collateral spent. For actual trade amounts, see the `Trade` event emitted by the settlement contract in the same transaction.
+    /// @dev This event can be used to determine whether the loan has been fully repaid or not. If `leftoverAmount > 0`, The loan has definitely been fully repaid. If `leftoverAmount == 0`, the loan has *probably* not been repaid.
     /// @param owner The owner of the account that was closed
     /// @param account The subaccount that was closed
     /// @param borrowVault The vault of the borrowed asset
     /// @param collateralVault The collateral asset used to repay
-    /// @param collateralAmount The amount of collateral that was used to repay the debt
+    /// @param collateralAmount The maximum amount of collateral that could be used to repay the debt. Same as the value specified in `ClosePositionParams`.
     /// @param repaidAmount The actual amount of debt repaid
-    /// @param leftoverAmount The amount of borrow token (dust) left over after repaying debt, sent back to the owner
+    /// @param leftoverAmount The amount of borrow token (dust) left over after repaying debt, sent back to the owner. This will only be nonzero if the loan was already fully repaid.
     event CowEvcPositionClosed(
         address indexed owner,
         address account,
@@ -196,7 +201,15 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
         uint256 debtAmount = IBorrowing(params.borrowVault).debtOf(params.account);
 
         Inbox inbox = _getInbox(params.owner, params.account);
+
+        // Approve spending of collateral for the settlement contract. The funds are pulled through the Vault Relayer.
+        // We set an infinite approval here because it is the most gas-efficient overall option. Setting a limited approval would be preferred,
+        // but we don't know how much funds the settlement contract will take to perform the swap. Additionally, setting a one-time approval is not really possible
+        // because we don't know if the params.collateralVault has been traded before.
+        // Considering the established high-trust of the CoW settlement contract, the infinite approval here is low risk.
         inbox.callApprove(params.collateralVault, VAULT_RELAYER, type(uint256).max);
+
+        uint256 swapBeforeResultBalance = borrowAsset.balanceOf(address(inbox));
 
         // Use CowWrapper's _internalSettle to call the settlement contract
         // wrapperData is empty since we've already processed it in _wrap
@@ -204,16 +217,10 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
 
         // what is the maximum amount of debt that can
         // be repaid from the owner account?
-        uint256 swapSourceBalance = IERC20(params.collateralVault).balanceOf(address(inbox));
         uint256 swapResultBalance = borrowAsset.balanceOf(address(inbox));
 
-        if (swapResultBalance == 0) {
+        if (swapResultBalance - swapBeforeResultBalance == 0) {
             revert NoSwapOutput(address(inbox));
-        }
-
-        // send any source collateral that remains after the swap back to the user's account
-        if (swapSourceBalance > 0) {
-            inbox.callTransfer(params.collateralVault, params.account, swapSourceBalance);
         }
 
         // the amount we will *actually* repay is the same as however much we get from swapping
@@ -233,6 +240,16 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
 
         // we already calculated the amount of debt that was going to be repaid, so this is sanity to ensure we repaid as expected
         require(repaidAmount == repayAmount, UnexpectedRepayResult(repayAmount, repaidAmount));
+
+        // Finally, send any remaining of the source funds back to the source account
+        // We do this last because its possible that the repay asset = the collateral vault token,
+        // so by doing this last, we can naturally avoid
+        // (We don't officially support this, however, so no explicit test is included to verify this works)
+        uint256 swapSourceBalance = IERC20(params.collateralVault).balanceOf(address(inbox));
+
+        if (swapSourceBalance > 0) {
+            inbox.callTransfer(params.collateralVault, params.account, swapSourceBalance);
+        }
 
         emit CowEvcPositionClosed(
             params.owner,

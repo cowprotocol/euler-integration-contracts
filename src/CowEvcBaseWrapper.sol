@@ -5,6 +5,7 @@ import {IEVC} from "evc/EthereumVaultConnector.sol";
 
 import {CowWrapper, ICowSettlement} from "./CowWrapper.sol";
 import {PreApprovedHashes} from "./PreApprovedHashes.sol";
+import {Errors} from "./Errors.sol";
 
 /// @title CowEvcBaseWrapper
 /// @notice Shared components for implementing Euler wrappers.
@@ -18,15 +19,6 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// separator.
     bytes32 public constant DOMAIN_TYPE_HASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
-
-    /// @dev The marker value for a sell order for computing the order struct
-    /// hash. This allows the EIP-712 compatible wallets to display a
-    /// descriptive string for the order kind (instead of 0 or 1).
-    bytes32 internal constant KIND_SELL = keccak256("sell");
-
-    /// @dev The OrderKind marker value for a buy order for computing the order
-    /// struct hash.
-    bytes32 internal constant KIND_BUY = keccak256("buy");
 
     /// @dev Used by EIP-712 signing to prevent signatures from being replayed
     bytes32 public immutable DOMAIN_SEPARATOR;
@@ -52,14 +44,13 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that the pre-approved hash is no longer able to be executed because the block timestamp is too old
     error OperationDeadlineExceeded(uint256 validToTimestamp, uint256 currentTimestamp);
 
-    /// @dev Indicates that a user attempted to interact with an account that is not their own
-    error SubaccountMustBeControlledByOwner(address subaccount, address owner);
-
     /// @dev Indicates that the EVC called `evcInternalSettle` in an invalid way
     error InvalidCallback();
 
     /// @dev Indicates that neither `_encodeBatchItemsBefore` nor `_encodeBatchItemsAfter` requested permission, meaning the provided permit signature is unused.
     error UnusedPermitSignature();
+
+    error IncorrectPermissionConfiguration(bool beforePermissionRequested, bool afterPermissionRequested);
 
     /// @dev Used to ensure that the EVC is calling back this contract with the correct data
     bytes32 internal transient expectedEvcInternalSettleCallHash;
@@ -173,7 +164,10 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         // Subaccounts in the EVC can be any account that shares the highest 19 bits as the owner.
         // Here we verify that the subaccount address has been specified is, in fact, a subaccount of the owner.
         // Otherwise its concievably possible that a transfer could happen between an owner with an unauthorized subaccount.
-        require(bytes19(bytes20(owner)) == bytes19(bytes20(account)), SubaccountMustBeControlledByOwner(account, owner));
+        require(
+            bytes19(bytes20(owner)) == bytes19(bytes20(account)),
+            Errors.SubaccountMustBeControlledByOwner(account, owner)
+        );
 
         // There are 2 ways that this contract can validate user operations: 1) the user pre-approves a hash with an on-chain call and grants this contract ability to operate on the user's behalf, or 2) they issue a signature which can be used to call EVC.permit()
         // The choice of the flow is based on whether `signature` has length zero. If so, then we use the hash approval flow (1).
@@ -193,13 +187,18 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         {
             // add any EVC actions that have to be performed before
             IEVC.BatchItem[] memory partialItems;
-            bool needsPermission;
-            bool permissionRequested = false;
+            bool beforePermissionRequested;
+            bool afterPermissionRequested;
 
-            (partialItems, needsPermission) = _encodeBatchItemsBefore(param);
-            permissionRequested = permissionRequested || needsPermission;
+            (partialItems, beforePermissionRequested) = _encodeBatchItemsBefore(param);
             itemIndex = _addEvcBatchItems(
-                items, partialItems, itemIndex, owner, deadline, needsPermission ? signature : new bytes(0), param
+                items,
+                partialItems,
+                itemIndex,
+                owner,
+                deadline,
+                beforePermissionRequested ? signature : new bytes(0),
+                param
             );
 
             // add the EVC callback to this (which calls settlement)
@@ -212,13 +211,25 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
             });
 
             // add the EVC actions that have to be performed after
-            (partialItems, needsPermission) = _encodeBatchItemsAfter(param);
-            permissionRequested = permissionRequested || needsPermission;
+            (partialItems, afterPermissionRequested) = _encodeBatchItemsAfter(param);
             itemIndex = _addEvcBatchItems(
-                items, partialItems, itemIndex, owner, deadline, needsPermission ? signature : new bytes(0), param
+                items,
+                partialItems,
+                itemIndex,
+                owner,
+                deadline,
+                afterPermissionRequested ? signature : new bytes(0),
+                param
             );
 
-            require(permissionRequested, UnusedPermitSignature());
+            // exactly one of the two encodeBatchItems functions needs to request permission (aka, use the signature or pre-approved hash),
+            // otherwise the signature provided is not actually needed for any of the operations, which would be a security risk.
+            // Conversely, if both of them request permission, its not a security risk, but it's not supported.
+            // So we check that of them requested permission, and if not, we revert.
+            require(
+                beforePermissionRequested != afterPermissionRequested,
+                IncorrectPermissionConfiguration(beforePermissionRequested, afterPermissionRequested)
+            );
         }
 
         // shorten the length of the generated array to its actual length

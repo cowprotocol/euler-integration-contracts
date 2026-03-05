@@ -13,6 +13,10 @@ import {CowEvcBaseWrapper} from "./CowEvcBaseWrapper.sol";
 ///      1. Enabling new collateral vault
 ///      2. Transfering collateral from EVC subaccount to main account (if using subaccount)
 ///      3. Executing the settlement contract to swap collateral (new collateral is deposited directly into user's account)
+/// @dev When using the pre-approved hash flow (empty signature), this function will
+/// revoke operator access for both `owner` and `account` after execution completes.
+/// Integrations relying on persistent operator authorization MUST re-grant access
+/// before the next operation.
 contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
     /// @dev The EIP-712 domain name used for computing the domain separator.
     bytes32 constant DOMAIN_NAME = keccak256("CowEvcCollateralSwapWrapper");
@@ -23,14 +27,21 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
     /// @dev A descriptive label for this contract, as required by CowWrapper
     string public override name = "Euler EVC - Collateral Swap";
 
-    /// @dev Emitted when collateral is swapped via this wrapper
+    /// @dev Emitted when collateral is swapped via this wrapper. Note that *all* these values are simply the CollateralSwapParams values, and no the actual trade amounts.
+    /// For actual trade amounts, see the `Trade` event emitted by the settlement contract in the same transaction.
+    /// @param owner The owner specified in the CollateralSwapParams
+    /// @param account The subaccount specified in the CollateralSwapParams
+    /// @param fromVault The vault from which collateral is being swapped
+    /// @param toVault The vault to which collateral is being swapped
+    /// @param fromAmount The amount of collateral being swapped from the fromVault as specified in the CollateralSwapParams. This may differ from the actual swapped amount.
+    /// @param disableSourceCollateral The flag from the CollateralSwapParams indicating whether the source collateral was disabled after the swap
     event CowEvcCollateralSwapped(
         address indexed owner,
         address account,
         address indexed fromVault,
         address indexed toVault,
         uint256 fromAmount,
-        uint256 toAmount
+        bool disableSourceCollateral
     );
 
     constructor(address _evc, ICowSettlement _settlement)
@@ -45,15 +56,15 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
                 fromVault: address(0),
                 toVault: address(0),
                 fromAmount: 0,
-                toAmount: 0
+                disableSourceCollateral: false
             })
         )
         .length;
 
-        MAX_BATCH_OPERATIONS = 3;
+        MAX_BATCH_OPERATIONS = 4;
 
         PARAMS_TYPE_HASH = keccak256(
-            "CollateralSwapParams(address owner,address account,uint256 deadline,address fromVault,address toVault,uint256 swapAmount)"
+            "CollateralSwapParams(address owner,address account,uint256 deadline,address fromVault,address toVault,uint256 fromAmount,bool disableSourceCollateral)"
         );
     }
 
@@ -83,8 +94,8 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         /// @dev The amount of fromVault traded in. Same as `sellAmount` in the CoW order
         uint256 fromAmount;
 
-        /// @dev The amount of toVault traded out. Same as `buyAmount` in the CoW order
-        uint256 toAmount;
+        /// @dev A flag to indicate whether the old collateral should be disabled after the swap. If true, the wrapper will additionally call `disableCollateral` on the source vault after the swap.
+        bool disableSourceCollateral;
     }
 
     function _parseCollateralSwapParams(bytes calldata wrapperData)
@@ -126,25 +137,48 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
     {
         CollateralSwapParams memory params = paramsFromMemory(paramsLocation);
 
-        items = new IEVC.BatchItem[](params.owner == params.account ? 1 : 2);
+        uint256 numItems = 1;
+        if (params.owner != params.account) {
+            numItems += 1;
+        }
+        if (params.disableSourceCollateral) {
+            numItems += 1;
+        }
+
+        items = new IEVC.BatchItem[](numItems);
+
+        // fill in the items from back to front because its easier working with `numItems`
+        // Though the order of none of these calls is important
+
+        // enable the new collateral for account
+        items[--numItems] = IEVC.BatchItem({
+            onBehalfOfAccount: address(0),
+            targetContract: address(EVC),
+            value: 0,
+            data: abi.encodeCall(EVC.enableCollateral, (params.account, params.toVault))
+        });
+
+        if (params.disableSourceCollateral) {
+            // If requested, disable the old collateral
+            // Note that this can be done before the swap actually occurs because the collateralization check is deferred.
+            items[--numItems] = IEVC.BatchItem({
+                onBehalfOfAccount: address(0),
+                targetContract: address(EVC),
+                value: 0,
+                data: abi.encodeCall(EVC.disableCollateral, (params.account, params.fromVault))
+            });
+        }
+
         if (params.owner != params.account) {
             // For the permissioned operation, transfer collateral from subaccount to owner
             // (this transfer should be safe for general use because its operating against Euler vault contracts)
-            items[0] = IEVC.BatchItem({
+            items[--numItems] = IEVC.BatchItem({
                 onBehalfOfAccount: address(params.account),
                 targetContract: params.fromVault,
                 value: 0,
                 data: abi.encodeCall(IERC20.transfer, (params.owner, params.fromAmount))
             });
         }
-
-        // enable the new collateral for account
-        items[items.length - 1] = IEVC.BatchItem({
-            onBehalfOfAccount: address(0),
-            targetContract: address(EVC),
-            value: 0,
-            data: abi.encodeCall(EVC.enableCollateral, (params.account, params.toVault))
-        });
 
         needsPermission = true;
     }
@@ -168,7 +202,12 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
 
         // Emit event - funds are now in the account from the settlement
         emit CowEvcCollateralSwapped(
-            params.owner, params.account, params.fromVault, params.toVault, params.fromAmount, params.toAmount
+            params.owner,
+            params.account,
+            params.fromVault,
+            params.toVault,
+            params.fromAmount,
+            params.disableSourceCollateral
         );
     }
 

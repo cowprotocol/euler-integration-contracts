@@ -5,12 +5,17 @@ import {IBorrowing} from "euler-vault-kit/src/EVault/IEVault.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/interfaces/IERC20.sol";
 import {IERC1271} from "openzeppelin-contracts/contracts/interfaces/IERC1271.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ECDSA} from "openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
 import {ICowSettlement} from "./CowWrapper.sol";
 
 /// @dev Collection of EIP-712 type hashes. These hashes match those used by the CoW settlement contract.
 library InboxLibrary {
+    /// @dev The EIP-712 type hash for the domain separator used in the CoW settlement contract. We intentionally hardcode this here to prevent an unnecessary external call at Inbox deployment time.
+    /// Tests are used to verify it matches up with the expected value from production.
     bytes32 internal constant DOMAIN_TYPE_HASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+
+    /// @dev The EIP-712 type hash for the order struct used in the CoW settlement contract. Similar to DOMAIN_TYPE_HASH, it is intentionally hardcoded here.
     bytes32 internal constant ORDER_TYPE_HASH = keccak256(
         "Order(address sellToken,address buyToken,address receiver,uint256 sellAmount,uint256 buyAmount,uint32 validTo,bytes32 appData,uint256 feeAmount,string kind,bool partiallyFillable,string sellTokenBalance,string buyTokenBalance)"
     );
@@ -49,18 +54,14 @@ contract Inbox is IERC1271 {
     /// @notice The CoW settlement contract address for purposes of signature verification
     address public immutable SETTLEMENT;
 
-    constructor(address executor, address beneficiary, address settlement) {
+    constructor(address executor, address beneficiary, address settlement, bytes32 settlementDomainSeparator) {
         OPERATOR = executor;
         BENEFICIARY = beneficiary;
         SETTLEMENT = settlement;
 
         INBOX_DOMAIN_SEPARATOR = InboxLibrary.computeDomainSeparator(address(this));
 
-        SETTLEMENT_DOMAIN_SEPARATOR = keccak256(
-            abi.encode(
-                InboxLibrary.DOMAIN_TYPE_HASH, keccak256("Gnosis Protocol"), keccak256("v2"), block.chainid, settlement
-            )
-        );
+        SETTLEMENT_DOMAIN_SEPARATOR = settlementDomainSeparator;
     }
 
     /// @notice Implements EIP1271 `isValidSignature`. This function expects a 65 byte RSV signature, followed by the 416 byte CoW order data.
@@ -87,8 +88,10 @@ contract Inbox is IERC1271 {
             // prefixing the type hash `(1 + 12) * 32 = 416` bytes to hash.
             // <https://github.com/ethereum/EIPs/blob/master/EIPS/eip-712.md#rationale-for-encodedata>
             assembly {
+                let originalLength := mload(orderData)
                 mstore(orderData, typeHash)
                 structHash := keccak256(orderData, 416)
+                mstore(orderData, originalLength)
             }
 
             bytes32 settlementDomainSeparator = SETTLEMENT_DOMAIN_SEPARATOR;
@@ -112,23 +115,7 @@ contract Inbox is IERC1271 {
             }
         }
 
-        bytes calldata signature = signatureData[:65];
-
-        bytes32 r;
-        bytes32 s;
-        uint8 v;
-
-        // NOTE: Use assembly to efficiently decode signature data.
-        assembly ("memory-safe") {
-            // r = uint256(signature[0:32])
-            r := calldataload(signature.offset)
-            // s = uint256(signature[32:64])
-            s := calldataload(add(signature.offset, 32))
-            // v = uint8(signature[64])
-            v := shr(248, calldataload(add(signature.offset, 64)))
-        }
-
-        address signer = ecrecover(inboxOrderDigest, v, r, s);
+        address signer = ECDSA.recoverCalldata(inboxOrderDigest, signatureData[:65]);
         require(signer == BENEFICIARY, Unauthorized(signer));
 
         return IERC1271.isValidSignature.selector;

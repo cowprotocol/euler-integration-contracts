@@ -3,6 +3,8 @@ pragma solidity ^0.8;
 
 import {Create2} from "openzeppelin-contracts/contracts/utils/Create2.sol";
 import {Inbox, InboxLibrary} from "./Inbox.sol";
+import {ICowSettlement} from "./CowWrapper.sol";
+import {Errors} from "./Errors.sol";
 
 /// @title InboxFactory
 /// @notice Mixin contract for managing Inbox contract creation and address computation
@@ -11,6 +13,7 @@ contract InboxFactory {
     /// @notice Settlement contract address used for Inbox creation
     /// @dev Stored as immutable to avoid name collision with CowWrapper's public SETTLEMENT
     address internal immutable INBOX_SETTLEMENT;
+    bytes32 internal immutable SETTLEMENT_DOMAIN_SEPARATOR;
 
     /// @notice Indicates that the computed Create2 address does not match the expected address
     error Create2AddressMismatch(address expectedAddress);
@@ -19,6 +22,7 @@ contract InboxFactory {
     /// @param settlement The settlement contract address to use for Inbox creation
     constructor(address settlement) {
         INBOX_SETTLEMENT = settlement;
+        SETTLEMENT_DOMAIN_SEPARATOR = ICowSettlement(settlement).domainSeparator();
     }
 
     /// @notice Get or create an Inbox contract for the given owner and subaccount
@@ -63,7 +67,9 @@ contract InboxFactory {
         returns (address creationAddress, bytes memory creationCode, bytes32 salt)
     {
         salt = bytes32(uint256(uint160(subaccount)));
-        creationCode = abi.encodePacked(type(Inbox).creationCode, abi.encode(address(this), owner, INBOX_SETTLEMENT));
+        creationCode = abi.encodePacked(
+            type(Inbox).creationCode, abi.encode(address(this), owner, INBOX_SETTLEMENT, SETTLEMENT_DOMAIN_SEPARATOR)
+        );
         creationAddress = Create2.computeAddress(salt, keccak256(creationCode));
     }
 
@@ -73,6 +79,10 @@ contract InboxFactory {
     /// @param subaccount The subaccount address
     /// @return The Inbox contract instance
     function _getInbox(address owner, address subaccount) internal returns (Inbox) {
+        require(
+            bytes19(bytes20(owner)) == bytes19(bytes20(subaccount)),
+            Errors.SubaccountMustBeControlledByOwner(subaccount, owner)
+        );
         (address expectedAddress, bytes memory creationCode, bytes32 salt) = _getInboxAddress(owner, subaccount);
 
         if (expectedAddress.code.length == 0) {

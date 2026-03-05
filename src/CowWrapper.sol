@@ -89,7 +89,8 @@ interface ICowWrapper {
     /// @dev SECURITY: `settleData` is NOT guaranteed to remain unchanged through the wrapper chain.
     ///      Intermediate wrappers could modify it before passing it along. Do not rely on
     ///      `settleData` validation for security-critical checks.
-    /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data
+    /// @param settleData ABI-encoded call to ICowSettlement.settle() containing trade data. This data is not validated in terms of its relation to the wrapper data,
+    /// so it assumed that off-chain processes will enforce the correct construction.
     /// @param chainedWrapperData Encoded wrapper chain with the following format:
     ///        Structure: [uint16 len1][bytes data1][address wrapper2][uint16 len2][bytes data2][address wrapper3]...
     ///
@@ -103,7 +104,8 @@ interface ICowWrapper {
     ///        Example: [0x0005][0xAABBCCDDEE][0x1234...ABCD][0x0003][0x112233]
     ///                 ↑len   ↑data         ↑next wrapper  ↑len   ↑data (final, no next address)
     ///
-    function wrappedSettle(bytes calldata settleData, bytes calldata chainedWrapperData) external;
+    /// @return Magic value to ensure the target was a wrapper and executed code.
+    function wrappedSettle(bytes calldata settleData, bytes calldata chainedWrapperData) external returns (bytes4);
 
     /// @notice Confirms validity of wrapper-specific data
     /// @dev Used by CowWrapperHelpers to validate wrapper data before execution. Reverts if the wrapper data is not valid for some reason.
@@ -128,6 +130,10 @@ abstract contract CowWrapper is ICowWrapper {
     /// @param invalidSettleData The invalid settle data that was provided
     error InvalidSettleData(bytes invalidSettleData);
 
+    /// @notice Thrown when the next wrapper in the chain does not return the expected selector
+    /// @param invalidNextWrapper The address of the next wrapper that returned an invalid response
+    error InvalidNextWrapper(address invalidNextWrapper);
+
     /// @notice The settlement contract
     ICowSettlement public immutable SETTLEMENT;
 
@@ -143,7 +149,7 @@ abstract contract CowWrapper is ICowWrapper {
     }
 
     /// @inheritdoc ICowWrapper
-    function wrappedSettle(bytes calldata settleData, bytes calldata chainedWrapperData) external {
+    function wrappedSettle(bytes calldata settleData, bytes calldata chainedWrapperData) external returns (bytes4) {
         // Revert if not a valid solver
         require(AUTHENTICATOR.isSolver(msg.sender), NotASolver(msg.sender));
 
@@ -157,6 +163,8 @@ abstract contract CowWrapper is ICowWrapper {
         _wrap(
             settleData, chainedWrapperData[2:remainingWrapperDataStart], chainedWrapperData[remainingWrapperDataStart:]
         );
+
+        return ICowWrapper.wrappedSettle.selector;
     }
 
     /// @inheritdoc ICowWrapper
@@ -185,14 +193,7 @@ abstract contract CowWrapper is ICowWrapper {
             require(bytes4(settleData[:4]) == ICowSettlement.settle.selector, InvalidSettleData(settleData));
 
             // Call the settlement contract directly with the settle data
-            (bool success, bytes memory returnData) = address(SETTLEMENT).call(settleData);
-
-            if (!success) {
-                // Bubble up the revert reason from the settlement contract
-                assembly ("memory-safe") {
-                    revert(add(returnData, 0x20), mload(returnData))
-                }
-            }
+            _callWithBubbleRevert(address(SETTLEMENT), settleData);
         } else {
             // Extract the next wrapper address from the first 20 bytes of wrapperData
             address nextWrapper = address(bytes20(remainingWrapperData[:20]));
@@ -201,7 +202,35 @@ abstract contract CowWrapper is ICowWrapper {
             remainingWrapperData = remainingWrapperData[20:];
 
             // More wrapper data remains - call the next wrapper in the chain
-            CowWrapper(nextWrapper).wrappedSettle(settleData, remainingWrapperData);
+            bytes memory returnData = _callWithBubbleRevert(
+                nextWrapper, abi.encodeCall(ICowWrapper.wrappedSettle, (settleData, remainingWrapperData))
+            );
+
+            // To prevent accidentally calling a non-contract or a different contract that is not actually a wrapper,
+            // we verify that "magic bytes" (matching the selector of the wrappedSettle function) are returned.
+
+            // casting to 'bytes32' is safe because the bytes that are returned by the next wrapper should always be the same specific value
+            // (if the return is less than 32 bytes, the `require` fails and returns revert, verified in test)
+            require(
+                // forge-lint: disable-next-line(unsafe-typecast)
+                returnData.length == 32 && bytes32(returnData) == bytes32(ICowWrapper.wrappedSettle.selector),
+                InvalidNextWrapper(nextWrapper)
+            );
+        }
+    }
+
+    /// @notice Helper function to bubble the raw revert result of an address().call invocation.
+    /// @param target The contract to call
+    /// @param data The data to send
+    /// @return returnData The return data if it was successful
+    function _callWithBubbleRevert(address target, bytes memory data) internal returns (bytes memory returnData) {
+        bool success;
+        (success, returnData) = target.call(data);
+        if (!success) {
+            // Bubble up the revert reason from the next wrapper. Assembly is unfortunately required to do this.
+            assembly ("memory-safe") {
+                revert(add(returnData, 0x20), mload(returnData))
+            }
         }
     }
 }
