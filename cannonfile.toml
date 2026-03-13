@@ -4,7 +4,7 @@
 # https://usecannon.com/learn/cannonfile
 
 name = "cow-euler-integration"
-version = "1.0.0"
+version = "1.1.0"
 
 # Set the package reference for the settlement contract. [var.pkg]
 [var.pkg]
@@ -23,7 +23,8 @@ source = "<%= settings.evcPkg %>"
 chainId = 13370
 
 [var.main]
-salt = "0x0000000000000000000000000000000000000000000000000000000000000000"
+salt = "<%= HashZero %>"
+wrapperHelpersSalt = "<%= HashZero %>"
 cowSettlementAddress = "<%= cow.Settlement.address %>"
 
 # When deploying, override this setting with the correct EVC address from https://evc.wtf/docs/contracts/deployment-addresses
@@ -49,6 +50,14 @@ create2 = true
 ifExists = "continue"
 salt = "<%= settings.salt %>"
 args = ["<%= settings.evcAddress %>", "<%= settings.cowSettlementAddress %>"]
+
+# We also include the CowWrapperHelper as we don't have a better other place to deploy it right now.
+[deploy.WrapperHelpers]
+artifact = "CowWrapperHelpers"
+create2 = true
+ifExists = "continue"
+salt = "<%= settings.wrapperHelpersSalt %>"
+args = ["<%= settings.cowSettlementAddress %>"]
 
 # Authorise these wrappers as a solvers
 [invoke.authorizeOpenWrapper]
