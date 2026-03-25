@@ -211,8 +211,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
 
         uint256 swapBeforeResultBalance = borrowAsset.balanceOf(address(inbox));
 
-        // Use CowWrapper's _internalSettle to call the settlement contract
-        // wrapperData is empty since we've already processed it in _wrap
+        // Use CowWrapper's _next to proceed with the wrapper chain/settlement
         _next(settleData, remainingWrapperData);
 
         // what is the maximum amount of debt that can
