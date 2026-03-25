@@ -86,6 +86,8 @@ contract Inbox is IERC1271 {
             // NOTE: Compute the EIP-712 order struct hash in place. As suggested
             // in the EIP proposal, noting that the order struct has 12 fields, and
             // prefixing the type hash `(1 + 12) * 32 = 416` bytes to hash.
+            // NOTE: The input data *assumes* that the string fields (ex. "kind") are 
+            // pre-hashed to bytes32 in accordance with EIP-712.
             // <https://github.com/ethereum/EIPs/blob/master/EIPS/eip-712.md#rationale-for-encodedata>
             assembly {
                 let originalLength := mload(orderData)
