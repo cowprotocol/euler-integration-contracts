@@ -216,8 +216,7 @@ contract CowEvcCollateralSwapWrapper is CowEvcBaseWrapper {
         internal
         override
     {
-        // Use CowWrapper's _next to call the settlement contract
-        // wrapperData is empty since we've already processed it in _wrap
+        // Use CowWrapper's _next to proceed with the wrapper chain/settlement
         _next(settleData, remainingWrapperData);
     }
 
