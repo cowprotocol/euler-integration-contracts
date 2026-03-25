@@ -222,7 +222,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
             revert NoSwapOutput(address(inbox));
         }
 
-        // the amount we will *actually* repay is the same as however much we get from swapping
+        // the amount we will *actually* repay is the min of the actual swap output, and the actual debt on the account.
         uint256 repayAmount = swapResultBalance;
 
         // we can't repay more than the available debt amount
