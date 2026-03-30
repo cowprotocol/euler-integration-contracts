@@ -69,6 +69,15 @@ contract Inbox is IERC1271 {
     /// The provided order data needs to match up with the currently processed order, as its orderDigest will be checked to match against the `orderDigest` provided by the settlement contract.
     /// @dev A large portion of this code was copied from `GPv2Signer`'s' `ecdsaRecover` function. The idea is that the same signature the user would use. However, the order could be replayed between the inbox/user account's orders if we use the orderDigest as is, so we recompute the order digest using a new domain separator for the Inbox
     /// for a regular CoW order is also used here.
+    /// @param orderDigest the order digest as recognized by the settlement contract. This is used to prevent replay attacks with other orders, as we check that the order data provided in the signature data matches up with this digest.
+    /// @param signatureData A bytes data with the following encoding:
+    /// --------------------
+    /// | ecdsa signature | encodeData for CoW order |
+    /// | 65 bytes        | 384 bytes                |
+    /// See EIP-712 "Definition of encodeData" for information on how to set up the order data encoding.
+    /// Of primary note, the string fields (kind, sellTokenBalance, buyTokenBalance) are pre-hashed to bytes32.
+    /// NOTE: the original order signature that is provided to CoW protocol will *also*
+    /// contain 20-byte address of this Inbox contract at the beginning (but it gets stripped before calling this function).
     function isValidSignature(bytes32 orderDigest, bytes calldata signatureData)
         external
         view
