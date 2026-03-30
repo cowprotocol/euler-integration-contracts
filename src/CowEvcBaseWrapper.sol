@@ -47,6 +47,9 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
     /// @dev Indicates that the EVC called `evcInternalSettle` in an invalid way
     error InvalidCallback();
 
+    /// @dev Indicates that the EVC called `evcInternalSettle` with an `onBehalfOf` account that is not this contract, which is required for the callback to be valid
+    error InvalidOnBehalfOf(address onBehalfOf, address expected);
+
     /// @dev Indicates that neither `_encodeBatchItemsBefore` nor `_encodeBatchItemsAfter` requested permission, meaning the provided permit signature is unused.
     error UnusedPermitSignature();
 
@@ -139,6 +142,8 @@ abstract contract CowEvcBaseWrapper is CowWrapper, PreApprovedHashes {
         bytes calldata remainingWrapperData
     ) external {
         require(msg.sender == address(EVC), Unauthorized(msg.sender));
+        (address onBehalfOf,) = EVC.getCurrentOnBehalfOfAccount(address(0));
+        require(onBehalfOf == address(this), InvalidOnBehalfOf(onBehalfOf, address(this)));
         require(expectedEvcInternalSettleCallHash == keccak256(msg.data), InvalidCallback());
         expectedEvcInternalSettleCallHash = bytes32(0);
 
