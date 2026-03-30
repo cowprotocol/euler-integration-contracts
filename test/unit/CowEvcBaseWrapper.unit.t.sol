@@ -211,8 +211,33 @@ contract CowEvcBaseWrapperTest is Test {
             abi.encodeCall(wrapper.evcInternalSettle, (new bytes(0), new bytes(0), remainingWrapperData))
         );
 
+        vm.mockCall(
+            address(mockEvc),
+            abi.encodeCall(IEVC.getCurrentOnBehalfOfAccount, (address(0))),
+            abi.encode(address(wrapper), false)
+        );
+
         vm.prank(address(mockEvc));
         vm.expectRevert(CowEvcBaseWrapper.InvalidCallback.selector);
+        wrapper.evcInternalSettle(settleData, hex"", remainingWrapperData);
+    }
+
+    function test_EvcInternalSettle_OnlyOnBehalfOfWrapper() public {
+        bytes memory settleData = _getEmptySettleData();
+        bytes memory remainingWrapperData = "";
+
+        vm.mockCall(
+            address(mockEvc),
+            abi.encodeCall(IEVC.getCurrentOnBehalfOfAccount, (address(0))),
+            abi.encode(makeAddr("not wrapper"), false) // not the wrapper
+        );
+
+        vm.prank(address(mockEvc));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CowEvcBaseWrapper.InvalidOnBehalfOf.selector, makeAddr("not wrapper"), address(wrapper)
+            )
+        );
         wrapper.evcInternalSettle(settleData, hex"", remainingWrapperData);
     }
 
@@ -222,6 +247,12 @@ contract CowEvcBaseWrapperTest is Test {
 
         wrapper.setExpectedEvcInternalSettleCall(
             abi.encodeCall(wrapper.evcInternalSettle, (settleData, hex"", remainingWrapperData))
+        );
+
+        vm.mockCall(
+            address(mockEvc),
+            abi.encodeCall(IEVC.getCurrentOnBehalfOfAccount, (address(0))),
+            abi.encode(address(wrapper), false)
         );
 
         vm.prank(address(mockEvc));

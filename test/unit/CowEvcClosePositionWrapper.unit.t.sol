@@ -126,6 +126,13 @@ contract CowEvcClosePositionWrapperUnitTest is UnitTestBase {
         wrapper = CowEvcBaseWrapper(
             new TestableClosePositionWrapper(address(mockEvc), ICowSettlement(address(mockSettlement)))
         );
+
+        // We aren't testing correctness of CowEvcBaseWrapper here, so we set the onBehalfOf account correctly here
+        vm.mockCall(
+            address(mockEvc),
+            abi.encodeCall(IEVC.getCurrentOnBehalfOfAccount, (address(0))),
+            abi.encode(wrapper, false) // not the wrapper
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
