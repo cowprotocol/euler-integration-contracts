@@ -211,8 +211,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
 
         uint256 swapBeforeResultBalance = borrowAsset.balanceOf(address(inbox));
 
-        // Use CowWrapper's _internalSettle to call the settlement contract
-        // wrapperData is empty since we've already processed it in _wrap
+        // Use CowWrapper's _next to proceed with the wrapper chain/settlement
         _next(settleData, remainingWrapperData);
 
         // what is the maximum amount of debt that can
@@ -223,7 +222,7 @@ contract CowEvcClosePositionWrapper is CowEvcBaseWrapper, InboxFactory {
             revert NoSwapOutput(address(inbox));
         }
 
-        // the amount we will *actually* repay is the same as however much we get from swapping
+        // the amount we will *actually* repay is the min of the actual swap output, and the actual debt on the account.
         uint256 repayAmount = swapResultBalance;
 
         // we can't repay more than the available debt amount
