@@ -3,6 +3,8 @@ pragma solidity ^0.8;
 
 import {ICowSettlement, ICowAuthentication} from "../../../src/CowWrapper.sol";
 
+import {Address} from "openzeppelin-contracts/contracts/utils/Address.sol";
+
 /// @title MockCowAuthentication
 /// @notice Mock implementation of CoW Protocol authenticator for unit testing
 contract MockCowAuthentication is ICowAuthentication {
@@ -43,9 +45,14 @@ contract MockCowSettlement is ICowSettlement {
         preSignatures[orderUid] = approved;
     }
 
-    function settle(address[] calldata, uint256[] calldata, Trade[] calldata, Interaction[][3] calldata)
+    function settle(address[] calldata, uint256[] calldata, Trade[] calldata, Interaction[][3] calldata interactions)
         external
-        view
         override
-    {}
+    {
+        for (uint256 i = 0; i < interactions.length; i++) {
+            for (uint256 j = 0; j < interactions[i].length; j++) {
+                Address.functionCall(interactions[i][j].target, interactions[i][j].callData);
+            }
+        }
+    }
 }

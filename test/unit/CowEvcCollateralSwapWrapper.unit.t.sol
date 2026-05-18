@@ -3,6 +3,9 @@ pragma solidity ^0.8;
 
 import {IEVC} from "evc/EthereumVaultConnector.sol";
 import {UnitTestBase} from "./UnitTestBase.sol";
+import {Vm} from "forge-std/Vm.sol";
+import {FfiUtils} from "./FfiUtils.sol";
+
 import {CowEvcBaseWrapper} from "../../src/CowEvcBaseWrapper.sol";
 import {CowEvcCollateralSwapWrapper} from "../../src/CowEvcCollateralSwapWrapper.sol";
 import {ICowSettlement} from "../../src/CowWrapper.sol";
@@ -21,6 +24,7 @@ contract TestableCollateralSwapWrapper is CowEvcCollateralSwapWrapper {
 /// @title Unit tests for CowEvcCollateralSwapWrapper
 /// @notice Comprehensive unit tests focusing on isolated functionality testing with mocks
 contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
+    using FfiUtils for Vm;
     MockERC20 public mockFromAsset;
     MockERC20 public mockToAsset;
     MockVault public mockFromVault;
@@ -41,7 +45,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
             fromVault: address(mockFromVault),
             toVault: address(mockToVault),
             fromAmount: DEFAULT_SWAP_AMOUNT,
-            toAmount: 0
+            disableSourceCollateral: false
         });
     }
 
@@ -124,6 +128,20 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
             )
         );
         assertEq(wrapper.DOMAIN_SEPARATOR(), expectedDomainSeparator, "DOMAIN_SEPARATOR incorrect");
+    }
+
+    // Uses forge's provided `eip712` function to get the typehash of the actual struct definition and ensure it matches
+    function test_Constructor_CorrectParamsTypeHash() public {
+        string[] memory inputs = new string[](3);
+        inputs[0] = "bash";
+        inputs[1] = "-c";
+        inputs[2] =
+            "forge eip712 --json ./src/CowEvcCollateralSwapWrapper.sol | jq -r '.[] | select(.type | startswith(\"CollateralSwapParams\")) | .hash'";
+        assertEq(
+            abi.decode(vm.ffiOrSkip(inputs), (bytes32)),
+            wrapper.PARAMS_TYPE_HASH(),
+            "PARAMS_TYPE_HASH does not match up to params object"
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -230,6 +248,80 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         );
     }
 
+    function test_EncodePermitData_IsCorrectDisableCollateral() public view {
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
+        params.account = OWNER;
+        params.disableSourceCollateral = true;
+
+        bytes memory permitData = CowEvcCollateralSwapWrapper(address(wrapper)).encodePermitData(params);
+        (IEVC.BatchItem[] memory items, bytes32 paramsHash) = _decodePermitData(permitData);
+
+        // When disableSourceCollateral is true, there should be an additional batch item to disable the old collateral
+        assertEq(items.length, 2, "Should have correct batch item count");
+
+        assertEq(items[0].targetContract, address(mockEvc), "Should target EVC");
+        assertEq(
+            items[0].data,
+            abi.encodeCall(IEVC.disableCollateral, (params.account, params.fromVault)),
+            "Should call disableCollateral"
+        );
+        assertEq(items[0].onBehalfOfAccount, address(0), "Should have zero onBehalfOfAccount");
+
+        assertEq(items[1].targetContract, address(mockEvc), "Should target EVC");
+        assertEq(
+            items[1].data,
+            abi.encodeCall(IEVC.enableCollateral, (params.account, params.toVault)),
+            "Should call enableCollateral"
+        );
+        assertEq(items[1].onBehalfOfAccount, address(0), "Should have zero onBehalfOfAccount");
+
+        assertEq(
+            paramsHash,
+            CowEvcCollateralSwapWrapper(address(wrapper)).getApprovalHash(params),
+            "Params hash should match"
+        );
+    }
+
+    function test_EncodePermitData_IsCorrectDifferentOwnerAccountDisableCollateral() public view {
+        CowEvcCollateralSwapWrapper.CollateralSwapParams memory params = _getDefaultParams();
+        params.disableSourceCollateral = true;
+
+        bytes memory permitData = CowEvcCollateralSwapWrapper(address(wrapper)).encodePermitData(params);
+        (IEVC.BatchItem[] memory items, bytes32 paramsHash) = _decodePermitData(permitData);
+
+        // When both different owner/account and disableSourceCollateral are true, there should be 3 batch items
+        assertEq(items.length, 3, "Should have correct batch item count");
+        assertEq(items[0].targetContract, params.fromVault, "Should target fromVault");
+        assertEq(
+            items[0].data,
+            abi.encodeCall(MockERC20.transfer, (address(OWNER), params.fromAmount)),
+            "Should call transfer"
+        );
+        assertEq(items[0].onBehalfOfAccount, ACCOUNT, "Should be sent on behalf of the account");
+
+        assertEq(items[1].targetContract, address(mockEvc), "Should target EVC");
+        assertEq(
+            items[1].data,
+            abi.encodeCall(IEVC.disableCollateral, (params.account, params.fromVault)),
+            "Should call disableCollateral"
+        );
+        assertEq(items[1].onBehalfOfAccount, address(0), "Should have zero onBehalfOfAccount");
+
+        assertEq(items[2].targetContract, address(mockEvc), "Should target EVC");
+        assertEq(
+            items[2].data,
+            abi.encodeCall(IEVC.enableCollateral, (params.account, params.toVault)),
+            "Should call enableCollateral"
+        );
+        assertEq(items[2].onBehalfOfAccount, address(0), "Should have zero onBehalfOfAccount");
+
+        assertEq(
+            paramsHash,
+            CowEvcCollateralSwapWrapper(address(wrapper)).getApprovalHash(params),
+            "Params hash should match"
+        );
+    }
+
     /*//////////////////////////////////////////////////////////////
                     EDGE CASE TESTS
     //////////////////////////////////////////////////////////////*/
@@ -256,7 +348,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         vm.prank(SOLVER);
         vm.expectEmit();
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
-            params.owner, params.account, params.fromVault, params.toVault, 0, 0
+            params.owner, params.account, params.fromVault, params.toVault, 0, false
         );
         wrapper.wrappedSettle(settleData, wrapperData);
     }
@@ -283,7 +375,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         vm.prank(SOLVER);
         vm.expectEmit();
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
-            params.owner, params.account, params.fromVault, params.toVault, 0, 0
+            params.owner, params.account, params.fromVault, params.toVault, 0, false
         );
         wrapper.wrappedSettle(settleData, wrapperData);
     }
@@ -310,7 +402,7 @@ contract CowEvcCollateralSwapWrapperUnitTest is UnitTestBase {
         vm.prank(SOLVER);
         vm.expectEmit();
         emit CowEvcCollateralSwapWrapper.CowEvcCollateralSwapped(
-            params.owner, params.account, params.fromVault, params.fromVault, DEFAULT_SWAP_AMOUNT, 0
+            params.owner, params.account, params.fromVault, params.fromVault, DEFAULT_SWAP_AMOUNT, false
         );
         wrapper.wrappedSettle(settleData, wrapperData);
     }

@@ -2,9 +2,11 @@
 pragma solidity ^0.8;
 
 import {Test} from "forge-std/Test.sol";
+import {ECDSA} from "openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
 
 import {Inbox, InboxLibrary} from "../../src/Inbox.sol";
 import {InboxFactory} from "../../src/InboxFactory.sol";
+import {Errors} from "../../src/Errors.sol";
 import {MockCowSettlement, MockCowAuthentication} from "./mocks/MockCowProtocol.sol";
 import {MockERC20, MockBorrowVault} from "./mocks/MockERC20AndVaults.sol";
 import {MockEVC} from "./mocks/MockEVC.sol";
@@ -21,7 +23,7 @@ contract InboxUnitTest is Test {
     uint256 immutable BENEFICIARY_PRIVATE_KEY;
 
     address immutable BENEFICIARY;
-    address immutable ACCOUNT = makeAddr("account");
+    address immutable ACCOUNT;
     address immutable RECIPIENT = makeAddr("recipient");
     address immutable OTHER_USER = makeAddr("other user");
 
@@ -43,6 +45,7 @@ contract InboxUnitTest is Test {
 
     constructor() {
         (BENEFICIARY, BENEFICIARY_PRIVATE_KEY) = makeAddrAndKey("beneficiary");
+        ACCOUNT = address(uint160(BENEFICIARY) ^ 1); // Must be a subaccount of BENEFICIARY, so we xor 1 to the address to get a valid subaccount address
     }
 
     function setUp() public {
@@ -90,12 +93,9 @@ contract InboxUnitTest is Test {
     }
 
     function test_Constructor_SetsToActualSettlementContractDomainSeparatorCorrectly() public {
-        // Verifies the computed domain separator in the Inbox matches the hash used by CoW Protocol
-        // https://etherscan.io/address/0x9008D19f58AAbD9eD0D60971565AA8510560ab41#readContract#F2
-        inboxFactory = new InboxFactory(address(0x9008D19f58AAbD9eD0D60971565AA8510560ab41));
         vm.chainId(1);
         inbox = Inbox(inboxFactory.getInbox(BENEFICIARY, ACCOUNT));
-        bytes32 expectedSettlementDomainSeparator = 0xc078f884a2676e1345748b1feace7b0abee5d00ecadb6e574dcdd109a63e8943;
+        bytes32 expectedSettlementDomainSeparator = mockSettlement.domainSeparator();
 
         assertEq(
             inbox.SETTLEMENT_DOMAIN_SEPARATOR(),
@@ -114,7 +114,16 @@ contract InboxUnitTest is Test {
         assertEq(inboxFactory.getInboxCreationCode(), type(Inbox).creationCode, "Creation code does not match");
     }
 
-    function testFuzz_InboxFactory_ViewFunctionReturnsCorrectValues(address beneficiary, address account) public {
+    function test_InboxFactory_GetInboxControlledByOwner() public {
+        address unrelatedAccount = makeAddr("unrelated account");
+        vm.expectRevert(
+            abi.encodeWithSelector(Errors.SubaccountMustBeControlledByOwner.selector, unrelatedAccount, BENEFICIARY)
+        );
+        inboxFactory.getInbox(BENEFICIARY, unrelatedAccount);
+    }
+
+    function testFuzz_InboxFactory_ViewFunctionReturnsCorrectValues(address beneficiary, uint8 subaccount) public {
+        address account = address(uint160(beneficiary) ^ subaccount);
         (address computedAddress, bytes32 domainSeparator) =
             inboxFactory.getInboxAddressAndDomainSeparator(beneficiary, account);
 
@@ -128,7 +137,7 @@ contract InboxUnitTest is Test {
 
     // ============== getInbox Tests ==============
     function test_InboxFactory_GetInbox_ReturnsNewInboxForNewSubaccount() external {
-        address newSubaccount = makeAddr("new subaccount");
+        address newSubaccount = address(uint160(BENEFICIARY) ^ 2); // Another valid subaccount of BENEFICIARY, different from ACCOUNT used in setup
         address newInboxAddress = inboxFactory.getInbox(BENEFICIARY, newSubaccount);
 
         assertTrue(newInboxAddress.code.length > 0, "Inbox not deployed");
@@ -345,6 +354,17 @@ contract InboxUnitTest is Test {
         bytes memory signatureData = abi.encodePacked(r, s, v, orderData);
 
         vm.expectRevert(abi.encodeWithSelector(Inbox.Unauthorized.selector, vm.addr(wrongPrivateKey)));
+        inbox.isValidSignature(settlementOrderDigest, signatureData);
+    }
+
+    function test_IsValidSignature_RevertsWithECDSAInvalidSignatureWhenEcrecoverReturnsZero() public {
+        // r=0, s=0, v=27: structurally valid 65-byte signature that causes ecrecover to return address(0)
+        bytes memory orderData = new bytes(384);
+        (bytes32 settlementOrderDigest,) = _getOrderDigests(orderData);
+
+        bytes memory signatureData = abi.encodePacked(bytes32(0), bytes32(0), uint8(27), orderData);
+
+        vm.expectRevert(ECDSA.ECDSAInvalidSignature.selector);
         inbox.isValidSignature(settlementOrderDigest, signatureData);
     }
 

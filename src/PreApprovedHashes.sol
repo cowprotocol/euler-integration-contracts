@@ -27,10 +27,12 @@ abstract contract PreApprovedHashes {
     /// @dev If the hash has been approved in the past, but it was consumed, the error will be AlreadyConsumed
     error HashNotApproved(address owner, bytes32 hash);
 
-    /// @notice Pre-approve a hash of signed calldata for future execution
+    /// @notice Pre-approve a hash of signed calldata for future execution, or permanently revoke it.
     /// @dev Once a hash is pre-approved, it can only be consumed once. This prevents replay attacks.
+    /// @dev Even if the hash hasn't already been pre-approved, it can still be consumed by calling this function with approved=false.
+    /// The idea here is to prevent any future delayed approval (ex. through EIP-4337 or other gassless execution or settlement service) of the same hash, effectively allowing "cancel" functionality.
     /// @param hash The keccak256 hash of the order parameters
-    /// @param approved True to approve the hash, false to revoke approval
+    /// @param approved True to approve the hash, false to revoke approval or prevent a future approval.
     function setPreApprovedHash(bytes32 hash, bool approved) external {
         require(preApprovedHashes[msg.sender][hash] != CONSUMED, AlreadyConsumed(msg.sender, hash));
 

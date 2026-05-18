@@ -107,6 +107,17 @@ contract CowWrapperHelpersTest is Test {
         helpers.verifyAndBuildWrapperData(wrapperCalls);
     }
 
+    function test_verifyAndBuildWrapperData_RevertsOnWrapperNoCode() public {
+        address plainSolver = makeAddr("plain solver");
+        CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](1);
+        wrapperCalls[0] = CowWrapperHelpers.WrapperCall({target: plainSolver, data: hex"deadbeef"});
+
+        wrapperAuth.setSolver(plainSolver, true);
+
+        vm.expectRevert(abi.encodeWithSelector(CowWrapperHelpers.WrapperHasNoCode.selector, 0, plainSolver));
+        helpers.verifyAndBuildWrapperData(wrapperCalls);
+    }
+
     function test_verifyAndBuildWrapperData_RevertsOnWrapperDataMalformed() public {
         CowWrapperHelpers.WrapperCall[] memory wrapperCalls = new CowWrapperHelpers.WrapperCall[](1);
         wrapperCalls[0] = CowWrapperHelpers.WrapperCall({target: address(wrapper1), data: hex"deadbeef"});
