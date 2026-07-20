@@ -1,66 +1,47 @@
-## Foundry
+# Euler-CoW Protocol Integration Contracts
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
-
-Foundry consists of:
-
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+This repository hosts smart contracts enabling leveraged position management through CoW Protocol settlements combined with Ethereum Vault Connector (EVC) operations. It also serves as the initial implementation of [Generalized Wrappers](https://docs.cow.fi/cow-protocol/concepts/order-types/wrappers), a new framework for extending the CoW settlement contract.
 
 ## Documentation
 
-https://book.getfoundry.sh/
+See the `docs/` folder for complete documentation:
 
-## Usage
+- **[Overview](./docs/01-overview.md)** - Architecture and wrapper patterns
+- **[Opening Positions](./docs/02-open-position.md)** - Using `CowEvcOpenPositionWrapper`
+- **[Closing Positions](./docs/03-close-position.md)** - Using `CowEvcClosePositionWrapper`
+- **[Collateral Swaps](./docs/04-collateral-swap.md)** - Using `CowEvcCollateralSwapWrapper`
+- **[Security Considerations](./docs/05-security-considerations.md)** - Security Considerations and things to be aware of
+
+## Quick Start
 
 ### Build
-
-```shell
-$ forge build
+```bash
+forge build --deny notes
 ```
 
 ### Test
-
-```shell
-$ forge test
+```bash
+export FORK_RPC_URL=https://mainnet.example.com/rpc
+forge test
 ```
 
 ### Format
-
-```shell
-$ forge fmt
+```bash
+forge fmt
 ```
 
-### Gas Snapshots
+## Project Structure
 
-```shell
-$ forge snapshot
-```
+- `src/` - Wrapper contracts and related utilities
+- `test/` - Unit and integration tests
+- `lib/` - External dependencies (Euler, EVC, CoW Protocol)
 
-### Anvil
+## Dependencies
 
-```shell
-$ anvil
-```
+- [Ethereum Vault Connector (EVC)](https://evc.wtf/)
+- [Euler Vaults](https://docs.euler.finance/)
+- [CoW Protocol](https://docs.cow.fi/)
 
-### Deploy
+## License
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+Dual licensed under MIT OR Apache-2.0.
