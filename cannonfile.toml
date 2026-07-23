@@ -57,7 +57,7 @@ artifact = "CowWrapperHelpers"
 create2 = true
 ifExists = "continue"
 salt = "<%= settings.wrapperHelpersSalt %>"
-args = ["<%= settings.cowSettlementAddress %>"]
+args = ["<%= cow.Authenticator.address %>"]
 
 # Authorise these wrappers as a solvers
 [invoke.authorizeOpenWrapper]
