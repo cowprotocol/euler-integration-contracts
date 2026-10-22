@@ -26,7 +26,9 @@ library InboxLibrary {
     function computeDomainSeparator(address creationAddress) internal view returns (bytes32 domainSeparator) {
         return
             /// forge-lint: disable-next-line(asm-keccak256)
-            keccak256(abi.encode(DOMAIN_TYPE_HASH, keccak256("Inbox"), keccak256("1"), block.chainid, creationAddress));
+                keccak256(
+                abi.encode(DOMAIN_TYPE_HASH, keccak256("Inbox"), keccak256("1"), block.chainid, creationAddress)
+            );
     }
 }
 
