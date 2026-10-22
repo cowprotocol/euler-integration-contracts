@@ -4,5 +4,23 @@ out = "out"
 libs = ["lib"]
 optimizer = true
 via_ir = true
+# Don't surface (or fail `--deny notes` on) compiler warnings from vendored dependencies
+ignored_warnings_from = ["lib/"]
+# Newer forge defaults to isolate = true, which runs each top-level test call as its own tx and clears
+# transient storage in between. Unit tests set the transient callback hash in one call and consume it in the next.
+isolate = false
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+[lint]
+# Lints introduced by newer forge versions that the existing codebase doesn't satisfy
+exclude_lints = [
+    "block-timestamp",
+    "calls-loop",
+    "encode-packed-collision",
+    "missing-zero-check",
+    "reentrancy-events",
+    "require-revert-in-loop",
+    "unsafe-typecast",
+    "unused-return",
+]
